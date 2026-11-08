@@ -12,6 +12,8 @@ class FixtureModel {
   final String btts;
   final String cardRisk;
   final String topTip;
+  final double odds;
+  bool isSaved;
 
   FixtureModel({
     required this.league,
@@ -27,6 +29,8 @@ class FixtureModel {
     required this.btts,
     required this.cardRisk,
     required this.topTip,
+    required this.odds,
+    this.isSaved = false,
   });
 
   factory FixtureModel.fromJson(Map<String, dynamic> json) {
@@ -37,13 +41,14 @@ class FixtureModel {
       awayTeam: json['away_team'] ?? 'Away Team',
       homeForm: List<String>.from(json['home_form'] ?? ['W', 'W', 'D', 'W', 'L']),
       awayForm: List<String>.from(json['away_form'] ?? ['W', 'L', 'D', 'W', 'W']),
-      homeWinProb: json['home_win_prob'] ?? 50,
-      drawProb: json['draw_prob'] ?? 25,
-      awayWinProb: json['away_win_prob'] ?? 25,
-      over25Goals: json['over_25_goals'] ?? '70%',
-      btts: json['btts'] ?? '65%',
+      homeWinProb: json['home_win_prob'] ?? 54,
+      drawProb: json['draw_prob'] ?? 26,
+      awayWinProb: json['away_win_prob'] ?? 20,
+      over25Goals: json['over_25_goals'] ?? '72%',
+      btts: json['btts'] ?? '68%',
       cardRisk: json['card_risk'] ?? 'Medium',
-      topTip: json['top_tip'] ?? 'Over 2.5 Goals',
+      topTip: json['top_tip'] ?? 'Over 2.5 Goals & BTTS - Yes',
+      odds: (json['odds'] ?? 2.15).toDouble(),
     );
   }
 }
