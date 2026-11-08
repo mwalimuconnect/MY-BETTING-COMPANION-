@@ -18,7 +18,8 @@ app.get('/api/fixtures', (req, res) => {
       over_25_goals: '72%',
       btts: '68%',
       card_risk: 'Medium',
-      top_tip: 'Over 2.5 Goals & BTTS - Yes'
+      top_tip: 'Over 2.5 Goals & BTTS - Yes',
+      odds: 2.15
     },
     // --- AFRICA (CAF Champions League / Premier League) ---
     {
@@ -34,7 +35,8 @@ app.get('/api/fixtures', (req, res) => {
       over_25_goals: '55%',
       btts: '50%',
       card_risk: 'High',
-      top_tip: 'Under 2.5 Goals'
+      top_tip: 'Under 2.5 Goals',
+      odds: 1.85
     },
     // --- SOUTH AMERICA (Copa Libertadores) ---
     {
@@ -50,7 +52,8 @@ app.get('/api/fixtures', (req, res) => {
       over_25_goals: '65%',
       btts: '60%',
       card_risk: 'High',
-      top_tip: 'Home Win & Over 1.5'
+      top_tip: 'Home Win & Over 1.5',
+      odds: 1.95
     },
     // --- NORTH AMERICA (MLS - USA) ---
     {
@@ -66,7 +69,8 @@ app.get('/api/fixtures', (req, res) => {
       over_25_goals: '85%',
       btts: '78%',
       card_risk: 'Low',
-      top_tip: 'Inter Miami Win & Over 2.5'
+      top_tip: 'Inter Miami Win & Over 2.5',
+      odds: 1.65
     },
     // --- ASIA (AFC Champions League) ---
     {
@@ -82,7 +86,8 @@ app.get('/api/fixtures', (req, res) => {
       over_25_goals: '75%',
       btts: '70%',
       card_risk: 'Medium',
-      top_tip: 'BTTS - Yes'
+      top_tip: 'BTTS - Yes',
+      odds: 2.05
     }
   ];
   
