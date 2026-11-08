@@ -1,0 +1,12 @@
+{
+  "name": "my-betting-companion-api",
+  "version": "1.0.0",
+  "description": "Backend API for My Betting Companion",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
