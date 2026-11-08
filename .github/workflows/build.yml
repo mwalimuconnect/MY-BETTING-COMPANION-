@@ -40,7 +40,7 @@ jobs:
       - name: Fresh Android Platform Setup
         run: |
           rm -rf android
-          flutter create . --platforms=android --org com.example
+          flutter create . --platforms=android --project-name=my_betting_companion --org=com.example
 
       - name: Create Signing Keystore & Properties
         run: |
