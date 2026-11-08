@@ -56,21 +56,18 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Generate Gradle Wrapper via Flutter
+      - name: Build Release APK via Flutter CLI
         run: |
-          flutter build apk --config-only
-
-      - name: Build Release APK via Gradle Wrapper
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          flutter build apk --release --no-pub
 
       - name: Locate and Prepare APK
         run: |
           mkdir -p build/app/outputs/flutter-apk/
           echo "Searching for generated APK..."
-          APK_FILE=$(find . -name "*.apk" | head -n 1)
+          APK_FILE=$(find build/app/outputs/flutter-apk/ -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            APK_FILE=$(find . -name "*.apk" | head -n 1)
+          fi
           echo "Found APK at: $APK_FILE"
           if [ "$APK_FILE" != "build/app/outputs/flutter-apk/app-release.apk" ] && [ "$APK_FILE" != "./build/app/outputs/flutter-apk/app-release.apk" ]; then
             cp "$APK_FILE" build/app/outputs/flutter-apk/app-release.apk
