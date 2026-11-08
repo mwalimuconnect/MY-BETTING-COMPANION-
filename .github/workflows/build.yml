@@ -25,9 +25,14 @@ jobs:
           flutter-version: '3.24.3'
           channel: 'stable'
 
+      - name: Fix Pubspec Package Name
+        run: |
+          sed -i 's/^name:.*/name: my_betting_companion/' pubspec.yaml
+
       - name: Create Signing Keystore & Properties
         run: |
           keytool -genkeypair -v -keystore android/app/auto_keystore.jks -storepass password123 -alias auto_key -keypass password123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Developer, OU=Dev, O=Dev, L=Nairobi, S=Nairobi, C=KE"
+          mkdir -p android/
           cat <<EOF > android/key.properties
           storePassword=password123
           keyPassword=password123
@@ -38,8 +43,10 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Recreate Android Platform (Fix v1 Embedding)
-        run: flutter create . --platforms=android --org com.example
+      - name: Fresh Android Platform Setup
+        run: |
+          rm -rf android
+          flutter create . --platforms=android --org com.example
 
       - name: Generate Gradle Wrapper via Flutter
         run: |
