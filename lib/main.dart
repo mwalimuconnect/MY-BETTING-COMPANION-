@@ -298,32 +298,34 @@ class MatchesAnalysisTab extends StatelessWidget {
     }).toList();
 
     return RefreshIndicator(
-  onRefresh: fetchFixtures, // Triggers your API fetch method
+  onRefresh: () async {
+    setState(() {});
+  },
   child: ListView(
-    physics: const AlwaysScrollableScrollPhysics(), // Keeps pull-to-refresh working even when list is empty
+    physics: const AlwaysScrollableScrollPhysics(),
     padding: const EdgeInsets.all(16.0),
     children: [
       // Search Bar
-        TextField(
-          onChanged: onSearchChanged,
-          decoration: InputDecoration(
-            hintText: 'Search team (e.g. Chelsea, Real Madrid...)',
-            hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-            prefixIcon: const Icon(Icons.search, color: Color(0xFF0D6EFD)),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(vertical: 10),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE9ECEF)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF0D6EFD)),
-            ),
+      TextField(
+        onChanged: onSearchChanged,
+        decoration: InputDecoration(
+          hintText: 'Search team (e.g. Chelsea, Real Madrid...)',
+          hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+          prefixIcon: const Icon(Icons.search, color: Color(0xFF0DGEFD)),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFE9ECEF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF0D6EFD)),
           ),
         ),
-        const SizedBox(height: 12),
+      ),
+      const SizedBox(height: 12),
 
         // Stats Pill Header
         Row(
