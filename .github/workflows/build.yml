@@ -19,6 +19,9 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Set up Flutter SDK
         uses: subosito/flutter-action@v2
         with:
@@ -30,10 +33,6 @@ jobs:
 
       - name: Ensure Android Platform
         run: flutter create . --platforms=android --org com.example
-
-      - name: Fix Gradle Version for Stability
-        run: |
-          sed -i 's/distributionUrl=.*/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-7.5-bin.zip/' android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Generate Signing Keystore
         run: |
