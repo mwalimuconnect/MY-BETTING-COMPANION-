@@ -43,6 +43,7 @@ class FixtureModel {
   final bool isFinished;
   final String actualScore;
   final bool? predictionCorrect;
+  final bool isProlific;
   bool isSaved;
 
   FixtureModel({
@@ -64,6 +65,7 @@ class FixtureModel {
     this.isFinished = false,
     this.actualScore = 'Pending',
     this.predictionCorrect,
+    this.isProlific = false,
     this.isSaved = false,
   });
 
@@ -87,6 +89,7 @@ class FixtureModel {
       isFinished: json['isFinished'] ?? false,
       actualScore: json['actualScore'] ?? 'Pending',
       predictionCorrect: json['predictionCorrect'],
+      isProlific: json['isProlific'] ?? false,
     );
   }
 }
@@ -244,18 +247,19 @@ class MatchesAnalysisTab extends StatelessWidget {
     required this.onToggleSave,
   }) : super(key: key);
 
-  Widget _buildFilterChip(String label, IconData icon, bool isSelected, Function(bool) onSelected) {
+  Widget _buildFilterChip(String label, IconData icon, bool isSelected, Function(bool) onSelected, {Color? activeColor}) {
+    final chipColor = activeColor ?? const Color(0xFF0D6EFD);
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      selectedColor: const Color(0xFF0D6EFD),
+      selectedColor: chipColor,
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : Colors.black87,
         fontWeight: FontWeight.bold,
         fontSize: 12,
       ),
       backgroundColor: Colors.white,
-      avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : const Color(0xFF0D6EFD)),
+      avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : chipColor),
       onSelected: onSelected,
       elevation: 1,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -265,11 +269,22 @@ class MatchesAnalysisTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final filteredFixtures = fixtures.where((f) {
-      final matchesSearch = f.homeTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
+      final matchesSearch = searchQuery.isEmpty ||
+          f.homeTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
           f.awayTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
           f.league.toLowerCase().contains(searchQuery.toLowerCase());
 
-      bool matchesLeague = selectedLeague == 'All Leagues' || f.league.toLowerCase().contains(selectedLeague.toLowerCase());
+      // Flexible league & basket matching
+      bool matchesLeague = selectedLeague == 'All Leagues';
+      if (selectedLeague == 'Prolific') {
+        matchesLeague = f.isProlific; // Displays high-scoring team basket!
+      } else if (selectedLeague == 'Premier League') {
+        matchesLeague = f.league.toLowerCase().contains('premier') || f.league.toLowerCase().contains('england');
+      } else if (selectedLeague == 'La Liga') {
+        matchesLeague = f.league.toLowerCase().contains('liga') || f.league.toLowerCase().contains('spain');
+      } else if (selectedLeague == 'Serie A') {
+        matchesLeague = f.league.toLowerCase().contains('serie') || f.league.toLowerCase().contains('italy');
+      }
 
       bool matchesStatus = true;
       if (statusFilter == 'Live') {
@@ -302,12 +317,14 @@ class MatchesAnalysisTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // League Filter Chips
+          // League & Special Basket Filter Chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
                 _buildFilterChip('All Leagues', Icons.sports_soccer, selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
+                const SizedBox(width: 8),
+                _buildFilterChip('🔥 Prolific Basket', Icons.local_fire_department, selectedLeague == 'Prolific', (_) => onLeagueChanged('Prolific'), activeColor: Colors.orange[800]),
                 const SizedBox(width: 8),
                 _buildFilterChip('Premier League', Icons.flag, selectedLeague == 'Premier League', (_) => onLeagueChanged('Premier League')),
                 const SizedBox(width: 8),
@@ -318,7 +335,7 @@ class MatchesAnalysisTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          // Tabulated Status Filter Row
+          // Status Filter Row
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -353,21 +370,48 @@ class MatchesAnalysisTab extends StatelessWidget {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(fixture.league, style: const TextStyle(color: Color(0xFF0D6EFD), fontSize: 13, fontWeight: FontWeight.bold)),
-                                    if (fixture.isFinished)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(4)),
-                                        child: Text('FT: ${fixture.actualScore}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                      )
-                                    else if (fixture.isLive)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
-                                        child: Text('LIVE: ${fixture.time}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                      )
-                                    else
-                                      Text(fixture.time, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    Row(
+                                      children: [
+                                        Text(fixture.league, style: const TextStyle(color: Color(0xFF0D6EFD), fontSize: 13, fontWeight: FontWeight.bold)),
+                                        if (fixture.isProlific) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(4)),
+                                            child: Text('🔥 PROLIFIC', style: TextStyle(color: Colors.orange[900], fontSize: 9, fontWeight: FontWeight.bold)),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    Row(
+                                      children: [
+                                        if (fixture.isFinished)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(4)),
+                                            child: Text('FT: ${fixture.actualScore}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                          )
+                                        else if (fixture.isLive)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                                            child: Text('LIVE: ${fixture.time}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                          )
+                                        else
+                                          Text(fixture.time, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: Icon(
+                                            fixture.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                                            color: const Color(0xFF0D6EFD),
+                                            size: 20,
+                                          ),
+                                          onPressed: () => onToggleSave(fixture),
+                                          constraints: const BoxConstraints(),
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 12),
@@ -380,7 +424,13 @@ class MatchesAnalysisTab extends StatelessWidget {
                                   ],
                                 ),
                                 const Divider(height: 20),
-                                Text('Tip: ${fixture.topTip} (Odds: ${fixture.odds})', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Tip: ${fixture.topTip} (Odds: ${fixture.odds})', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                                    Text('Over 2.5: ${fixture.over25Goals}', style: TextStyle(fontSize: 11, color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
                               ],
                             ),
                           ),
@@ -425,8 +475,8 @@ class PredictionsOutcomeTab extends StatelessWidget {
                       headingRowColor: WidgetStateProperty.all(const Color(0xFFE8F1FF)),
                       columns: const [
                         DataColumn(label: Text('Fixture', style: TextStyle(fontWeight: FontWeight.bold))),
-                        DataColumn(label: Text('AI Tip', style: TextStyle(fontWeight: FontWeight.bold))),
-                        DataColumn(label: Text('Actual Score', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('AI Tip', style: TextSty
+                                               DataColumn(label: Text('Actual Score', style: TextStyle(fontWeight: FontWeight.bold))),
                         DataColumn(label: Text('Result', style: TextStyle(fontWeight: FontWeight.bold))),
                       ],
                       rows: finishedFixtures.map((f) {
@@ -484,7 +534,11 @@ class SavedSlipsTab extends StatelessWidget {
                       return Card(
                         child: ListTile(
                           title: Text('${fixture.homeTeam} vs ${fixture.awayTeam}'),
-                          subtitle: Text('Tip: ${fixture.topTip}'),
+                          subtitle: Text('Tip: ${fixture.topTip} (Odds: ${fixture.odds})'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => onToggleSave(fixture),
+                          ),
                         ),
                       );
                     },
