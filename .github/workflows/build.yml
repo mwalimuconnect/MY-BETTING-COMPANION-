@@ -39,7 +39,7 @@ jobs:
       - name: Fresh Android Platform Setup
         run: |
           rm -rf android
-          flutter create . --platforms=android --project-name=my_betting_companion --org=com.example
+          flutter create . --platforms=android --org com.example
 
       - name: Create Signing Keystore & Properties
         run: |
@@ -68,7 +68,10 @@ jobs:
       - name: Locate and Prepare APK
         run: |
           mkdir -p build/app/outputs/flutter-apk/
-          find android/app/build/outputs/apk/release/ -name "*.apk" -exec cp {} build/app/outputs/flutter-apk/app-release.apk \;
+          echo "Searching for generated APK..."
+          APK_FILE=$(find . -name "*.apk" | head -n 1)
+          echo "Found APK at: $APK_FILE"
+          cp "$APK_FILE" build/app/outputs/flutter-apk/app-release.apk
 
       - name: Create GitHub Release & Upload APK
         uses: softprops/action-gh-release@v1
