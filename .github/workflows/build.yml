@@ -33,7 +33,7 @@ jobs:
 
       - name: Fix Gradle Version for Stability
         run: |
-          sed -i 's/distributionUrl=.*/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-8.7-all.zip/' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/distributionUrl=.*/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-7.5-bin.zip/' android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Generate Signing Keystore
         run: |
