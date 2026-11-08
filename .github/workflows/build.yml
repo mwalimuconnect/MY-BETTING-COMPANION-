@@ -29,19 +29,17 @@ jobs:
         run: |
           python3 -c "
           with open('pubspec.yaml', 'r') as f:
-              lines = f.readlines()
+              content = f.read()
+          import re
+          new_content = re.sub(r'^name:\s*.*$', 'name: my_betting_companion', content, flags=re.MULTILINE)
           with open('pubspec.yaml', 'w') as f:
-              for line in lines:
-                  if line.strip().startswith('name:'):
-                      f.write('name: my_betting_companion\n')
-                  else:
-                      f.write(line)
+              f.write(new_content)
           "
 
       - name: Fresh Android Platform Setup
         run: |
           rm -rf android
-          flutter create . --platforms=android --org com.example
+          flutter create . --platforms=android --project-name=my_betting_companion --org=com.example
 
       - name: Create Signing Keystore & Properties
         run: |
@@ -77,6 +75,6 @@ jobs:
         with:
           files: build/app/outputs/flutter-apk/app-release.apk
           tag_name: v1.0.${{ github.run_number }}
-          name: my betting companion v1.0.${{ github.run_number }}
+          name: My Betting Companion v1.0.${{ github.run_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
