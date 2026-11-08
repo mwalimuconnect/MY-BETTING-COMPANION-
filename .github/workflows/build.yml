@@ -42,10 +42,19 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=my_betting_companion --org=com.example
 
+      - name: Use Stable Gradle Distribution URL
+        run: |
+          PROPS_FILE="android/gradle/wrapper/gradle-wrapper.properties"
+          if [ -f "$PROPS_FILE" ]; then
+            sed -i 's|https.*gradle-.*-all.zip|https\://services.gradle.org/distributions/gradle-8.3-bin.zip|g' "$PROPS_FILE"
+            echo "Updated gradle-wrapper.properties to use stable mirror."
+            cat "$PROPS_FILE"
+          fi
+
       - name: Create Signing Keystore & Properties
         run: |
           mkdir -p android/app/
-          keytool -genkeypair -v -keystore android/app/auto_keystore.jks -storepass password123 -alias auto_key -keypass password123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Developer, OU=Dev, O=Dev, L=Nairobi, S=Nairobi, C=KE"
+          keytool -genkeypair -v -keystore android/app/auto_keystore.jks -storepass password123 -alias auto_key -keypass password123 -keyalg RSA -keysize 2048 -validity 10000 "CN=Developer, OU=Dev, O=Dev, L=Nairobi, S=Nairobi, C=KE"
           cat <<EOF > android/key.properties
           storePassword=password123
           keyPassword=password123
@@ -55,16 +64,6 @@ jobs:
 
       - name: Install Dependencies
         run: flutter pub get
-
-      - name: Pre-download Gradle Distribution
-        run: |
-          cd android
-          mkdir -p gradle/wrapper
-          # Ensure gradle-wrapper.properties uses a reliable distribution URL or pre-cache it
-          if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
-            echo "Gradle wrapper properties found."
-          fi
-          chmod +x gradlew || true
 
       - name: Build Release APK via Flutter CLI
         run: |
