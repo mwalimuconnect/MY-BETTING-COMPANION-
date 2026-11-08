@@ -297,10 +297,13 @@ class MatchesAnalysisTab extends StatelessWidget {
       return matchesSearch && matchesLeague;
     }).toList();
 
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        // Search Bar
+    return RefreshIndicator(
+  onRefresh: fetchFixtures, // Triggers your API fetch method
+  child: ListView(
+    physics: const AlwaysScrollableScrollPhysics(), // Keeps pull-to-refresh working even when list is empty
+    padding: const EdgeInsets.all(16.0),
+    children: [
+      // Search Bar
         TextField(
           onChanged: onSearchChanged,
           decoration: InputDecoration(
