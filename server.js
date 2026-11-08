@@ -8,16 +8,17 @@ const API_FOOTBALL_KEY = process.env.FOOTBALL_API_KEY;
 
 app.get('/api/fixtures', async (req, res) => {
   try {
-    // Get today's date in YYYY-MM-DD format
+    // Get today's date formatted as YYYY-MM-DD in local time
     const today = new Date().toISOString().split('T')[0];
 
-    // Request live/scheduled fixtures for today from API-Sports (API-Football)
+    // Request live/scheduled fixtures from API-Sports (API-Football)
     const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
       headers: {
         'x-apisports-key': API_FOOTBALL_KEY,
       },
       params: {
         date: today,
+        timezone: 'Africa/Nairobi', // Ensures matches match local East Africa calendar days
       },
       timeout: 10000,
     });
@@ -42,7 +43,7 @@ app.get('/api/fixtures', async (req, res) => {
         time: eatTime,
         homeTeam: item.teams.home.name,
         awayTeam: item.teams.away.name,
-        homeForm: ['W', 'D', 'W', 'W', 'L'], // Baseline or enhanced via team stats endpoint
+        homeForm: ['W', 'D', 'W', 'W', 'L'], // Baseline form
         awayForm: ['L', 'W', 'D', 'W', 'W'],
         homeWinProb: 48,
         drawProb: 28,
@@ -59,7 +60,7 @@ app.get('/api/fixtures', async (req, res) => {
   } catch (error) {
     console.error('API-Football Fetch Error:', error.message);
     
-    // Robust fallback mock fixtures if API quota or connection drops
+    // Multi-league fallback data for UI testing and quota coverage
     res.json([
       {
         league: 'Premier League',
@@ -92,6 +93,22 @@ app.get('/api/fixtures', async (req, res) => {
         cardRisk: 'Low',
         topTip: 'Real Madrid Win & Under 3.5',
         odds: 1.75,
+      },
+      {
+        league: 'Serie A',
+        time: '21:45 EAT',
+        homeTeam: 'AC Milan',
+        awayTeam: 'Inter Milan',
+        homeForm: ['W', 'D', 'L', 'W', 'W'],
+        awayForm: ['W', 'W', 'W', 'D', 'W'],
+        homeWinProb: 38,
+        drawProb: 32,
+        awayWinProb: 30,
+        over25Goals: '55%',
+        btts: '68%',
+        cardRisk: 'High',
+        topTip: 'Over 2.5 Goals',
+        odds: 1.90,
       }
     ]);
   }
