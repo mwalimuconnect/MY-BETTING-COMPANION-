@@ -651,16 +651,26 @@ class _PredictorTabState extends State<PredictorTab> {
   }
 }
 
-class SavedSlipsTab extends StatelessWidget {
+class SavedSlipsTab extends StatefulWidget {
   final List<FixtureModel> savedFixtures;
   final Function(FixtureModel) onToggleSave;
 
   const SavedSlipsTab({Key? key, required this.savedFixtures, required this.onToggleSave}) : super(key: key);
 
   @override
+  State<SavedSlipsTab> createState() => _SavedSlipsTabState();
+}
+
+class _SavedSlipsTabState extends State<SavedSlipsTab> {
+  final TextEditingController _stakeController = TextEditingController(text: '100');
+
+  @override
   Widget build(BuildContext context) {
-    double totalOdds = savedFixtures.fold(1.0, (sum, item) => sum * item.odds);
-    if (savedFixtures.isEmpty) totalOdds = 0.0;
+    double totalOdds = widget.savedFixtures.fold(1.0, (sum, item) => sum * item.odds);
+    if (widget.savedFixtures.isEmpty) totalOdds = 0.0;
+
+    double stake = double.tryParse(_stakeController.text) ?? 0.0;
+    double potentialPayout = stake * totalOdds;
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -669,28 +679,62 @@ class SavedSlipsTab extends StatelessWidget {
         children: [
           const Text('Saved Slips & Accumulator', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
           const SizedBox(height: 12),
+          
+          // Accumulator Summary Box
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFF0D6EFD),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
               children: [
-                const Text('Total Multiplier Odds:', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                Text('${totalOdds.toStringAsFixed(2)}x', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total Multiplier Odds:', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    Text('${totalOdds.toStringAsFixed(2)}x', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const Divider(color: Colors.white24, height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Potential Payout:', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    Text('KES ${potentialPayout.toStringAsFixed(2)}', style: const TextStyle(color: Colors.greenAccent, fontSize: 20, fontWeight: FontWeight.bold)),
+                  ],
+                ),
               ],
             ),
           ),
           const SizedBox(height: 16),
+
+          // Stake Input Field
+          TextField(
+            controller: _stakeController,
+            keyboardType: TextInputType.number,
+            onChanged: (val) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Enter Stake (KES)',
+              prefixIcon: const Icon(Icons.money, color: Color(0xFF0D6EFD)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Saved List Header
+          const Text('Selected Tips', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87)),
+          const SizedBox(height: 8),
+
           Expanded(
-            child: savedFixtures.isEmpty
+            child: widget.savedFixtures.isEmpty
                 ? const Center(child: Text('No bookmarked tips yet. Tap the bookmark icon on any match!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
-                    itemCount: savedFixtures.length,
+                    itemCount: widget.savedFixtures.length,
                     itemBuilder: (context, index) {
-                      final fixture = savedFixtures[index];
+                      final fixture = widget.savedFixtures[index];
                       return Card(
                         margin: const EdgeInsets.only(bottom: 10),
                         child: ListTile(
@@ -698,7 +742,7 @@ class SavedSlipsTab extends StatelessWidget {
                           subtitle: Text('Tip: ${fixture.topTip} (Odds: ${fixture.odds})'),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.red),
-                            onPressed: () => onToggleSave(fixture),
+                            onPressed: () => widget.onToggleSave(fixture),
                           ),
                         ),
                       );
