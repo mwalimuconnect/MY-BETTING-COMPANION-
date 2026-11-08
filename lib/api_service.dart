@@ -32,6 +32,7 @@ class ApiService {
           btts: '68%',
           cardRisk: 'Medium',
           topTip: 'Over 2.5 Goals & BTTS - Yes',
+          odds: 2.15,
         ),
       ];
     }
