@@ -1,11 +1,8 @@
 const express = require('express');
 const axios = require('axios');
-const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-
-app.use(cors());
 
 const API_FOOTBALL_KEY = process.env.FOOTBALL_API_KEY;
 
@@ -24,7 +21,6 @@ app.get('/api/fixtures', async (req, res) => {
 
     console.log('Fetching recent finished matches and upcoming fixtures from API-Football...');
 
-    // Fetch recent finished games and upcoming games simultaneously
     const [pastResponse, upcomingResponse] = await Promise.all([
       axios.get('https://v3.football.api-sports.io/fixtures', {
         headers: apiHeaders,
