@@ -25,13 +25,28 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Generate Signing Keystore
+        run: |
+          keytool -genkey -v -keyalg RSA -keysize 2048 -validity 10000 \
+          -alias upload -keypass password123 \
+          -keystore android/app/upload-keystore.jks \
+          -storepass password123 \
+          -dname "CN=Android, OU=Dev, O=Local, L=Nairobi, C=KE"
+
+      - name: Create key.properties
+        run: |
+          echo "storePassword=password123" > android/key.properties
+          echo "keyPassword=password123" > android/key.properties
+          echo "keyAlias=upload" > android/key.properties
+          echo "storeFile=upload-keystore.jks" >> android/key.properties
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Ensure Android Platform
         run: flutter create . --platforms=android --org com.example
 
-      - name: Build Optimized Release APKs (Split per ABI)
+      - name: Build Signed Release APKs (Split per ABI)
         run: flutter build apk --release --split-per-abi
 
       - name: Upload APK Artifact
