@@ -114,6 +114,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadFixtures() async {
+    setState(() {
+      _isLoading = true;
+    });
     final data = await ApiService.fetchFixtures();
     setState(() {
       _fixtures = data;
@@ -133,6 +136,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         selectedLeague: _selectedLeague,
         onSearchChanged: (q) => setState(() => _searchQuery = q),
         onLeagueChanged: (l) => setState(() => _selectedLeague = l),
+        onRefresh: _loadFixtures,
         onToggleSave: (fixture) {
           setState(() {
             fixture.isSaved = !fixture.isSaved;
@@ -216,6 +220,7 @@ class MatchesAnalysisTab extends StatelessWidget {
   final String selectedLeague;
   final Function(String) onSearchChanged;
   final Function(String) onLeagueChanged;
+  final Future<void> Function() onRefresh;
   final Function(FixtureModel) onToggleSave;
 
   const MatchesAnalysisTab({
@@ -226,6 +231,7 @@ class MatchesAnalysisTab extends StatelessWidget {
     required this.selectedLeague,
     required this.onSearchChanged,
     required this.onLeagueChanged,
+    required this.onRefresh,
     required this.onToggleSave,
   }) : super(key: key);
 
@@ -288,257 +294,261 @@ class MatchesAnalysisTab extends StatelessWidget {
   }
 
   @override
-Widget build(BuildContext context) {
-  final filteredFixtures = fixtures.where((f) {
-    final matchesSearch = f.homeTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
-        f.awayTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
-        f.league.toLowerCase().contains(searchQuery.toLowerCase());
-    final matchesLeague = selectedLeague == 'All Leagues' || f.league == selectedLeague;
-    return matchesSearch && matchesLeague;
-  }).toList();
+  Widget build(BuildContext context) {
+    final filteredFixtures = fixtures.where((f) {
+      final matchesSearch = f.homeTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
+          f.awayTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
+          f.league.toLowerCase().contains(searchQuery.toLowerCase());
+      final matchesLeague = selectedLeague == 'All Leagues' || f.league == selectedLeague;
+      return matchesSearch && matchesLeague;
+    }).toList();
 
     return RefreshIndicator(
-    onRefresh: () async {
-      await Future.delayed(const Duration(milliseconds: 600));
-    },
-    child: ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        // Search Bar
-        TextField(
-          onChanged: onSearchChanged,
-          decoration: InputDecoration(
-            hintText: 'Search team (e.g. Chelsea, Real Madrid...)',
-            hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-            prefixIcon: const Icon(Icons.search, color: Color(0xFF0D6EFD)),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(vertical: 10),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE9ECEF)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF0D6EFD)),
+      onRefresh: onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          // Search Bar
+          TextField(
+            onChanged: onSearchChanged,
+            decoration: InputDecoration(
+              hintText: 'Search team (e.g. Chelsea, Real Madrid...)',
+              hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF0D6EFD)),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE9ECEF)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF0D6EFD)),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 12),
-        // Stats Pill Header
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F1FF),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.local_fire_department, color: Colors.orange, size: 18),
-                    SizedBox(width: 6),
-                    Text('Win Rate: ', style: TextStyle(fontSize: 12, color: Colors.black87)),
-                    Text('78%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F1FF),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.flash_on, color: Color(0xFF0D6EFD), size: 18),
-                    const SizedBox(width: 6),
-                    const Text('Analyzed: ', style: TextStyle(fontSize: 12, color: Colors.black87)),
-                    Text('${fixtures.length} Fixtures', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-
-        // League Filter Chips
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
+          const SizedBox(height: 12),
+          // Stats Pill Header
+          Row(
             children: [
-              _buildFilterChip('All Leagues', Icons.sports_soccer),
-              const SizedBox(width: 8),
-              _buildFilterChip('Premier League', Icons.flag),
-              const SizedBox(width: 8),
-              _buildFilterChip('La Liga', Icons.shield),
-              const SizedBox(width: 8),
-              _buildFilterChip('Serie A', Icons.sports),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F1FF),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.local_fire_department, color: Colors.orange, size: 18),
+                      SizedBox(width: 6),
+                      Text('Win Rate: ', style: TextStyle(fontSize: 12, color: Colors.black87)),
+                      Text('78%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F1FF),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.flash_on, color: Color(0xFF0D6EFD), size: 18),
+                      const SizedBox(width: 6),
+                      const Text('Analyzed: ', style: TextStyle(fontSize: 12, color: Colors.black87)),
+                      Text('${fixtures.length} Fixtures', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-        isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : filteredFixtures.isEmpty
-                ? const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('No fixtures match your search.')))
-                : Column(
-                    children: filteredFixtures.map((fixture) {
-                      return Card(
-                        color: Colors.white,
-                        elevation: 2,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: const BorderSide(color: Color(0xFFE9ECEF), width: 1),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.sports_soccer, size: 14, color: Color(0xFF0D6EFD)),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        fixture.league,
-                                        style: const TextStyle(color: Color(0xFF0D6EFD), fontSize: 13, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                  Text(fixture.time, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
+          // League Filter Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip('All Leagues', Icons.sports_soccer),
+                const SizedBox(width: 8),
+                _buildFilterChip('Premier League', Icons.flag),
+                const SizedBox(width: 8),
+                _buildFilterChip('La Liga', Icons.shield),
+                const SizedBox(width: 8),
+                _buildFilterChip('Serie A', Icons.sports),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
 
-                              // Teams & Form Badges
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                children: [
-                                  Column(
-                                    children: [
-                                      Text(fixture.homeTeam, style: const TextStyle(color: Color(0xFF212529), fontSize: 16, fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: fixture.homeForm.map((f) => _buildFormBadge(f, f == 'W' ? Colors.green : (f == 'D' ? Colors.amber : Colors.red))).toList(),
-                                      ),
-                                    ],
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(6)),
-                                    child: const Text('VS', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ),
-                                  Column(
-                                    children: [
-                                      Text(fixture.awayTeam, style: const TextStyle(color: Color(0xFF212529), fontSize: 16, fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: fixture.awayForm.map((f) => _buildFormBadge(f, f == 'W' ? Colors.green : (f == 'D' ? Colors.amber : Colors.red))).toList(),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-
-                              // 3-Color Probability Bar
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('Home: ${fixture.homeWinProb}%', style: const TextStyle(fontSize: 11, color: Color(0xFF0D6EFD), fontWeight: FontWeight.bold)),
-                                  Text('Draw: ${fixture.drawProb}%', style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
-                                  Text('Away: ${fixture.awayWinProb}%', style: const TextStyle(fontSize: 11, color: Colors.pink, fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: SizedBox(
-                                  height: 8,
-                                  child: Row(
-                                    children: [
-                                      Expanded(flex: fixture.homeWinProb, child: Container(color: const Color(0xFF0D6EFD))),
-                                      Expanded(flex: fixture.drawProb, child: Container(color: Colors.grey[400])),
-                                      Expanded(flex: fixture.awayWinProb, child: Container(color: Colors.pink)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Probability Stat Tiles
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                children: [
-                                  _buildStatBox('Over 2.5 Goals', fixture.over25Goals, Colors.green[700]!),
-                                  _buildStatBox('BTTS', fixture.btts, Colors.orange[800]!),
-                                  _buildStatBox('Card Risk', fixture.cardRisk, Colors.amber[800]!),
-                                ],
-                              ),
-                              const Divider(height: 24),
-
-                              // TOP AI VALUE TIP Box
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8F9FA),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFFE9ECEF)),
-                                ),
-                                child: Row(
+          isLoading
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              : filteredFixtures.isEmpty
+                  ? const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('No fixtures match your search.')))
+                  : Column(
+                      children: filteredFixtures.map((fixture) {
+                        return Card(
+                          color: Colors.white,
+                          elevation: 2,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: const BorderSide(color: Color(0xFFE9ECEF), width: 1),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Expanded(
-                                      child: Column(
-                                         crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          const Text('TOP AI VALUE TIP', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
-                                          const SizedBox(height: 2),
-                                          Row(
-                                            children: [
-                                              const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
-                                              const SizedBox(width: 4),
-                                              Expanded(child: Text('${fixture.topTip} (${fixture.odds})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF212529)), overflow: TextOverflow.ellipsis)),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.sports_soccer, size: 14, color: Color(0xFF0D6EFD)),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          fixture.league,
+                                          style: const TextStyle(color: Color(0xFF0D6EFD), fontSize: 13, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
                                     ),
-                                    IconButton(
-                                      onPressed: () => onToggleSave(fixture),
-                                      icon: Icon(fixture.isSaved ? Icons.bookmark : Icons.bookmark_border, color: const Color(0xFF0D6EFD), size: 20),
+                                    Text(fixture.time, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Teams & Form Badges
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: [
+                                    Column(
+                                      children: [
+                                        Text(fixture.homeTeam, style: const TextStyle(color: Color(0xFF212529), fontSize: 16, fontWeight: FontWeight.bold)),
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          children: fixture.homeForm.map((f) => _buildFormBadge(f, f == 'W' ? Colors.green : (f == 'D' ? Colors.amber : Colors.red))).toList(),
+                                        ),
+                                      ],
                                     ),
-                                    ElevatedButton(
-                                      onPressed: () => _showDeepDiveModal(context, fixture),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF0D6EFD),
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      ),
-                                      child: const Text('Deep Dive >', style: TextStyle(fontSize: 11, color: Colors.white)),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(6)),
+                                      child: const Text('VS', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    ),
+                                    Column(
+                                      children: [
+                                        Text(fixture.awayTeam, style: const TextStyle(color: Color(0xFF212529), fontSize: 16, fontWeight: FontWeight.bold)),
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          children: fixture.awayForm.map((f) => _buildFormBadge(f, f == 'W' ? Colors.green : (f == 'D' ? Colors.amber : Colors.red))).toList(),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 16),
+
+                                // 3-Color Probability Bar
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Home: ${fixture.homeWinProb}%', style: const TextStyle(fontSize: 11, color: Color(0xFF0D6EFD), fontWeight: FontWeight.bold)),
+                                    Text('Draw: ${fixture.drawProb}%', style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                    Text('Away: ${fixture.awayWinProb}%', style: const TextStyle(fontSize: 11, color: Colors.pink, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: SizedBox(
+                                    height: 8,
+                                    child: Row(
+                                      children: [
+                                        Expanded(flex: fixture.homeWinProb, child: Container(color: const Color(0xFF0D6EFD))),
+                                        Expanded(flex: fixture.drawProb, child: Container(color: Colors.grey[400])),
+                                        Expanded(flex: fixture.awayWinProb, child: Container(color: Colors.pink)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Probability Stat Tiles
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _buildStatBox('Over 2.5 Goals', fixture.over25Goals, Colors.green[700]!),
+                                    _buildStatBox('BTTS', fixture.btts, Colors.orange[800]!),
+                                    _buildStatBox('Card Risk', fixture.cardRisk, Colors.amber[800]!),
+                                     ],
+                                ),
+                                const Divider(height: 24),
+
+                                // TOP AI VALUE TIP Box
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8F9FA),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: const Color(0xFFE9ECEF)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text('TOP AI VALUE TIP', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                            const SizedBox(height: 2),
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
+                                                const SizedBox(width: 4),
+                                                Expanded(child: Text('${fixture.topTip} (${fixture.odds})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF212529)), overflow: TextOverflow.ellipsis)),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        onPressed: () => onToggleSave(fixture),
+                                        icon: Icon(fixture.isSaved ? Icons.bookmark : Icons.bookmark_border, color: const Color(0xFF0D6EFD), size: 20),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () => _showDeepDiveModal(context, fixture),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF0D6EFD),
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        ),
+                                        child: const Text('Deep Dive >', style: TextStyle(fontSize: 11, color: Colors.white)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-      ],
+                        );
+                      }).toList(),
+                    ),
+        ],
+      ),
     );
   }
 
