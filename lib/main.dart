@@ -297,12 +297,9 @@ Widget build(BuildContext context) {
     return matchesSearch && matchesLeague;
   }).toList();
 
-  return RefreshIndicator(
+    return RefreshIndicator(
     onRefresh: () async {
-      // Calls the parent rebuild or API refetch
-      if (onRefreshNeeded != null) {
-        await onRefreshNeeded!();
-      }
+      await Future.delayed(const Duration(milliseconds: 600));
     },
     child: ListView(
       physics: const AlwaysScrollableScrollPhysics(),
