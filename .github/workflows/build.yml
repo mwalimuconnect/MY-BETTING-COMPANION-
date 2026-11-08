@@ -31,11 +31,11 @@ jobs:
       - name: Ensure Android Platform
         run: flutter create . --platforms=android --org com.example
 
-      - name: Build Debug APK
-        run: flutter build apk --debug
+      - name: Build Optimized Release APKs (Split per ABI)
+        run: flutter build apk --release --split-per-abi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: app-release-apks
+          path: build/app/outputs/flutter-apk/
