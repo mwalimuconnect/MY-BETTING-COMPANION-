@@ -25,6 +25,12 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Ensure Android Platform
+        run: flutter create . --platforms=android --org com.example
+
       - name: Fix Gradle Version for Stability
         run: |
           sed -i 's/distributionUrl=.*/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-8.7-all.zip/' android/gradle/wrapper/gradle-wrapper.properties
@@ -43,12 +49,6 @@ jobs:
           echo "keyPassword=password123" > android/key.properties
           echo "keyAlias=upload" > android/key.properties
           echo "storeFile=upload-keystore.jks" >> android/key.properties
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Ensure Android Platform
-        run: flutter create . --platforms=android --org com.example
 
       - name: Build Direct ARM64 Release APK
         run: flutter build apk --release --target-platform android-arm64
