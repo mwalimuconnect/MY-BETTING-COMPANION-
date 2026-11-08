@@ -46,11 +46,11 @@ jobs:
       - name: Ensure Android Platform
         run: flutter create . --platforms=android --org com.example
 
-      - name: Build Signed Release APKs (Split per ABI)
-        run: flutter build apk --release --split-per-abi
+      - name: Build Direct ARM64 Release APK
+        run: flutter build apk --release --target-platform android-arm64
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apks
-          path: build/app/outputs/flutter-apk/
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
