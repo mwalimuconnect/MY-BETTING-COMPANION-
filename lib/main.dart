@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'fixture_model.dart';
 
 void main() {
   runApp(const MyBettingCompanionApp());
@@ -25,6 +24,64 @@ class MyBettingCompanionApp extends StatelessWidget {
   }
 }
 
+class FixtureModel {
+  final String league;
+  final String time;
+  final String homeTeam;
+  final String awayTeam;
+  final List<String> homeForm;
+  final List<String> awayForm;
+  final int homeWinProb;
+  final int drawProb;
+  final int awayWinProb;
+  final String over25Goals;
+  final String btts;
+  final String cardRisk;
+  final String topTip;
+  final double odds;
+  final bool isLive;
+  bool isSaved;
+
+  FixtureModel({
+    required this.league,
+    required this.time,
+    required this.homeTeam,
+    required this.awayTeam,
+    required this.homeForm,
+    required this.awayForm,
+    required this.homeWinProb,
+    required this.drawProb,
+    required this.awayWinProb,
+    required this.over25Goals,
+    required this.btts,
+    required this.cardRisk,
+    required this.topTip,
+    required this.odds,
+    this.isLive = false,
+    this.isSaved = false,
+  });
+
+  factory FixtureModel.fromJson(Map<String, dynamic> json) {
+    return FixtureModel(
+      league: json['league'] ?? '',
+      time: json['time'] ?? '',
+      homeTeam: json['homeTeam'] ?? '',
+      awayTeam: json['awayTeam'] ?? '',
+      homeForm: List<String>.from(json['homeForm'] ?? ['W', 'D', 'W', 'W', 'L']),
+      awayForm: List<String>.from(json['awayForm'] ?? ['L', 'W', 'D', 'W', 'W']),
+      homeWinProb: json['homeWinProb'] ?? 45,
+      drawProb: json['drawProb'] ?? 30,
+      awayWinProb: json['awayWinProb'] ?? 25,
+      over25Goals: json['over25Goals'] ?? '65%',
+      btts: json['btts'] ?? '60%',
+      cardRisk: json['cardRisk'] ?? 'Medium',
+      topTip: json['topTip'] ?? 'Home Win',
+      odds: (json['odds'] ?? 1.85).toDouble(),
+      isLive: json['isLive'] ?? false,
+    );
+  }
+}
+
 class ApiService {
   // Live Render backend URL pointing to your API-Football integration
   static const String apiUrl = 'https://my-betting-companion.onrender.com/api/fixtures';
@@ -39,57 +96,8 @@ class ApiService {
         throw Exception('Failed to load fixtures');
       }
     } catch (e) {
-      // Robust offline/fallback mock fixtures ensuring multi-league UI coverage
-      return [
-        FixtureModel(
-          league: 'Premier League',
-          time: '21:00 EAT',
-          homeTeam: 'Chelsea',
-          awayTeam: 'Aston Villa',
-          homeForm: ['W', 'W', 'D', 'W', 'L'],
-          awayForm: ['W', 'L', 'D', 'W', 'W'],
-          homeWinProb: 54,
-          drawProb: 26,
-          awayWinProb: 20,
-          over25Goals: '72%',
-          btts: '68%',
-          cardRisk: 'Medium',
-          topTip: 'Over 2.5 Goals & BTTS - Yes',
-          odds: 2.15,
-        ),
-        FixtureModel(
-          league: 'La Liga',
-          time: '23:00 EAT',
-          homeTeam: 'Real Madrid',
-          awayTeam: 'Real Sociedad',
-          homeForm: ['W', 'W', 'W', 'D', 'W'],
-          awayForm: ['L', 'W', 'D', 'L', 'W'],
-          homeWinProb: 68,
-          drawProb: 20,
-          awayWinProb: 12,
-          over25Goals: '65%',
-          btts: '50%',
-          cardRisk: 'Low',
-          topTip: 'Real Madrid Win & Under 3.5',
-          odds: 1.75,
-        ),
-        FixtureModel(
-          league: 'Serie A',
-          time: '22:45 EAT',
-          homeTeam: 'AC Milan',
-          awayTeam: 'Inter Milan',
-          homeForm: ['W', 'D', 'W', 'L', 'W'],
-          awayForm: ['W', 'W', 'W', 'D', 'W'],
-          homeWinProb: 35,
-          drawProb: 30,
-          awayWinProb: 35,
-          over25Goals: '58%',
-          btts: '74%',
-          cardRisk: 'High',
-          topTip: 'Both Teams To Score (BTTS)',
-          odds: 1.90,
-        ),
-      ];
+      // Clean fallback returning empty list to avoid masking live backend data with mock overrides
+      return [];
     }
   }
 }
@@ -107,6 +115,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   String _searchQuery = '';
   String _selectedLeague = 'All Leagues';
+  String _statusFilter = 'All'; // 'All', 'Live', 'Upcoming'
 
   @override
   void initState() {
@@ -135,8 +144,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         isLoading: _isLoading,
         searchQuery: _searchQuery,
         selectedLeague: _selectedLeague,
+        statusFilter: _statusFilter,
         onSearchChanged: (q) => setState(() => _searchQuery = q),
         onLeagueChanged: (l) => setState(() => _selectedLeague = l),
+        onStatusChanged: (s) => setState(() => _statusFilter = s),
         onRefresh: _loadFixtures,
         onToggleSave: (fixture) {
           setState(() {
@@ -219,8 +230,10 @@ class MatchesAnalysisTab extends StatelessWidget {
   final bool isLoading;
   final String searchQuery;
   final String selectedLeague;
+  final String statusFilter;
   final Function(String) onSearchChanged;
   final Function(String) onLeagueChanged;
+  final Function(String) onStatusChanged;
   final Future<void> Function() onRefresh;
   final Function(FixtureModel) onToggleSave;
 
@@ -230,8 +243,10 @@ class MatchesAnalysisTab extends StatelessWidget {
     required this.isLoading,
     required this.searchQuery,
     required this.selectedLeague,
+    required this.statusFilter,
     required this.onSearchChanged,
     required this.onLeagueChanged,
+    required this.onStatusChanged,
     required this.onRefresh,
     required this.onToggleSave,
   }) : super(key: key);
@@ -251,8 +266,7 @@ class MatchesAnalysisTab extends StatelessWidget {
     );
   }
 
-  Widget _buildFilterChip(String label, IconData icon) {
-    final isSelected = selectedLeague == label;
+  Widget _buildFilterChip(String label, IconData icon, bool isSelected, Function(bool) onSelected) {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
@@ -264,9 +278,7 @@ class MatchesAnalysisTab extends StatelessWidget {
       ),
       backgroundColor: Colors.white,
       avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : const Color(0xFF0D6EFD)),
-      onSelected: (bool selected) {
-        onLeagueChanged(label);
-      },
+      onSelected: onSelected,
       elevation: 1,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
     );
@@ -303,7 +315,7 @@ class MatchesAnalysisTab extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Text('${fixture.homeTeam} vs${fixture.awayTeam}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('${fixture.homeTeam} vs ${fixture.awayTeam}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             const Text('AI Deep Dive & Statistical Breakdown', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const SizedBox(height: 8),
@@ -316,7 +328,7 @@ class MatchesAnalysisTab extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
-              child: Text('AI Recommendation: ${fixture.topTip} (Odds:${fixture.odds})', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
+              child: Text('AI Recommendation: ${fixture.topTip} (Odds: ${fixture.odds})', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
             ),
             const SizedBox(height: 24),
           ],
@@ -327,20 +339,22 @@ class MatchesAnalysisTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Flexible case-insensitive filtering for global leagues and search query
+    // Comprehensive filtering matching search, league chip, and live/upcoming status tab
     final filteredFixtures = fixtures.where((f) {
       final matchesSearch = f.homeTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
           f.awayTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
           f.league.toLowerCase().contains(searchQuery.toLowerCase());
 
-      bool matchesLeague = true;
-      if (selectedLeague == 'All Leagues') {
-        matchesLeague = true;
-      } else {
-        matchesLeague = f.league.toLowerCase().contains(selectedLeague.toLowerCase());
+      bool matchesLeague = selectedLeague == 'All Leagues' || f.league.toLowerCase().contains(selectedLeague.toLowerCase());
+
+      bool matchesStatus = true;
+      if (statusFilter == 'Live') {
+        matchesStatus = f.isLive;
+      } else if (statusFilter == 'Upcoming') {
+        matchesStatus = !f.isLive;
       }
 
-      return matchesSearch && matchesLeague;
+      return matchesSearch && matchesLeague && matchesStatus;
     }).toList();
 
     return RefreshIndicator(
@@ -412,18 +426,33 @@ class MatchesAnalysisTab extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // League Filter Chips (Popular leagues at top, All Leagues toggle)
+          // League Filter Chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildFilterChip('All Leagues', Icons.sports_soccer),
+                _buildFilterChip('All Leagues', Icons.sports_soccer, selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
                 const SizedBox(width: 8),
-                _buildFilterChip('Premier League', Icons.flag),
+                _buildFilterChip('Premier League', Icons.flag, selectedLeague == 'Premier League', (_) => onLeagueChanged('Premier League')),
                 const SizedBox(width: 8),
-                _buildFilterChip('La Liga', Icons.shield),
+                _buildFilterChip('La Liga', Icons.shield, selectedLeague == 'La Liga', (_) => onLeagueChanged('La Liga')),
                 const SizedBox(width: 8),
-                _buildFilterChip('Serie A', Icons.sports),
+                _buildFilterChip('Serie A', Icons.sports, selectedLeague == 'Serie A', (_) => onLeagueChanged('Serie A')),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Status Filter Sub-Tabs (All, Live, Upcoming)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip('All Status', Icons.list, statusFilter == 'All', (_) => onStatusChanged('All')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Live 🔴', Icons.sensors, statusFilter == 'Live', (_) => onStatusChanged('Live')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Upcoming ⏰', Icons.schedule, statusFilter == 'Upcoming', (_) => onStatusChanged('Upcoming')),
               ],
             ),
           ),
@@ -439,15 +468,8 @@ class MatchesAnalysisTab extends StatelessWidget {
               : filteredFixtures.isEmpty
                   ? const Center(
                       child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 40.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              : filteredFixtures.isEmpty
-                  ? const Center(
-                      child: Padding(
                         padding: EdgeInsets.all(32.0),
-                        child: Text('No fixtures match your search.'),
+                        child: Text('No fixtures match your search or filter criteria.'),
                       ),
                     )
                   : Column(
@@ -478,7 +500,18 @@ class MatchesAnalysisTab extends StatelessWidget {
                                         ),
                                       ],
                                     ),
-                                    Text(fixture.time, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    Row(
+                                      children: [
+                                        if (fixture.isLive)
+                                          Container(
+                                            margin: const EdgeInsets.only(right: 8),
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                                            child: const Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                          ),
+                                        Text(fixture.time, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 16),
@@ -736,3 +769,4 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 }
+    
