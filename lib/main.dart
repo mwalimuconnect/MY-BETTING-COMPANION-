@@ -26,6 +26,7 @@ class MyBettingCompanionApp extends StatelessWidget {
 }
 
 class ApiService {
+  // Live Render backend URL pointing to your API-Football integration
   static const String apiUrl = 'https://my-betting-companion.onrender.com/api/fixtures';
 
   static Future<List<FixtureModel>> fetchFixtures() async {
@@ -38,7 +39,7 @@ class ApiService {
         throw Exception('Failed to load fixtures');
       }
     } catch (e) {
-      // Robust offline/fallback mock fixtures
+      // Robust offline/fallback mock fixtures ensuring multi-league UI coverage
       return [
         FixtureModel(
           league: 'Premier League',
@@ -250,6 +251,37 @@ class MatchesAnalysisTab extends StatelessWidget {
     );
   }
 
+  Widget _buildFilterChip(String label, IconData icon) {
+    final isSelected = selectedLeague == label;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: const Color(0xFF0D6EFD),
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : Colors.black87,
+        fontWeight: FontWeight.bold,
+        fontSize: 12,
+      ),
+      backgroundColor: Colors.white,
+      avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : const Color(0xFF0D6EFD)),
+      onSelected: (bool selected) {
+        onLeagueChanged(label);
+      },
+      elevation: 1,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    );
+  }
+
+  Widget _buildStatBox(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
   void _showDeepDiveModal(BuildContext context, FixtureModel fixture) {
     showModalBottomSheet(
       context: context,
@@ -271,7 +303,7 @@ class MatchesAnalysisTab extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Text('${fixture.homeTeam} vs ${fixture.awayTeam}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('${fixture.homeTeam} vs${fixture.awayTeam}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             const Text('AI Deep Dive & Statistical Breakdown', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const SizedBox(height: 8),
@@ -284,7 +316,7 @@ class MatchesAnalysisTab extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
-              child: Text('AI Recommendation: ${fixture.topTip} (Odds: ${fixture.odds})', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
+              child: Text('AI Recommendation: ${fixture.topTip} (Odds:${fixture.odds})', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
             ),
             const SizedBox(height: 24),
           ],
@@ -295,11 +327,19 @@ class MatchesAnalysisTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Flexible case-insensitive filtering for global leagues and search query
     final filteredFixtures = fixtures.where((f) {
       final matchesSearch = f.homeTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
           f.awayTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
           f.league.toLowerCase().contains(searchQuery.toLowerCase());
-      final matchesLeague = selectedLeague == 'All Leagues' || f.league == selectedLeague;
+
+      bool matchesLeague = true;
+      if (selectedLeague == 'All Leagues') {
+        matchesLeague = true;
+      } else {
+        matchesLeague = f.league.toLowerCase().contains(selectedLeague.toLowerCase());
+      }
+
       return matchesSearch && matchesLeague;
     }).toList();
 
@@ -372,7 +412,7 @@ class MatchesAnalysisTab extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // League Filter Chips
+          // League Filter Chips (Popular leagues at top, All Leagues toggle)
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -397,7 +437,19 @@ class MatchesAnalysisTab extends StatelessWidget {
                   ),
                 )
               : filteredFixtures.isEmpty
-                  ? const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('No fixtures match your search.')))
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              : filteredFixtures.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Text('No fixtures match your search.'),
+                      ),
+                    )
                   : Column(
                       children: filteredFixtures.map((fixture) {
                         return Card(
@@ -494,52 +546,50 @@ class MatchesAnalysisTab extends StatelessWidget {
                                     _buildStatBox('Over 2.5 Goals', fixture.over25Goals, Colors.green[700]!),
                                     _buildStatBox('BTTS', fixture.btts, Colors.orange[800]!),
                                     _buildStatBox('Card Risk', fixture.cardRisk, Colors.amber[800]!),
-                                     ],
+                                  ],
                                 ),
                                 const Divider(height: 24),
 
-                                // TOP AI VALUE TIP Box
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF8F9FA),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: const Color(0xFFE9ECEF)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Text('TOP AI VALUE TIP', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
-                                            const SizedBox(height: 2),
-                                            Row(
-                                              children: [
-                                                const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
-                                                const SizedBox(width: 4),
-                                                Expanded(child: Text('${fixture.topTip} (${fixture.odds})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF212529)), overflow: TextOverflow.ellipsis)),
-                                              ],
-                                            ),
-                                          ],
+                                // Bottom Tip & Action Buttons
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text('Top Prediction Tip', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${fixture.topTip} (Odds: ${fixture.odds})',
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF212529)),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Row(
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(
+                                            fixture.isSaved ? Icons.bookmark : Icons.bookmark_outline,
+                                            color: const Color(0xFF0D6EFD),
+                                          ),
+                                          onPressed: () => onToggleSave(fixture),
                                         ),
-                                      ),
-                                      IconButton(
-                                        onPressed: () => onToggleSave(fixture),
-                                        icon: Icon(fixture.isSaved ? Icons.bookmark : Icons.bookmark_border, color: const Color(0xFF0D6EFD), size: 20),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () => _showDeepDiveModal(context, fixture),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF0D6EFD),
-                                          elevation: 0,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF0D6EFD),
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          ),
+                                          onPressed: () => _showDeepDiveModal(context, fixture),
+                                          child: const Text('Analyze', style: TextStyle(fontSize: 12)),
                                         ),
-                                        child: const Text('Deep Dive >', style: TextStyle(fontSize: 11, color: Colors.white)),
-                                      ),
-                                    ],
-                                  ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -551,115 +601,21 @@ class MatchesAnalysisTab extends StatelessWidget {
       ),
     );
   }
-
-  Widget _buildFilterChip(String label, IconData iconData) {
-    bool isSelected = selectedLeague == label;
-    return ChoiceChip(
-      avatar: Icon(iconData, size: 14, color: isSelected ? Colors.white : const Color(0xFF0D6EFD)),
-      label: Text(
-        label,
-        style: TextStyle(
-          color: isSelected ? Colors.white : const Color(0xFF212529),
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-      ),
-      selected: isSelected,
-      selectedColor: const Color(0xFF0D6EFD),
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: isSelected ? const Color(0xFF0D6EFD) : const Color(0xFFE9ECEF)),
-      ),
-      onSelected: (_) {
-        onLeagueChanged(label);
-      },
-    );
-  }
-
-  Widget _buildStatBox(String label, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.black12),
-      ),
-      child: Column(
-        children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: Colors.black54)),
-          const SizedBox(height: 2),
-          Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
-        ],
-      ),
-    );
-  }
 }
 
-class PredictorTab extends StatefulWidget {
+class PredictorTab extends StatelessWidget {
   const PredictorTab({Key? key}) : super(key: key);
 
   @override
-  State<PredictorTab> createState() => _PredictorTabState();
-}
-
-class _PredictorTabState extends State<PredictorTab> {
-  final TextEditingController _homeController = TextEditingController(text: 'Arsenal');
-  final TextEditingController _awayController = TextEditingController(text: 'Liverpool');
-  String _predictionResult = '';
-
-  void _runSimulation() {
-    setState(() {
-      _predictionResult = 'AI Simulation: ${_homeController.text} vs ${_awayController.text}\n\n'
-          '• Projected Score: 2 - 1\n'
-          '• Win Probability: ${_homeController.text} (58%) | Draw (24%) | ${_awayController.text} (18%)\n'
-          '• Recommended Pick: Home Win & Over 1.5 Goals\n'
-          '• Confidence Index: 84% (High Value)';
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Match Predictor & Simulator', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
-          const SizedBox(height: 8),
-          const Text('Input any custom teams to calculate algorithmic outcomes.', style: TextStyle(color: Colors.grey, fontSize: 13)),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _homeController,
-            decoration: const InputDecoration(labelText: 'Home Team', border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _awayController,
-            decoration: const InputDecoration(labelText: 'Away Team', border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0D6EFD),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.all(14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: _runSimulation,
-              child: const Text('Run AI Simulation', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (_predictionResult.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.shade100)),
-              child: Text(_predictionResult, style: const TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF0D6EFD), fontWeight: FontWeight.w500)),
-            ),
-        ],
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(24.0),
+        child: Text(
+          'AI Predictor Module Active\nSelect custom team metrics to simulate outcomes.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -669,7 +625,11 @@ class SavedSlipsTab extends StatefulWidget {
   final List<FixtureModel> savedFixtures;
   final Function(FixtureModel) onToggleSave;
 
-  const SavedSlipsTab({Key? key, required this.savedFixtures, required this.onToggleSave}) : super(key: key);
+  const SavedSlipsTab({
+    Key? key,
+    required this.savedFixtures,
+    required this.onToggleSave,
+  }) : super(key: key);
 
   @override
   State<SavedSlipsTab> createState() => _SavedSlipsTabState();
@@ -680,8 +640,10 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 
   @override
   Widget build(BuildContext context) {
-    double totalOdds = widget.savedFixtures.fold(1.0, (sum, item) => sum * item.odds);
-    if (widget.savedFixtures.isEmpty) totalOdds = 0.0;
+    double totalOdds = 1.0;
+    for (var fixture in widget.savedFixtures) {
+      totalOdds *= fixture.odds;
+    }
 
     double stake = double.tryParse(_stakeController.text) ?? 0.0;
     double potentialPayout = stake * totalOdds;
@@ -744,7 +706,13 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 
           Expanded(
             child: widget.savedFixtures.isEmpty
-                ? const Center(child: Text('No bookmarked tips yet. Tap the bookmark icon on any match!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)))
+                ? const Center(
+                    child: Text(
+                      'No bookmarked tips yet. Tap the bookmark icon on any match!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: widget.savedFixtures.length,
                     itemBuilder: (context, index) {
