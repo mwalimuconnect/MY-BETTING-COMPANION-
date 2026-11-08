@@ -25,6 +25,10 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Fix Gradle Version for Stability
+        run: |
+          sed -i 's/distributionUrl=.*/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-8.7-all.zip/' android/gradle/wrapper/gradle-wrapper.properties
+
       - name: Generate Signing Keystore
         run: |
           keytool -genkey -v -keyalg RSA -keysize 2048 -validity 10000 \
