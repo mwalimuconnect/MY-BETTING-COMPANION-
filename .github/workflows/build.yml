@@ -54,7 +54,7 @@ jobs:
       - name: Create Signing Keystore & Properties
         run: |
           mkdir -p android/app/
-          keytool -genkeypair -v -keystore android/app/auto_keystore.jks -storepass password123 -alias auto_key -keypass password123 -keyalg RSA -keysize 2048 -validity 10000 "CN=Developer, OU=Dev, O=Dev, L=Nairobi, S=Nairobi, C=KE"
+          keytool -genkeypair -v -keystore android/app/auto_keystore.jks -storepass password123 -alias auto_key -keypass password123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Developer, OU=Dev, O=Dev, L=Nairobi, S=Nairobi, C=KE"
           cat <<EOF > android/key.properties
           storePassword=password123
           keyPassword=password123
