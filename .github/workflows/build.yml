@@ -72,7 +72,11 @@ jobs:
           echo "Searching for generated APK..."
           APK_FILE=$(find . -name "*.apk" | head -n 1)
           echo "Found APK at: $APK_FILE"
-          cp "$APK_FILE" build/app/outputs/flutter-apk/app-release.apk
+          if [ "$APK_FILE" != "build/app/outputs/flutter-apk/app-release.apk" ] && [ "$APK_FILE" != "./build/app/outputs/flutter-apk/app-release.apk" ]; then
+            cp "$APK_FILE" build/app/outputs/flutter-apk/app-release.apk
+          else
+            echo "APK is already in the correct location."
+          fi
 
       - name: Create GitHub Release & Upload APK
         uses: softprops/action-gh-release@v1
