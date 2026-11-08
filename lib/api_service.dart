@@ -3,8 +3,8 @@ import 'package:http/http.dart' as http;
 import 'fixture_model.dart';
 
 class ApiService {
-  // Replace this URL with your live Render backend URL once deployed
-  static const String apiUrl = 'https://raw.githubusercontent.com/mwalimuconnect/MY-BETTING-COMPANION-/main/fixtures.json';
+  // Live Render backend endpoint
+  static const String apiUrl = 'https://my-betting-companion.onrender.com/api/fixtures';
 
   static Future<List<FixtureModel>> fetchFixtures() async {
     try {
