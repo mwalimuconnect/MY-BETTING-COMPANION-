@@ -475,8 +475,8 @@ class PredictionsOutcomeTab extends StatelessWidget {
                       headingRowColor: WidgetStateProperty.all(const Color(0xFFE8F1FF)),
                       columns: const [
                         DataColumn(label: Text('Fixture', style: TextStyle(fontWeight: FontWeight.bold))),
-                        DataColumn(label: Text('AI Tip', style: TextSty
-                                               DataColumn(label: Text('Actual Score', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('AI Tip', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('Actual Score', style: TextStyle(fontWeight: FontWeight.bold))),
                         DataColumn(label: Text('Result', style: TextStyle(fontWeight: FontWeight.bold))),
                       ],
                       rows: finishedFixtures.map((f) {
