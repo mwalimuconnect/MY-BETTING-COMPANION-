@@ -1,8 +1,8 @@
-name: Build Flutter APK
+name: Build Universal APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -10,50 +10,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java SDK
-        uses: actions/setup-java@v3
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Set up Flutter SDK
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.3'
           channel: 'stable'
-          cache: true
 
-      - name: Install dependencies
+      - name: Create Signing Keystore & Properties
+        run: |
+          keytool -genkeypair -v -keystore android/app/auto_keystore.jks -storepass password123 -alias auto_key -keypass password123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Developer, OU=Dev, O=Dev, L=Nairobi, S=Nairobi, C=KE"
+          cat <<EOF > android/key.properties
+          storePassword=password123
+          keyPassword=password123
+          keyAlias=auto_key
+          storeFile=auto_keystore.jks
+          EOF
+
+      - name: Install Dependencies
         run: flutter pub get
 
-      - name: Ensure Android Platform
-        run: flutter create . --platforms=android --org com.example
-
-      - name: Generate Signing Keystore
+      - name: Generate Gradle Wrapper via Flutter
         run: |
-          keytool -genkey -v -keyalg RSA -keysize 2048 -validity 10000 \
-          -alias upload -keypass password123 \
-          -keystore android/app/upload-keystore.jks \
-          -storepass password123 \
-          -dname "CN=Android, OU=Dev, O=Local, L=Nairobi, C=KE"
+          flutter build apk --config-only
 
-      - name: Create key.properties
+      - name: Build Release APK via Gradle Wrapper
         run: |
-          echo "storePassword=password123" > android/key.properties
-          echo "keyPassword=password123" > android/key.properties
-          echo "keyAlias=upload" > android/key.properties
-          echo "storeFile=upload-keystore.jks" >> android/key.properties
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
 
-      - name: Build Direct ARM64 Release APK
-        run: flutter build apk --release --target-platform android-arm64
+      - name: Locate and Prepare APK
+        run: |
+          mkdir -p build/app/outputs/flutter-apk/
+          find android/app/build/outputs/apk/release/ -name "*.apk" -exec cp {} build/app/outputs/flutter-apk/app-release.apk \;
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release & Upload APK
+        uses: softprops/action-gh-release@v1
         with:
-          name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          files: build/app/outputs/flutter-apk/app-release.apk
+          tag_name: v1.0.${{ github.run_number }}
+          name: My Betting Companion v1.0.${{ github.run_number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
