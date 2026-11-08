@@ -1,49 +1,50 @@
 const express = require('express');
 const axios = require('axios');
+const cors = require('cors');
+
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
+
+app.use(cors());
 
 const API_FOOTBALL_KEY = process.env.FOOTBALL_API_KEY;
 
 app.get('/api/fixtures', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
-
-    console.log(`Fetching live & upcoming fixtures from API-Football...`);
-
-    // Fetch today's fixtures with EAT timezone
-    const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
-      headers: {
-        'x-apisports-key': API_FOOTBALL_KEY,
-      },
-      params: {
-        date: today,
-        timezone: 'Africa/Nairobi',
-      },
-      timeout: 15000,
-    });
-
-    let matches = response.data.response || [];
-
-    // If today's specific date is empty, fallback to fetching upcoming live/scheduled games globally
-    if (matches.length === 0) {
-      console.log('Today list empty, fetching next 20 upcoming global fixtures...');
-      const fallbackResponse = await axios.get('https://v3.football.api-sports.io/fixtures', {
-        headers: {
-          'x-apisports-key': API_FOOTBALL_KEY,
-        },
-        params: {
-          next: 20,
-          timezone: 'Africa/Nairobi',
-        },
-        timeout: 15000,
-      });
-      matches = fallbackResponse.data.response || [];
+    if (!API_FOOTBALL_KEY) {
+      console.error('Error: FOOTBALL_API_KEY is missing.');
+      return res.status(500).json({ error: 'API key not configured', fixtures: [] });
     }
 
-    console.log(`Successfully retrieved ${matches.length} matches from API-Football.`);
+    const apiHeaders = {
+      'x-apisports-key': API_FOOTBALL_KEY,
+      'x-rapidapi-key': API_FOOTBALL_KEY,
+      'x-rapidapi-host': 'v3.football.api-sports.io',
+    };
 
-    const formattedFixtures = matches.map((item) => {
+    console.log('Fetching recent finished matches and upcoming fixtures from API-Football...');
+
+    // Fetch recent finished games and upcoming games simultaneously
+    const [pastResponse, upcomingResponse] = await Promise.all([
+      axios.get('https://v3.football.api-sports.io/fixtures', {
+        headers: apiHeaders,
+        params: { last: 15, timezone: 'Africa/Nairobi' },
+        timeout: 15000,
+      }),
+      axios.get('https://v3.football.api-sports.io/fixtures', {
+        headers: apiHeaders,
+        params: { next: 15, timezone: 'Africa/Nairobi' },
+        timeout: 15000,
+      }),
+    ]);
+
+    const pastMatches = pastResponse.data.response || [];
+    const upcomingMatches = upcomingResponse.data.response || [];
+    const allMatches = [...pastMatches, ...upcomingMatches];
+
+    console.log(`Successfully retrieved ${allMatches.length} total fixtures (${pastMatches.length} finished, ${upcomingMatches.length} upcoming).`);
+
+    const formattedFixtures = allMatches.map((item) => {
       const matchDate = new Date(item.fixture.date);
       const eatTime = matchDate.toLocaleTimeString('en-GB', {
         hour: '2-digit',
@@ -60,10 +61,10 @@ app.get('/api/fixtures', async (req, res) => {
       const scoreDisplay = isFinished || isCurrentlyLive ? `${homeGoals} - ${awayGoals}` : eatTime;
 
       return {
-        league: item.league.name,
+        league: item.league.name || 'Global League',
         time: scoreDisplay,
-        homeTeam: item.teams.home.name,
-        awayTeam: item.teams.away.name,
+        homeTeam: item.teams.home.name || 'Home Team',
+        awayTeam: item.teams.away.name || 'Away Team',
         homeForm: ['W', 'D', 'W', 'W', 'L'],
         awayForm: ['L', 'W', 'D', 'W', 'W'],
         homeWinProb: 50,
@@ -81,13 +82,16 @@ app.get('/api/fixtures', async (req, res) => {
       };
     });
 
-    res.json(formattedFixtures);
+    return res.json(formattedFixtures);
   } catch (error) {
-    console.error('API-Football Fetch Error:', error.response?.data || error.message);
-    res.status(500).json({ error: error.message, fixtures: [] });
+    console.error('API-Football Error:', error.response?.data || error.message);
+    return res.status(500).json({
+      error: error.response?.data?.errors || error.message,
+      fixtures: [],
+    });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Global API-Football server running on port ${PORT}`);
+  console.log(`Server active on port ${PORT}`);
 });
