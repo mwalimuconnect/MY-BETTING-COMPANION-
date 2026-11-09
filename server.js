@@ -4,16 +4,21 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Basic manual CORS headers middleware (No external 'cors' package needed!)
+// Manual CORS headers middleware (No external 'cors' package needed)
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
 });
 
+// Welcome route for the base URL so it never throws a 'Cannot GET /' error
+app.get('/', (req, res) => {
+  res.send('My Betting Companion API is live! Endpoint: /api/fixtures');
+});
+
 const API_FOOTBALL_KEY = process.env.FOOTBALL_API_KEY;
 
-// List of prolific teams for your basket
+// List of prolific teams for your global basket
 const PROLIFIC_TEAMS = [
   'Manchester City', 'Arsenal', 'Real Madrid', 'Barcelona', 'Bayern Munich', 
   'Bayer Leverkusen', 'Inter', 'Atalanta', 'PSG', 'Liverpool', 'Borussia Dortmund'
@@ -51,7 +56,7 @@ app.get('/api/fixtures', async (req, res) => {
     const upcomingMatches = upcomingResponse.data.response || [];
     const allMatches = [...pastMatches, ...upcomingMatches];
 
-    console.log(`Successfully retrieved ${allMatches.length} total fixtures.`);
+    console.log(`Successfully retrieved ${allMatches.length} total fixtures (${pastMatches.length} finished, ${upcomingMatches.length} upcoming).`);
 
     const formattedFixtures = allMatches.map((item) => {
       const matchDate = new Date(item.fixture.date);
@@ -88,7 +93,7 @@ app.get('/api/fixtures', async (req, res) => {
         drawProb: 28,
         awayWinProb: 22,
         over25Goals: isProlificMatch ? '88%' : '65%',
-        btts: isProlificMatch ? '79% ' : '58%',
+        btts: isProlificMatch ? '79%' : '58%',
         cardRisk: 'Medium',
         topTip: isProlificMatch ? 'Over 2.5 Goals & BTTS' : `${homeTeam} Win or Draw`,
         odds: isProlificMatch ? 2.10 : 1.80,
