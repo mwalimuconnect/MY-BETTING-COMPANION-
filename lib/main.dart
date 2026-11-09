@@ -98,20 +98,23 @@ class ApiService {
   static const String apiUrl = 'https://my-betting-companion.onrender.com/api/fixtures';
 
   static Future<List<FixtureModel>> fetchFixtures() async {
-    try {
-      final response = await http.get(Uri.parse(apiUrl));
-      if (response.statusCode == 200) {
-        var decoded = jsonDecode(response.body);
-        List<dynamic> body = decoded is Map ? decoded['fixtures'] ?? [] : decoded;
-        return body.map((dynamic item) => FixtureModel.fromJson(item)).toList();
-      } else {
-        return [];
-      }
-    } catch (e) {
+  try {
+    final response = await http.get(Uri.parse(apiUrl)).timeout(const Duration(seconds: 30));
+    print('RAW API RESPONSE: ${response.body}'); // <-- Prints what Render actually sends
+
+    if (response.statusCode == 200) {
+      var decoded = jsonDecode(response.body);
+      List<dynamic> body = decoded is Map ? decoded['fixtures'] ?? [] : decoded;
+      return body.map((dynamic item) => FixtureModel.fromJson(item)).toList();
+    } else {
+      print('API Error Code: ${response.statusCode}');
       return [];
     }
+  } catch (e) {
+    print('PARSING OR NETWORK ERROR: $e'); // <-- Prints if JSON mapping crashes
+    return [];
   }
-} 
+  }
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
