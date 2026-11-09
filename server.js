@@ -44,12 +44,12 @@ app.get('/api/fixtures', async (req, res) => {
     }
 
     // Fallback safety: If API-Football returns 0 matches for today, supply robust sample fixtures so the UI populates instantly
-    if (allMatches.length === 0) {
+          if (allMatches.length === 0) {
       console.log('API-Football returned 0 matches for today. Providing fallback sample fixtures...');
       return res.json([
         {
           league: "Premier League",
-          time: "20:00 EAT",
+          time: "FT",
           homeTeam: "Manchester City",
           awayTeam: "Arsenal",
           homeForm: ["W", "W", "D", "W", "W"],
@@ -63,10 +63,10 @@ app.get('/api/fixtures', async (req, res) => {
           topTip: "Over 2.5 Goals & BTTS",
           odds: 2.10,
           isLive: false,
-          isFinished: false,
-          actualScore: "Pending",
-          predictionCorrect: null,
-          isProlific: true
+          isFinished: true,          // Shows under Finished (FT)
+          actualScore: "3 - 2",
+          predictionCorrect: true,
+          isProlific: true           // Belongs to Prolific Basket
         },
         {
           league: "La Liga",
@@ -84,7 +84,7 @@ app.get('/api/fixtures', async (req, res) => {
           topTip: "Over 2.5 Goals",
           odds: 1.95,
           isLive: false,
-          isFinished: false,
+          isFinished: false,          // Shows under Upcoming
           actualScore: "Pending",
           predictionCorrect: null,
           isProlific: true
@@ -105,14 +105,13 @@ app.get('/api/fixtures', async (req, res) => {
           topTip: "Inter Win or Draw",
           odds: 1.75,
           isLive: false,
-          isFinished: false,
+          isFinished: false,          // Shows under Upcoming
           actualScore: "Pending",
           predictionCorrect: null,
           isProlific: true
         }
       ]);
-    }
-
+    }   
     const formattedFixtures = allMatches.map((item) => {
       const matchDate = new Date(item.fixture.date);
       const eatTime = matchDate.toLocaleTimeString('en-GB', {
