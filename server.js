@@ -4,14 +4,14 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Manual CORS headers middleware (No external 'cors' package needed)
+// Manual CORS headers middleware
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
 });
 
-// Welcome route for the base URL so it never throws a 'Cannot GET /' error
+// Welcome route for base URL
 app.get('/', (req, res) => {
   res.send('My Betting Companion API is live! Endpoint: /api/fixtures');
 });
@@ -37,26 +37,37 @@ app.get('/api/fixtures', async (req, res) => {
       'x-rapidapi-host': 'v3.football.api-sports.io',
     };
 
-    console.log('Fetching recent finished and upcoming fixtures from API-Football...');
+    // Get today's date in YYYY-MM-DD format
+    const todayStr = new Date().toISOString().split('T')[0];
+    console.log(`Fetching fixtures for date: ${todayStr} and live matches from API-Football...`);
 
-    const [pastResponse, upcomingResponse] = await Promise.all([
+    // Fetch today's matches and live matches using valid v3 parameters
+    const [dateResponse, liveResponse] = await Promise.all([
       axios.get('https://v3.football.api-sports.io/fixtures', {
         headers: apiHeaders,
-        params: { last: 15, timezone: 'Africa/Nairobi' },
+        params: { date: todayStr, timezone: 'Africa/Nairobi' },
         timeout: 15000,
       }),
       axios.get('https://v3.football.api-sports.io/fixtures', {
         headers: apiHeaders,
-        params: { next: 15, timezone: 'Africa/Nairobi' },
+        params: { live: 'all', timezone: 'Africa/Nairobi' },
         timeout: 15000,
       }),
     ]);
 
-    const pastMatches = pastResponse.data.response || [];
-    const upcomingMatches = upcomingResponse.data.response || [];
-    const allMatches = [...pastMatches, ...upcomingMatches];
+    const dateMatches = dateResponse.data.response || [];
+    const liveMatches = liveResponse.data.response || [];
+    
+    // Combine and deduplicate fixtures by ID
+    const fixtureMap = new Map();
+    [...dateMatches, ...liveMatches].forEach(item => {
+      if (item.fixture && item.fixture.id) {
+        fixtureMap.set(item.fixture.id, item);
+      }
+    });
+    const allMatches = Array.from(fixtureMap.values());
 
-    console.log(`Successfully retrieved ${allMatches.length} total fixtures (${pastMatches.length} finished, ${upcomingMatches.length} upcoming).`);
+    console.log(`Successfully retrieved ${allMatches.length} total fixtures.`);
 
     const formattedFixtures = allMatches.map((item) => {
       const matchDate = new Date(item.fixture.date);
