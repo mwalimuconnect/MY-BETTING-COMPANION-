@@ -560,9 +560,9 @@ class SavedSlipsTab extends StatelessWidget {
 
   const SavedSlipsTab({
     Key? key,
-      required this.savedFixtures, 
-        required this.onToggleSave
-    }) : super(key: key);
+    required this.savedFixtures,
+    required this.onToggleSave,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -597,4 +597,4 @@ class SavedSlipsTab extends StatelessWidget {
       ),
     );
   }
-  
+}
