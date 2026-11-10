@@ -71,25 +71,25 @@ class FixtureModel {
 
   factory FixtureModel.fromJson(Map<String, dynamic> json) {
     return FixtureModel(
-      league: json['league'] ?? '',
-      time: json['time'] ?? '',
-      homeTeam: json['homeTeam'] ?? '',
-      awayTeam: json['awayTeam'] ?? '',
-      homeForm: List<String>.from(json['homeForm'] ?? ['W', 'D', 'W', 'W', 'L']),
-      awayForm: List<String>.from(json['awayForm'] ?? ['L', 'W', 'D', 'W', 'W']),
-      homeWinProb: json['homeWinProb'] ?? 45,
-      drawProb: json['drawProb'] ?? 30,
-      awayWinProb: json['awayWinProb'] ?? 25,
-      over25Goals: json['over25Goals'] ?? '65%',
-      btts: json['btts'] ?? '60%',
-      cardRisk: json['cardRisk'] ?? 'Medium',
-      topTip: json['topTip'] ?? 'Home Win',
-      odds: (json['odds'] ?? 1.85).toDouble(),
-      isLive: json['isLive'] ?? false,
-      isFinished: json['isFinished'] ?? false,
-      actualScore: json['actualScore'] ?? 'Pending',
-      predictionCorrect: json['predictionCorrect'],
-      isProlific: json['isProlific'] ?? false,
+      league: json['league']?.toString() ?? '',
+      time: json['time']?.toString() ?? '',
+      homeTeam: json['homeTeam']?.toString() ?? '',
+      awayTeam: json['awayTeam']?.toString() ?? '',
+      homeForm: json['homeForm'] != null ? List<String>.from(json['homeForm']) : ['W', 'D', 'W', 'W', 'L'],
+      awayForm: json['awayForm'] != null ? List<String>.from(json['awayForm']) : ['L', 'W', 'D', 'W', 'W'],
+      homeWinProb: int.tryParse(json['homeWinProb']?.toString() ?? '') ?? 45,
+      drawProb: int.tryParse(json['drawProb']?.toString() ?? '') ?? 30,
+      awayWinProb: int.tryParse(json['awayWinProb']?.toString() ?? '') ?? 25,
+      over25Goals: json['over25Goals']?.toString() ?? '65%',
+      btts: json['btts']?.toString() ?? '60%',
+      cardRisk: json['cardRisk']?.toString() ?? 'Medium',
+      topTip: json['topTip']?.toString() ?? 'Home Win',
+      odds: double.tryParse(json['odds']?.toString() ?? '') ?? 1.85,
+      isLive: json['isLive'] == true,
+      isFinished: json['isFinished'] == true,
+      actualScore: json['actualScore']?.toString() ?? 'Pending',
+      predictionCorrect: json['predictionCorrect'] is bool ? json['predictionCorrect'] : null,
+      isProlific: json['isProlific'] == true,
     );
   }
 }
@@ -98,24 +98,35 @@ class ApiService {
   static const String apiUrl = 'https://my-betting-companion.onrender.com/api/fixtures';
 
   static Future<List<FixtureModel>> fetchFixtures() async {
-  try {
-    final response = await http.get(Uri.parse(apiUrl)).timeout(const Duration(seconds: 30));
-    print('RAW API RESPONSE: ${response.body}'); // <-- Prints what Render actually sends
+    try {
+      print('HTTP GETting fixtures from: $apiUrl');
+      final response = await http.get(Uri.parse(apiUrl)).timeout(const Duration(seconds: 40));
+      print('Response Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
 
-    if (response.statusCode == 200) {
-      var decoded = jsonDecode(response.body);
-      List<dynamic> body = decoded is Map ? decoded['fixtures'] ?? [] : decoded;
-      return body.map((dynamic item) => FixtureModel.fromJson(item)).toList();
-    } else {
-      print('API Error Code: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        var decoded = jsonDecode(response.body);
+        List<dynamic> body = [];
+        
+        if (decoded is List) {
+          body = decoded;
+        } else if (decoded is Map) {
+          body = decoded['fixtures'] ?? decoded['response'] ?? [];
+        }
+
+        print('Parsed ${body.length} items from JSON body');
+        return body.map((dynamic item) => FixtureModel.fromJson(item)).toList();
+      } else {
+        print('Server returned non-200 code: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('CRITICAL FETCH ERROR: $e');
       return [];
     }
-  } catch (e) {
-    print('PARSING OR NETWORK ERROR: $e'); // <-- Prints if JSON mapping crashes
-    return [];
-  }
   }
 }
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
 
@@ -139,7 +150,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadFixtures() async {
     setState(() => _isLoading = true);
-    final data = await ApiService.fetchFixtures();
+    
+    List<FixtureModel> data = await ApiService.fetchFixtures();
+    
+    // Automatic retry if Render cold start delayed the first request
+    if (data.isEmpty) {
+      print('First fetch empty (Render cold start). Retrying in 3 seconds...');
+      await Future.delayed(const Duration(seconds: 3));
+      data = await ApiService.fetchFixtures();
+    }
+
     setState(() {
       _fixtures = data;
       _isLoading = false;
@@ -277,10 +297,9 @@ class MatchesAnalysisTab extends StatelessWidget {
           f.awayTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
           f.league.toLowerCase().contains(searchQuery.toLowerCase());
 
-      // Flexible league & basket matching
       bool matchesLeague = selectedLeague == 'All Leagues';
       if (selectedLeague == 'Prolific') {
-        matchesLeague = f.isProlific; // Displays high-scoring team basket!
+        matchesLeague = f.isProlific;
       } else if (selectedLeague == 'Premier League') {
         matchesLeague = f.league.toLowerCase().contains('premier') || f.league.toLowerCase().contains('england');
       } else if (selectedLeague == 'La Liga') {
@@ -320,7 +339,6 @@ class MatchesAnalysisTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // League & Special Basket Filter Chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -338,14 +356,13 @@ class MatchesAnalysisTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          // Status Filter Row
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
                 _buildFilterChip('All Status', Icons.list, statusFilter == 'All', (_) => onStatusChanged('All')),
                 const SizedBox(width: 8),
-                _buildFilterChip('Live 🔴', Icons.sensors, statusFilter == 'Live', (_) => onStatusChanged('Live')),
+                _buildFilterChip('Live 📡', Icons.sensors, statusFilter == 'Live', (_) => onStatusChanged('Live')),
                 const SizedBox(width: 8),
                 _buildFilterChip('Upcoming ⏰', Icons.schedule, statusFilter == 'Upcoming', (_) => onStatusChanged('Upcoming')),
                 const SizedBox(width: 8),
@@ -355,9 +372,35 @@ class MatchesAnalysisTab extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           isLoading
-              ? const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 40.0), child: CircularProgressIndicator()))
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40.0),
+                    child: Column(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 12),
+                        Text('Waking up server & fetching fixtures...', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                )
               : filteredFixtures.isEmpty
-                  ? const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('No fixtures match your search or filter criteria.')))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Column(
+                          children: [
+                            const Text('No fixtures match your search or filter criteria.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: onRefresh,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry Connection'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                   : Column(
                       children: filteredFixtures.map((fixture) {
                         return Card(
@@ -381,7 +424,7 @@ class MatchesAnalysisTab extends StatelessWidget {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                             decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(4)),
-                                            child: Text('🔥 PROLIFIC', style: TextStyle(color: Colors.orange[900], fontSize: 9, fontWeight: FontWeight.bold)),
+                                            child: const Text('🔥 PROLIFIC', style: TextStyle(color: Colors.orange, fontSize: 9, fontWeight: FontWeight.bold)),
                                           ),
                                         ],
                                       ],
@@ -446,7 +489,6 @@ class MatchesAnalysisTab extends StatelessWidget {
   }
 }
 
-// Tabulated Predictions vs Outcomes Performance Table
 class PredictionsOutcomeTab extends StatelessWidget {
   final List<FixtureModel> fixtures;
 
@@ -551,4 +593,4 @@ class SavedSlipsTab extends StatelessWidget {
       ),
     );
   }
-}
+  
