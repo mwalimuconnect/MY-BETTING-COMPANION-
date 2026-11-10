@@ -243,7 +243,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
 class MatchesAnalysisTab extends StatelessWidget {
   final List<FixtureModel> fixtures;
   final bool isLoading;
@@ -300,6 +299,16 @@ class MatchesAnalysisTab extends StatelessWidget {
       bool matchesLeague = selectedLeague == 'All Leagues';
       if (selectedLeague == 'Prolific') {
         matchesLeague = f.isProlific;
+      } else if (selectedLeague == 'Euro') {
+        matchesLeague = f.league.toLowerCase().contains('euro');
+      } else if (selectedLeague == 'Copa') {
+        matchesLeague = f.league.toLowerCase().contains('copa');
+      } else if (selectedLeague == 'Asian Cup') {
+        matchesLeague = f.league.toLowerCase().contains('asian');
+      } else if (selectedLeague == 'Gold Cup') {
+        matchesLeague = f.league.toLowerCase().contains('gold cup') || f.league.toLowerCase().contains('concacaf');
+      } else if (selectedLeague == 'OFC') {
+        matchesLeague = f.league.toLowerCase().contains('ofc') || f.league.toLowerCase().contains('nations cup');
       } else if (selectedLeague == 'Premier League') {
         matchesLeague = f.league.toLowerCase().contains('premier') || f.league.toLowerCase().contains('england');
       } else if (selectedLeague == 'La Liga') {
@@ -329,7 +338,7 @@ class MatchesAnalysisTab extends StatelessWidget {
           TextField(
             onChanged: onSearchChanged,
             decoration: InputDecoration(
-              hintText: 'Search team (e.g. Chelsea, Real Madrid...)',
+              hintText: 'Search team (e.g. France, Real Madrid...)',
               hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
               prefixIcon: const Icon(Icons.search, color: Color(0xFF0D6EFD)),
               filled: true,
@@ -343,9 +352,19 @@ class MatchesAnalysisTab extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildFilterChip('All Leagues', Icons.sports_soccer, selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
+                _buildFilterChip('All Competitions', Icons.sports_soccer, selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
                 const SizedBox(width: 8),
                 _buildFilterChip('🔥 Prolific Basket', Icons.local_fire_department, selectedLeague == 'Prolific', (_) => onLeagueChanged('Prolific'), activeColor: Colors.orange[800]),
+                const SizedBox(width: 8),
+                _buildFilterChip('UEFA Euro', Icons.euro_symbol, selectedLeague == 'Euro', (_) => onLeagueChanged('Euro')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Copa América', Icons.star, selectedLeague == 'Copa', (_) => onLeagueChanged('Copa')),
+                const SizedBox(width: 8),
+                _buildFilterChip('AFC Asian Cup', Icons.public, selectedLeague == 'Asian Cup', (_) => onLeagueChanged('Asian Cup')),
+                const SizedBox(width: 8),
+                _buildFilterChip('CONCACAF Gold Cup', Icons.emoji_events, selectedLeague == 'Gold Cup', (_) => onLeagueChanged('Gold Cup')),
+                const SizedBox(width: 8),
+                _buildFilterChip('OFC Nations Cup', Icons.landscape, selectedLeague == 'OFC', (_) => onLeagueChanged('OFC')),
                 const SizedBox(width: 8),
                 _buildFilterChip('Premier League', Icons.flag, selectedLeague == 'Premier League', (_) => onLeagueChanged('Premier League')),
                 const SizedBox(width: 8),
@@ -553,7 +572,6 @@ class PredictionsOutcomeTab extends StatelessWidget {
     );
   }
 }
-
 class SavedSlipsTab extends StatelessWidget {
   final List<FixtureModel> savedFixtures;
   final Function(FixtureModel) onToggleSave;
