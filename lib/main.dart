@@ -558,7 +558,11 @@ class SavedSlipsTab extends StatelessWidget {
   final List<FixtureModel> savedFixtures;
   final Function(FixtureModel) onToggleSave;
 
-  const SavedSlipsTab({Key? key, required this.savedFixtures, required this.onToggleSave});
+  const SavedSlipsTab({
+    Key? key,
+      required this.savedFixtures, 
+        required this.onToggleSave
+    });
 
   @override
   Widget build(BuildContext context) {
