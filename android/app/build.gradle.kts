@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.example.my_betting_companion"
-    compileSdk = 36
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.example.my_betting_companion"
         minSdk = 21
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
     }
