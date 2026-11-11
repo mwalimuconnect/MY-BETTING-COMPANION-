@@ -32,14 +32,15 @@ class ApiService {
       }
 
       return decoded
-          .cast<Map<String, dynamic>>()
+          .cast>()
           .map((json) => FixtureModel.fromJson(json))
           .toList();
+
     } catch (e, stackTrace) {
-      debugPrint('API ERROR: $e');
+      debugPrint('API Error: $e');
       debugPrintStack(stackTrace: stackTrace);
 
-      // Temporary demo fixture
+      // Temporary demo fixture with all required parameters
       return [
         FixtureModel(
           league: 'API Error',
@@ -56,6 +57,13 @@ class ApiService {
           cardRisk: 'N/A',
           topTip: e.toString(),
           odds: 0.0,
+          isLive: false,
+          isFinished: false,
+          actualScore: 'Pending',
+          predictionCorrect: null,
+          isProlific: false,
+          isSample: true,
+          isEstimate: true,
         ),
       ];
     }
