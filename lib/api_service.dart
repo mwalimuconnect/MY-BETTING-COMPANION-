@@ -31,9 +31,10 @@ class ApiService {
         );
       }
 
-      return decoded
-          .cast>()
-          .map((json) => FixtureModel.fromJson(json))
+      final List<dynamic> decodedList = decoded;
+
+      return decodedList
+          .map((json) => FixtureModel.fromJson(json as Map<String, dynamic>))
           .toList();
 
     } catch (e, stackTrace) {
