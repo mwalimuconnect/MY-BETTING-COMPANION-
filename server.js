@@ -193,3 +193,4 @@ app.get('/api/fixtures', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server active successfully on port ${PORT}`);
 });
+
