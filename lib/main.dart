@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'api_service.dart';
+import 'fixture_model.dart';
 
 const Color kPrimary = Color(0xFF0D6EFD);
 
