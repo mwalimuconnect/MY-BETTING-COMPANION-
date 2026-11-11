@@ -19,6 +19,8 @@ class FixtureModel {
   final String actualScore;
   final bool? predictionCorrect;
   final bool isProlific;
+  final bool isSample;
+  final bool isEstimate;
   bool isSaved;
 
   FixtureModel({
@@ -42,6 +44,8 @@ class FixtureModel {
     required this.actualScore,
     required this.predictionCorrect,
     required this.isProlific,
+    this.isSample = false,
+    this.isEstimate = false,
     this.isSaved = false,
   });
 
@@ -67,6 +71,8 @@ class FixtureModel {
       actualScore: json['actualScore'] ?? 'Pending',
       predictionCorrect: json['predictionCorrect'],
       isProlific: json['isProlific'] ?? false,
+      isSample: json['isSample'] ?? false,
+      isEstimate: json['isEstimate'] ?? false,
       isSaved: json['isSaved'] ?? false,
     );
   }
