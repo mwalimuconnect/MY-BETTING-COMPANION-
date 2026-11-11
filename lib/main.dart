@@ -347,49 +347,40 @@ class MatchesAnalysisTab extends StatelessWidget {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE9ECEF))),
             ),
           ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildFilterChip('All Competitions', Icons.sports_soccer, selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
-                const SizedBox(width: 8),
-                _buildFilterChip('🔥 Prolific Basket', Icons.local_fire_department, selectedLeague == 'Prolific', (_) => onLeagueChanged('Prolific'), activeColor: Colors.orange[800]),
-                const SizedBox(width: 8),
-                _buildFilterChip('UEFA Euro', Icons.euro_symbol, selectedLeague == 'Euro', (_) => onLeagueChanged('Euro')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Copa América', Icons.star, selectedLeague == 'Copa', (_) => onLeagueChanged('Copa')),
-                const SizedBox(width: 8),
-                _buildFilterChip('AFC Asian Cup', Icons.public, selectedLeague == 'Asian Cup', (_) => onLeagueChanged('Asian Cup')),
-                const SizedBox(width: 8),
-                _buildFilterChip('CONCACAF Gold Cup', Icons.emoji_events, selectedLeague == 'Gold Cup', (_) => onLeagueChanged('Gold Cup')),
-                const SizedBox(width: 8),
-                _buildFilterChip('OFC Nations Cup', Icons.landscape, selectedLeague == 'OFC', (_) => onLeagueChanged('OFC')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Premier League', Icons.flag, selectedLeague == 'Premier League', (_) => onLeagueChanged('Premier League')),
-                const SizedBox(width: 8),
-                _buildFilterChip('La Liga', Icons.shield, selectedLeague == 'La Liga', (_) => onLeagueChanged('La Liga')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Serie A', Icons.sports, selectedLeague == 'Serie A', (_) => onLeagueChanged('Serie A')),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildFilterChip('All Status', Icons.list, statusFilter == 'All', (_) => onStatusChanged('All')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Live 📡', Icons.sensors, statusFilter == 'Live', (_) => onStatusChanged('Live')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Upcoming ⏰', Icons.schedule, statusFilter == 'Upcoming', (_) => onStatusChanged('Upcoming')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Finished (FT) ✅', Icons.done_all, statusFilter == 'Finished', (_) => onStatusChanged('Finished')),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
+SingleChildScrollView(
+  scrollDirection: Axis.horizontal,
+  child: Row(
+    children: [
+      _buildFilterChip('All Competitions', Icons.sports_soccer, selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
+      const SizedBox(width: 8),
+      _buildFilterChip('Prolific Basket', Icons.local_fire_department, selectedLeague == 'Prolific', (_) => onLeagueChanged('Prolific'), activeColor: Colors.orange[800]),
+      const SizedBox(width: 8),
+      _buildFilterChip('All International', Icons.public, selectedLeague == 'International', (_) => onLeagueChanged('International')),
+      const SizedBox(width: 8),
+      _buildFilterChip('Premier League', Icons.flag, selectedLeague == 'Premier League', (_) => onLeagueChanged('Premier League')),
+      const SizedBox(width: 8),
+      _buildFilterChip('La Liga', Icons.shield, selectedLeague == 'La Liga', (_) => onLeagueChanged('La Liga')),
+      const SizedBox(width: 8),
+      _buildFilterChip('Serie A', Icons.sports, selectedLeague == 'Serie A', (_) => onLeagueChanged('Serie A')),
+    ],
+  ),
+),
+const SizedBox(height: 10),
+SingleChildScrollView(
+  scrollDirection: Axis.horizontal,
+  child: Row(
+    children: [
+      _buildFilterChip('All Status', Icons.list, statusFilter == 'All', (_) => onStatusChanged('All')),
+      const SizedBox(width: 8),
+      _buildFilterChip('Live', Icons.sensors, statusFilter == 'Live', (_) => onStatusChanged('Live')),
+      const SizedBox(width: 8),
+      _buildFilterChip('Upcoming', Icons.schedule, statusFilter == 'Upcoming', (_) => onStatusChanged('Upcoming')),
+      const SizedBox(width: 8),
+      _buildFilterChip('Finished (FT)', Icons.done_all, statusFilter == 'Finished', (_) => onStatusChanged('Finished')),
+    ],
+  ),
+),
+   const SizedBox(height: 16),
           isLoading
               ? const Center(
                   child: Padding(
