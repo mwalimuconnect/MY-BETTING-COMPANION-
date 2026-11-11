@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'api_service.dart';
 
 const Color kPrimary = Color(0xFF0D6EFD);
 
@@ -111,45 +112,6 @@ class FixtureModel {
       isSample: json['isSample'] == true,
       isEstimate: json['isEstimate'] == true,
     );
-  }
-}
-// ---------------------------------------------------------------------------
-// API service: throws on failure so the UI can show the real reason
-// ---------------------------------------------------------------------------
-class ApiService {
-  static const String apiUrl =
-      'https://my-betting-companion.onrender.com/api/fixtures';
-
-  static Future<List<FixtureModel>> fetchFixtures() async {
-    debugPrint('GET $apiUrl');
-
-    // Render free tier can take ~50s to wake up, so allow 60s.
-    final response = await http
-        .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
-        .timeout(const Duration(seconds: 60));
-
-    debugPrint('Status: ${response.statusCode}');
-
-    if (response.statusCode != 200) {
-      throw Exception('Server returned ${response.statusCode}');
-    }
-
-    final decoded = jsonDecode(response.body);
-    List<dynamic> body;
-    if (decoded is List) {
-      body = decoded;
-    } else if (decoded is Map && decoded['fixtures'] is List) {
-      body = decoded['fixtures'] as List<dynamic>;
-    } else if (decoded is Map && decoded['response'] is List) {
-      body = decoded['response'] as List<dynamic>;
-    } else {
-      throw const FormatException('Unexpected JSON shape from server');
-    }
-
-    debugPrint('Parsed ${body.length} fixtures');
-    return body
-        .map((item) => FixtureModel.fromJson(Map<String, dynamic>.from(item as Map)))
-        .toList();
   }
 }
 
