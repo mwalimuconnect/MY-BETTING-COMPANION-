@@ -1,6 +1,9 @@
-import 'package:flutter/material.dart';
 import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+
+const Color kPrimary = Color(0xFF0D6EFD);
 
 void main() {
   runApp(const MyBettingCompanionApp());
@@ -24,6 +27,9 @@ class MyBettingCompanionApp extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Model (field names match the Express /api/fixtures JSON exactly)
+// ---------------------------------------------------------------------------
 class FixtureModel {
   final String league;
   final String time;
@@ -44,6 +50,8 @@ class FixtureModel {
   final String actualScore;
   final bool? predictionCorrect;
   final bool isProlific;
+  final bool isSample; // server fallback data
+  final bool isEstimate; // placeholder stats/odds from the live path
   bool isSaved;
 
   FixtureModel({
@@ -66,8 +74,18 @@ class FixtureModel {
     this.actualScore = 'Pending',
     this.predictionCorrect,
     this.isProlific = false,
+    this.isSample = false,
+    this.isEstimate = false,
     this.isSaved = false,
   });
+
+  /// Identifies a fixture across refreshes (used to keep bookmarks).
+  String get key => '$league|$homeTeam|$awayTeam';
+
+  static List<String> _formList(dynamic value, List<String> fallback) {
+    if (value is List) return value.map((e) => e.toString()).toList();
+    return fallback;
+  }
 
   factory FixtureModel.fromJson(Map<String, dynamic> json) {
     return FixtureModel(
@@ -75,8 +93,8 @@ class FixtureModel {
       time: json['time']?.toString() ?? '',
       homeTeam: json['homeTeam']?.toString() ?? '',
       awayTeam: json['awayTeam']?.toString() ?? '',
-      homeForm: json['homeForm'] != null ? List<String>.from(json['homeForm']) : ['W', 'D', 'W', 'W', 'L'],
-      awayForm: json['awayForm'] != null ? List<String>.from(json['awayForm']) : ['L', 'W', 'D', 'W', 'W'],
+      homeForm: _formList(json['homeForm'], ['W', 'D', 'W', 'W', 'L']),
+      awayForm: _formList(json['awayForm'], ['L', 'W', 'D', 'W', 'W']),
       homeWinProb: int.tryParse(json['homeWinProb']?.toString() ?? '') ?? 45,
       drawProb: int.tryParse(json['drawProb']?.toString() ?? '') ?? 30,
       awayWinProb: int.tryParse(json['awayWinProb']?.toString() ?? '') ?? 25,
@@ -88,45 +106,57 @@ class FixtureModel {
       isLive: json['isLive'] == true,
       isFinished: json['isFinished'] == true,
       actualScore: json['actualScore']?.toString() ?? 'Pending',
-      predictionCorrect: json['predictionCorrect'] is bool ? json['predictionCorrect'] : null,
+      predictionCorrect:
+          json['predictionCorrect'] is bool ? json['predictionCorrect'] as bool : null,
       isProlific: json['isProlific'] == true,
+      isSample: json['isSample'] == true,
+      isEstimate: json['isEstimate'] == true,
     );
   }
 }
-
+// ---------------------------------------------------------------------------
+// API service: throws on failure so the UI can show the real reason
+// ---------------------------------------------------------------------------
 class ApiService {
-  static const String apiUrl = 'https://my-betting-companion.onrender.com/api/fixtures';
+  static const String apiUrl =
+      'https://my-betting-companion.onrender.com/api/fixtures';
 
   static Future<List<FixtureModel>> fetchFixtures() async {
-    try {
-      print('HTTP GETting fixtures from: $apiUrl');
-      final response = await http.get(Uri.parse(apiUrl)).timeout(const Duration(seconds: 40));
-      print('Response Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
+    debugPrint('GET $apiUrl');
 
-      if (response.statusCode == 200) {
-        var decoded = jsonDecode(response.body);
-        List<dynamic> body = [];
-        
-        if (decoded is List) {
-          body = decoded;
-        } else if (decoded is Map) {
-          body = decoded['fixtures'] ?? decoded['response'] ?? [];
-        }
+    // Render free tier can take ~50s to wake up, so allow 60s.
+    final response = await http
+        .get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 60));
 
-        print('Parsed ${body.length} items from JSON body');
-        return body.map((dynamic item) => FixtureModel.fromJson(item)).toList();
-      } else {
-        print('Server returned non-200 code: ${response.statusCode}');
-        return [];
-      }
-    } catch (e) {
-      print('CRITICAL FETCH ERROR: $e');
-      return [];
+    debugPrint('Status: ${response.statusCode}');
+
+    if (response.statusCode != 200) {
+      throw Exception('Server returned ${response.statusCode}');
     }
+
+    final decoded = jsonDecode(response.body);
+    List<dynamic> body;
+    if (decoded is List) {
+      body = decoded;
+    } else if (decoded is Map && decoded['fixtures'] is List) {
+      body = decoded['fixtures'] as List<dynamic>;
+    } else if (decoded is Map && decoded['response'] is List) {
+      body = decoded['response'] as List<dynamic>;
+    } else {
+      throw const FormatException('Unexpected JSON shape from server');
+    }
+
+    debugPrint('Parsed ${body.length} fixtures');
+    return body
+        .map((item) => FixtureModel.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
   }
 }
 
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
 
@@ -138,6 +168,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   List<FixtureModel> _fixtures = [];
   bool _isLoading = true;
+  String? _error;
   String _searchQuery = '';
   String _selectedLeague = 'All Leagues';
   String _statusFilter = 'All'; // 'All', 'Live', 'Upcoming', 'Finished'
@@ -149,21 +180,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadFixtures() async {
-    setState(() => _isLoading = true);
-    
-    List<FixtureModel> data = await ApiService.fetchFixtures();
-    
-    // Automatic retry if Render cold start delayed the first request
-    if (data.isEmpty) {
-      print('First fetch empty (Render cold start). Retrying in 3 seconds...');
-      await Future.delayed(const Duration(seconds: 3));
-      data = await ApiService.fetchFixtures();
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final savedKeys = _fixtures.where((f) => f.isSaved).map((f) => f.key).toSet();
+
+    List<FixtureModel> data = [];
+    String? error;
+
+    // Two attempts: the first request may hit a sleeping Render server.
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      try {
+        data = await ApiService.fetchFixtures();
+        error = null;
+        break;
+      } catch (e) {
+        error = e.toString();
+        debugPrint('Fetch attempt $attempt failed: $e');
+        if (attempt < 2) await Future.delayed(const Duration(seconds: 3));
+      }
     }
 
+    for (final f in data) {
+      f.isSaved = savedKeys.contains(f.key);
+    }
+
+    if (!mounted) return;
     setState(() {
-      _fixtures = data;
+      if (error == null) _fixtures = data; // keep old list if refresh failed
+      _error = error;
       _isLoading = false;
     });
+  }
+
+  void _toggleSave(FixtureModel fixture, {bool showMessage = true}) {
+    setState(() => fixture.isSaved = !fixture.isSaved);
+    if (showMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(fixture.isSaved
+              ? 'Tip added to saved slips!'
+              : 'Tip removed from slips.'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
   }
 
   @override
@@ -174,6 +237,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       MatchesAnalysisTab(
         fixtures: _fixtures,
         isLoading: _isLoading,
+        error: _error,
         searchQuery: _searchQuery,
         selectedLeague: _selectedLeague,
         statusFilter: _statusFilter,
@@ -181,26 +245,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onLeagueChanged: (l) => setState(() => _selectedLeague = l),
         onStatusChanged: (s) => setState(() => _statusFilter = s),
         onRefresh: _loadFixtures,
-        onToggleSave: (fixture) {
-          setState(() {
-            fixture.isSaved = !fixture.isSaved;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(fixture.isSaved ? 'Tip added to saved slips!' : 'Tip removed from slips.'),
-              duration: const Duration(seconds: 1),
-            ),
-          );
-        },
+        onToggleSave: _toggleSave,
       ),
       PredictionsOutcomeTab(fixtures: _fixtures),
       SavedSlipsTab(
         savedFixtures: savedFixtures,
-        onToggleSave: (fixture) {
-          setState(() {
-            fixture.isSaved = !fixture.isSaved;
-          });
-        },
+        onToggleSave: (f) => _toggleSave(f, showMessage: false),
       ),
     ];
 
@@ -213,7 +263,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Text(
               'MY BETTING COMPANION',
               style: TextStyle(
-                color: Color(0xFF0D6EFD),
+                color: kPrimary,
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
                 letterSpacing: 1.1,
@@ -230,22 +280,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: Colors.white,
-        selectedItemColor: const Color(0xFF0D6EFD),
+        selectedItemColor: kPrimary,
         unselectedItemColor: Colors.grey,
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.show_chart), label: 'Analyzer'),
-          BottomNavigationBarItem(icon: Icon(Icons.table_chart_outlined), label: 'Results & Accuracy'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.table_chart_outlined), label: 'Results & Accuracy'),
           BottomNavigationBarItem(icon: Icon(Icons.bookmark_outline), label: 'Saved Slips'),
         ],
       ),
     );
   }
 }
+// ---------------------------------------------------------------------------
+// Analyzer tab
+// ---------------------------------------------------------------------------
 class MatchesAnalysisTab extends StatelessWidget {
   final List<FixtureModel> fixtures;
   final bool isLoading;
+  final String? error;
   final String searchQuery;
   final String selectedLeague;
   final String statusFilter;
@@ -259,6 +314,7 @@ class MatchesAnalysisTab extends StatelessWidget {
     Key? key,
     required this.fixtures,
     required this.isLoading,
+    required this.error,
     required this.searchQuery,
     required this.selectedLeague,
     required this.statusFilter,
@@ -269,11 +325,31 @@ class MatchesAnalysisTab extends StatelessWidget {
     required this.onToggleSave,
   }) : super(key: key);
 
-  Widget _buildFilterChip(String label, IconData icon, bool isSelected, Function(bool) onSelected, {Color? activeColor}) {
-    final chipColor = activeColor ?? const Color(0xFF0D6EFD);
+  static const List<String> _internationalKeywords = [
+    'friendl',
+    'nations',
+    'world cup',
+    'qualif',
+    'copa america',
+    'asian cup',
+    'gold cup',
+    'africa cup',
+    'european championship',
+    'international',
+  ];
+
+  Widget _buildFilterChip(
+    String label,
+    IconData icon,
+    bool isSelected,
+    Function(bool) onSelected, {
+    Color? activeColor,
+  }) {
+    final chipColor = activeColor ?? kPrimary;
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
+      showCheckmark: false, // the checkmark was overlapping the icon
       selectedColor: chipColor,
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : Colors.black87,
@@ -288,45 +364,245 @@ class MatchesAnalysisTab extends StatelessWidget {
     );
   }
 
+  bool _matchesLeague(FixtureModel f) {
+    final league = f.league.toLowerCase();
+    switch (selectedLeague) {
+      case 'Prolific':
+        return f.isProlific;
+      case 'International':
+        return _internationalKeywords.any(league.contains);
+      case 'Premier League':
+        return league.contains('premier') || league.contains('england');
+      case 'La Liga':
+        return league.contains('liga') || league.contains('spain');
+      case 'Serie A':
+        return league.contains('serie') || league.contains('italy');
+      default:
+        return true; // 'All Leagues'
+    }
+  }
+
+  bool _matchesStatus(FixtureModel f) {
+    switch (statusFilter) {
+      case 'Live':
+        return f.isLive;
+      case 'Upcoming':
+        return !f.isLive && !f.isFinished;
+      case 'Finished':
+        return f.isFinished;
+      default:
+        return true;
+    }
+  }
+
+  Widget _badge(String text, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4)),
+      child: Text(text,
+          style: TextStyle(color: fg, fontSize: 9, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildFixtureCard(FixtureModel fixture) {
+    return Card(
+      color: Colors.white,
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        fixture.league,
+                        style: const TextStyle(
+                            color: kPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      if (fixture.isProlific)
+                        _badge('\u{1F525} PROLIFIC', Colors.orange.shade100, Colors.orange),
+                      if (fixture.isSample)
+                        _badge('SAMPLE', Colors.purple.shade100, Colors.purple.shade700)
+                      else if (fixture.isEstimate)
+                        _badge('ESTIMATE', Colors.blueGrey.shade100, Colors.blueGrey.shade700),
+                    ],
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (fixture.isFinished)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: Colors.grey[700], borderRadius: BorderRadius.circular(4)),
+                        child: Text('FT: ${fixture.actualScore}',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold)),
+                      )
+                    else if (fixture.isLive)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                        child: Text('LIVE: ${fixture.time}',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold)),
+                      )
+                    else
+                      Text(fixture.time,
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(
+                        fixture.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                        color: kPrimary,
+                        size: 20,
+                      ),
+                      onPressed: () => onToggleSave(fixture),
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Flexible(
+                  child: Text(fixture.homeTeam,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('VS',
+                      style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                ),
+                Flexible(
+                  child: Text(fixture.awayTeam,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Tip: ${fixture.topTip} (Odds: ${fixture.odds})',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Over 2.5: ${fixture.over25Goals}',
+                  style: TextStyle(
+                      fontSize: 11, color: Colors.grey[700], fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(List<FixtureModel> filtered) {
+    if (isLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 40.0),
+          child: Column(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+              Text('Waking up server & fetching fixtures...',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // A real connection/server failure and an empty filter result are different.
+    if (error != null && fixtures.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            children: [
+              const Icon(Icons.cloud_off, size: 40, color: Colors.grey),
+              const SizedBox(height: 12),
+              const Text("Couldn't load fixtures.",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text(error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: onRefresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry Connection'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            children: [
+              const Text('No fixtures match your search or filter criteria.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: onRefresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(children: filtered.map(_buildFixtureCard).toList());
+  }
+
   @override
   Widget build(BuildContext context) {
+    final query = searchQuery.toLowerCase();
     final filteredFixtures = fixtures.where((f) {
-      final matchesSearch = searchQuery.isEmpty ||
-          f.homeTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          f.awayTeam.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          f.league.toLowerCase().contains(searchQuery.toLowerCase());
-
-      bool matchesLeague = selectedLeague == 'All Leagues';
-      if (selectedLeague == 'Prolific') {
-        matchesLeague = f.isProlific;
-      } else if (selectedLeague == 'Euro') {
-        matchesLeague = f.league.toLowerCase().contains('euro');
-      } else if (selectedLeague == 'Copa') {
-        matchesLeague = f.league.toLowerCase().contains('copa');
-      } else if (selectedLeague == 'Asian Cup') {
-        matchesLeague = f.league.toLowerCase().contains('asian');
-      } else if (selectedLeague == 'Gold Cup') {
-        matchesLeague = f.league.toLowerCase().contains('gold cup') || f.league.toLowerCase().contains('concacaf');
-      } else if (selectedLeague == 'OFC') {
-        matchesLeague = f.league.toLowerCase().contains('ofc') || f.league.toLowerCase().contains('nations cup');
-      } else if (selectedLeague == 'Premier League') {
-        matchesLeague = f.league.toLowerCase().contains('premier') || f.league.toLowerCase().contains('england');
-      } else if (selectedLeague == 'La Liga') {
-        matchesLeague = f.league.toLowerCase().contains('liga') || f.league.toLowerCase().contains('spain');
-      } else if (selectedLeague == 'Serie A') {
-        matchesLeague = f.league.toLowerCase().contains('serie') || f.league.toLowerCase().contains('italy');
-      }
-
-      bool matchesStatus = true;
-      if (statusFilter == 'Live') {
-        matchesStatus = f.isLive;
-      } else if (statusFilter == 'Upcoming') {
-        matchesStatus = !f.isLive && !f.isFinished;
-      } else if (statusFilter == 'Finished') {
-        matchesStatus = f.isFinished;
-      }
-
-      return matchesSearch && matchesLeague && matchesStatus;
+      final matchesSearch = query.isEmpty ||
+          f.homeTeam.toLowerCase().contains(query) ||
+          f.awayTeam.toLowerCase().contains(query) ||
+          f.league.toLowerCase().contains(query);
+      return matchesSearch && _matchesLeague(f) && _matchesStatus(f);
     }).toList();
 
     return RefreshIndicator(
@@ -340,165 +616,71 @@ class MatchesAnalysisTab extends StatelessWidget {
             decoration: InputDecoration(
               hintText: 'Search team (e.g. France, Real Madrid...)',
               hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-              prefixIcon: const Icon(Icons.search, color: Color(0xFF0D6EFD)),
+              prefixIcon: const Icon(Icons.search, color: kPrimary),
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE9ECEF))),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE9ECEF)),
+              ),
             ),
           ),
-SingleChildScrollView(
-  scrollDirection: Axis.horizontal,
-  child: Row(
-    children: [
-      _buildFilterChip('All Competitions', Icons.sports_soccer, selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
-      const SizedBox(width: 8),
-      _buildFilterChip('Prolific Basket', Icons.local_fire_department, selectedLeague == 'Prolific', (_) => onLeagueChanged('Prolific'), activeColor: Colors.orange[800]),
-      const SizedBox(width: 8),
-      _buildFilterChip('All International', Icons.public, selectedLeague == 'International', (_) => onLeagueChanged('International')),
-      const SizedBox(width: 8),
-      _buildFilterChip('Premier League', Icons.flag, selectedLeague == 'Premier League', (_) => onLeagueChanged('Premier League')),
-      const SizedBox(width: 8),
-      _buildFilterChip('La Liga', Icons.shield, selectedLeague == 'La Liga', (_) => onLeagueChanged('La Liga')),
-      const SizedBox(width: 8),
-      _buildFilterChip('Serie A', Icons.sports, selectedLeague == 'Serie A', (_) => onLeagueChanged('Serie A')),
-    ],
-  ),
-),
-const SizedBox(height: 10),
-SingleChildScrollView(
-  scrollDirection: Axis.horizontal,
-  child: Row(
-    children: [
-      _buildFilterChip('All Status', Icons.list, statusFilter == 'All', (_) => onStatusChanged('All')),
-      const SizedBox(width: 8),
-      _buildFilterChip('Live', Icons.sensors, statusFilter == 'Live', (_) => onStatusChanged('Live')),
-      const SizedBox(width: 8),
-      _buildFilterChip('Upcoming', Icons.schedule, statusFilter == 'Upcoming', (_) => onStatusChanged('Upcoming')),
-      const SizedBox(width: 8),
-      _buildFilterChip('Finished (FT)', Icons.done_all, statusFilter == 'Finished', (_) => onStatusChanged('Finished')),
-    ],
-  ),
-),
-   const SizedBox(height: 16),
-          isLoading
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40.0),
-                    child: Column(
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 12),
-                        Text('Waking up server & fetching fixtures...', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                )
-              : filteredFixtures.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32.0),
-                        child: Column(
-                          children: [
-                            const Text('No fixtures match your search or filter criteria.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: onRefresh,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Retry Connection'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : Column(
-                      children: filteredFixtures.map((fixture) {
-                        return Card(
-                          color: Colors.white,
-                          elevation: 2,
-                          margin: const EdgeInsets.only(bottom: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(fixture.league, style: const TextStyle(color: Color(0xFF0D6EFD), fontSize: 13, fontWeight: FontWeight.bold)),
-                                        if (fixture.isProlific) ...[
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                            decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(4)),
-                                            child: const Text('🔥 PROLIFIC', style: TextStyle(color: Colors.orange, fontSize: 9, fontWeight: FontWeight.bold)),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                    Row(
-                                      children: [
-                                        if (fixture.isFinished)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(4)),
-                                            child: Text('FT: ${fixture.actualScore}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                          )
-                                        else if (fixture.isLive)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
-                                            child: Text('LIVE: ${fixture.time}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                          )
-                                        else
-                                          Text(fixture.time, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                                        const SizedBox(width: 8),
-                                        IconButton(
-                                          icon: Icon(
-                                            fixture.isSaved ? Icons.bookmark : Icons.bookmark_border,
-                                            color: const Color(0xFF0D6EFD),
-                                            size: 20,
-                                          ),
-                                          onPressed: () => onToggleSave(fixture),
-                                          constraints: const BoxConstraints(),
-                                          padding: EdgeInsets.zero,
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                  children: [
-                                    Text(fixture.homeTeam, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                    const Text('VS', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                                    Text(fixture.awayTeam, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                  ],
-                                ),
-                                const Divider(height: 20),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text('Tip: ${fixture.topTip} (Odds: ${fixture.odds})', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-                                    Text('Over 2.5: ${fixture.over25Goals}', style: TextStyle(fontSize: 11, color: Colors.grey[700], fontWeight: FontWeight.w600)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip('All Competitions', Icons.sports_soccer,
+                    selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Prolific Basket', Icons.local_fire_department,
+                    selectedLeague == 'Prolific', (_) => onLeagueChanged('Prolific'),
+                    activeColor: Colors.orange[800]),
+                const SizedBox(width: 8),
+                _buildFilterChip('All International', Icons.public,
+                    selectedLeague == 'International', (_) => onLeagueChanged('International')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Premier League', Icons.flag,
+                    selectedLeague == 'Premier League', (_) => onLeagueChanged('Premier League')),
+                const SizedBox(width: 8),
+                _buildFilterChip('La Liga', Icons.shield, selectedLeague == 'La Liga',
+                    (_) => onLeagueChanged('La Liga')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Serie A', Icons.sports, selectedLeague == 'Serie A',
+                    (_) => onLeagueChanged('Serie A')),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip('All Status', Icons.list, statusFilter == 'All',
+                    (_) => onStatusChanged('All')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Live', Icons.sensors, statusFilter == 'Live',
+                    (_) => onStatusChanged('Live')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Upcoming', Icons.schedule, statusFilter == 'Upcoming',
+                    (_) => onStatusChanged('Upcoming')),
+                const SizedBox(width: 8),
+                _buildFilterChip('Finished (FT)', Icons.done_all, statusFilter == 'Finished',
+                    (_) => onStatusChanged('Finished')),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildBody(filteredFixtures),
         ],
       ),
     );
   }
 }
-
+// ---------------------------------------------------------------------------
+// Results & Accuracy tab
+// ---------------------------------------------------------------------------
 class PredictionsOutcomeTab extends StatelessWidget {
   final List<FixtureModel> fixtures;
 
@@ -507,13 +689,24 @@ class PredictionsOutcomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final finishedFixtures = fixtures.where((f) => f.isFinished).toList();
+    final hasEstimates = finishedFixtures.any((f) => f.isEstimate);
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Predictions vs Outcomes Accuracy', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
+          const Text(
+            'Predictions vs Outcomes Accuracy',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kPrimary),
+          ),
+          if (hasEstimates) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Note: tips here are placeholder estimates, not real predictions yet.',
+              style: TextStyle(color: Colors.orange[800], fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 12),
           Expanded(
             child: finishedFixtures.isEmpty
@@ -525,36 +718,50 @@ class PredictionsOutcomeTab extends StatelessWidget {
                     ),
                   )
                 : SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: DataTable(
-                      headingRowColor: WidgetStateProperty.all(const Color(0xFFE8F1FF)),
-                      columns: const [
-                        DataColumn(label: Text('Fixture', style: TextStyle(fontWeight: FontWeight.bold))),
-                        DataColumn(label: Text('AI Tip', style: TextStyle(fontWeight: FontWeight.bold))),
-                        DataColumn(label: Text('Actual Score', style: TextStyle(fontWeight: FontWeight.bold))),
-                        DataColumn(label: Text('Result', style: TextStyle(fontWeight: FontWeight.bold))),
-                      ],
-                      rows: finishedFixtures.map((f) {
-                        bool isWon = f.predictionCorrect ?? false;
-                        return DataRow(cells: [
-                          DataCell(Text('${f.homeTeam} vs ${f.awayTeam}')),
-                          DataCell(Text(f.topTip)),
-                          DataCell(Text(f.actualScore)),
-                          DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isWon ? Colors.green.shade100 : Colors.red.shade100,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                isWon ? 'WON ✅' : 'LOST ❌',
-                                style: TextStyle(color: isWon ? Colors.green[800] : Colors.red[800], fontWeight: FontWeight.bold),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        headingRowColor: WidgetStateProperty.all(const Color(0xFFE8F1FF)),
+                        columns: const [
+                          DataColumn(
+                              label: Text('Fixture',
+                                  style: TextStyle(fontWeight: FontWeight.bold))),
+                          DataColumn(
+                              label: Text('AI Tip',
+                                  style: TextStyle(fontWeight: FontWeight.bold))),
+                          DataColumn(
+                              label: Text('Actual Score',
+                                  style: TextStyle(fontWeight: FontWeight.bold))),
+                          DataColumn(
+                              label: Text('Result',
+                                  style: TextStyle(fontWeight: FontWeight.bold))),
+                        ],
+                        rows: finishedFixtures.map((f) {
+                          final isWon = f.predictionCorrect ?? false;
+                          return DataRow(cells: [
+                            DataCell(Text('${f.homeTeam} vs ${f.awayTeam}')),
+                            DataCell(Text(f.topTip)),
+                            DataCell(Text(f.actualScore)),
+                            DataCell(
+                              Container(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isWon ? Colors.green.shade100 : Colors.red.shade100,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  isWon ? 'WON \u2705' : 'LOST \u274C',
+                                  style: TextStyle(
+                                    color: isWon ? Colors.green[800] : Colors.red[800],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ]);
-                      }).toList(),
+                          ]);
+                        }).toList(),
+                      ),
                     ),
                   ),
           ),
@@ -563,6 +770,10 @@ class PredictionsOutcomeTab extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Saved Slips tab
+// ---------------------------------------------------------------------------
 class SavedSlipsTab extends StatelessWidget {
   final List<FixtureModel> savedFixtures;
   final Function(FixtureModel) onToggleSave;
@@ -580,11 +791,13 @@ class SavedSlipsTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Saved Slips', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0D6EFD))),
+          const Text('Saved Slips',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kPrimary)),
           const SizedBox(height: 12),
           Expanded(
             child: savedFixtures.isEmpty
-                ? const Center(child: Text('No bookmarked tips yet.', style: TextStyle(color: Colors.grey)))
+                ? const Center(
+                    child: Text('No bookmarked tips yet.', style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: savedFixtures.length,
                     itemBuilder: (context, index) {
