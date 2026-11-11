@@ -1,38 +1,61 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'fixture_model.dart';
 
 class ApiService {
-  // Live Render backend endpoint
-  static const String apiUrl = 'https://my-betting-companion.onrender.com/api/fixtures';
+  static const String apiUrl =
+      'https://my-betting-companion.onrender.com/api/fixtures';
 
   static Future<List<FixtureModel>> fetchFixtures() async {
     try {
-      final response = await http.get(Uri.parse(apiUrl));
-      if (response.statusCode == 200) {
-        List<dynamic> data = jsonDecode(response.body);
-        return data.map((json) => FixtureModel.fromJson(json)).toList();
-      } else {
-        throw Exception('Failed to load fixtures');
+      debugPrint('Fetching fixtures from: $apiUrl');
+
+      final response = await http
+          .get(Uri.parse(apiUrl))
+          .timeout(const Duration(seconds: 40));
+
+      debugPrint('Status Code: ${response.statusCode}');
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Server returned ${response.statusCode}',
+        );
       }
-    } catch (e) {
-      // Fallback sample match for testing offline/network delays
+
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is! List) {
+        throw Exception(
+          'Expected JSON array but got ${decoded.runtimeType}',
+        );
+      }
+
+      return decoded
+          .cast<Map<String, dynamic>>()
+          .map((json) => FixtureModel.fromJson(json))
+          .toList();
+    } catch (e, stackTrace) {
+      debugPrint('API ERROR: $e');
+      debugPrintStack(stackTrace: stackTrace);
+
+      // Temporary demo fixture
       return [
         FixtureModel(
-          league: 'Premier League',
-          time: '21:00 EAT',
-          homeTeam: 'Chelsea',
-          awayTeam: 'Aston Villa',
-          homeForm: ['W', 'W', 'D', 'W', 'L'],
-          awayForm: ['W', 'L', 'D', 'W', 'W'],
-          homeWinProb: 54,
-          drawProb: 26,
-          awayWinProb: 20,
-          over25Goals: '72%',
-          btts: '68%',
-          cardRisk: 'Medium',
-          topTip: 'Over 2.5 Goals & BTTS - Yes',
-          odds: 2.15,
+          league: 'API Error',
+          time: 'Check Logs',
+          homeTeam: 'Connection',
+          awayTeam: 'Failed',
+          homeForm: ['W', 'W', 'W', 'W', 'W'],
+          awayForm: ['L', 'L', 'L', 'L', 'L'],
+          homeWinProb: 0,
+          drawProb: 0,
+          awayWinProb: 0,
+          over25Goals: '0%',
+          btts: '0%',
+          cardRisk: 'N/A',
+          topTip: e.toString(),
+          odds: 0.0,
         ),
       ];
     }
