@@ -685,7 +685,6 @@ class PredictionsOutcomeTab extends StatelessWidget {
   }
 }
 
-
 class ResultsAccuracyTab extends StatelessWidget {
   final List<FixtureModel> fixtures;
 
@@ -801,9 +800,9 @@ class ResultsAccuracyTab extends StatelessWidget {
   }
 }
 
-// Helper wrapper for table column headers
+// Helper wrapper for table column headers (non-const to accept dynamic strings safely)
 class DataLabelColumn extends DataColumn {
-  const DataLabelColumn(String labelText)
+  DataLabelColumn(String labelText)
       : super(
           label: Text(
             labelText,
@@ -813,8 +812,9 @@ class DataLabelColumn extends DataColumn {
             ),
           ),
         );
-}
+      }
 
+                                                     
 // ---------------------------------------------------------------------------
 // Saved Slips tab
 // ---------------------------------------------------------------------------
