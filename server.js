@@ -70,6 +70,7 @@ function getSampleFixtures() {
     actualScore: 'Pending',
     predictionCorrect: null,
     isSample: true,
+    isEstimate: false,
   };
 
   return [
@@ -205,6 +206,16 @@ async function fetchLiveFixtures(dateStr) {
     timeout: 15000,
   });
 
+  // API-Football often answers HTTP 200 with an "errors" field (bad key,
+  // quota used up, plan limits) and an empty "response". Log it.
+  const errors = response.data.errors;
+  const hasErrors =
+    errors && (Array.isArray(errors) ? errors.length > 0 : Object.keys(errors).length > 0);
+  if (hasErrors) {
+    console.error('API-Football errors:', JSON.stringify(errors));
+  }
+  console.log('API-Football results:', response.data.results, 'for', dateStr);
+
   const matches = response.data.response || [];
   cache = { date: dateStr, data: matches, fetchedAt: now };
   return matches;
@@ -227,6 +238,7 @@ app.get('/api/fixtures', async (req, res) => {
   }
 
   if (matches.length === 0) {
+    console.warn('No live fixtures available; serving sample fixtures.');
     return res.json(getSampleFixtures());
   }
 
