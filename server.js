@@ -10,6 +10,9 @@ const FOOTBALL_DATA_TOKEN = process.env.FOOTBALL_DATA_TOKEN;
 const TIMEZONE = 'Africa/Nairobi';
 // Free tier allows 10 requests/minute; a 60s cache keeps us far below that.
 const CACHE_TTL_MS = 60 * 1000;
+const DAYS_BACK = 1;   // include yesterday (for late-night Nairobi matches)
+const DAYS_AHEAD = 8;  // look this far ahead when today has no matches
+const MAX_UPCOMING = 30;
 
 const PROLIFIC_TEAMS = [
   'Angola', 'South Sudan', 'Uganda', 'Botswana', 'Algeria', 'Togo',
@@ -63,6 +66,17 @@ function formatEatTime(isoDate) {
   );
 }
 
+// e.g. "Sat 15 Nov, 15:00 EAT" - used when showing matches from another day.
+function formatEatDateTime(isoDate) {
+  const day = new Date(isoDate).toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: TIMEZONE,
+  });
+  return `${day}, ${formatEatTime(isoDate)}`;
+}
+
 function isProlific(homeTeam, awayTeam) {
   const h = homeTeam.toLowerCase();
   const a = awayTeam.toLowerCase();
@@ -72,7 +86,7 @@ function isProlific(homeTeam, awayTeam) {
   });
 }
 
-// ---------- Sample data (used only when the live API gives nothing) ----------
+// ---------- Sample data (last resort, only if the API has nothing at all) ----------
 function getSampleFixtures() {
   const base = {
     isLive: false,
@@ -162,8 +176,9 @@ function getSampleFixtures() {
 // ---------- Live data mapping (football-data.org v4) ----------
 const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
+const UPCOMING_STATUSES = ['SCHEDULED', 'TIMED'];
 
-function formatFixture(item) {
+function formatFixture(item, showDate = false) {
   const status = item.status;
   const isLive = LIVE_STATUSES.includes(status);
   const isFinished = FINISHED_STATUSES.includes(status);
@@ -179,9 +194,16 @@ function formatFixture(item) {
   // The tip below is "Home Win or Draw", so it is correct when home >= away.
   const tipIsCorrect = homeGoals >= awayGoals;
 
+  let time;
+  if (isFinished || isLive) {
+    time = `${homeGoals} - ${awayGoals}`;
+  } else {
+    time = showDate ? formatEatDateTime(item.utcDate) : formatEatTime(item.utcDate);
+  }
+
   return {
     league: (item.competition && item.competition.name) || 'Global Competition',
-    time: isFinished || isLive ? `${homeGoals} - ${awayGoals}` : formatEatTime(item.utcDate),
+    time,
     homeTeam,
     awayTeam,
     // NOTE: the fields below are placeholder estimates, not real predictions.
@@ -206,33 +228,53 @@ function formatFixture(item) {
 }
 
 // ---------- Cache ----------
-let cache = { date: null, data: null, fetchedAt: 0 };
+let cache = { data: null, fetchedAt: 0 };
 
-async function fetchLiveFixtures(dateStr) {
+// Returns all matches from yesterday to a week or so ahead (one API call).
+async function fetchMatchWindow() {
   const now = Date.now();
-  if (cache.date === dateStr && cache.data && now - cache.fetchedAt < CACHE_TTL_MS) {
+  if (cache.data && now - cache.fetchedAt < CACHE_TTL_MS) {
     return cache.data;
   }
 
-  // Fetch yesterday..tomorrow (UTC) then keep only matches that fall on
-  // today's date in Nairobi time.
   const response = await axios.get('https://api.football-data.org/v4/matches', {
     headers: { 'X-Auth-Token': FOOTBALL_DATA_TOKEN },
-    params: { dateFrom: utcDateOffset(-1), dateTo: utcDateOffset(1) },
+    params: {
+      dateFrom: utcDateOffset(-DAYS_BACK),
+      dateTo: utcDateOffset(DAYS_AHEAD),
+    },
     timeout: 15000,
   });
 
   const available = response.headers['x-requests-available-minute'];
-  const all = response.data.matches || [];
-  const matches = all.filter((m) => dateInNairobi(new Date(m.utcDate)) === dateStr);
+  const matches = response.data.matches || [];
 
   console.log(
-    `football-data.org: ${all.length} matches fetched, ${matches.length} on ${dateStr}` +
+    `football-data.org: ${matches.length} matches fetched` +
       (available !== undefined ? ` (requests left this minute: ${available})` : '')
   );
 
-  cache = { date: dateStr, data: matches, fetchedAt: now };
+  cache = { data: matches, fetchedAt: now };
   return matches;
+}
+
+// Today's matches (Nairobi time); if there are none, the next upcoming ones.
+function pickFixtures(allMatches) {
+  const today = todayInNairobi();
+
+  const todays = allMatches.filter((m) => dateInNairobi(new Date(m.utcDate)) === today);
+  if (todays.length > 0) {
+    console.log(`Showing ${todays.length} matches for ${today}`);
+    return todays.map((m) => formatFixture(m, false));
+  }
+
+  const upcoming = allMatches
+    .filter((m) => UPCOMING_STATUSES.includes(m.status) && new Date(m.utcDate) > new Date())
+    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
+    .slice(0, MAX_UPCOMING);
+
+  console.log(`No matches on ${today}; showing ${upcoming.length} upcoming matches`);
+  return upcoming.map((m) => formatFixture(m, true));
 }
 
 // ---------- Route ----------
@@ -241,7 +283,7 @@ app.get('/api/fixtures', async (req, res) => {
 
   if (FOOTBALL_DATA_TOKEN) {
     try {
-      matches = await fetchLiveFixtures(todayInNairobi());
+      matches = await fetchMatchWindow();
     } catch (err) {
       const status = err.response && err.response.status;
       const detail = err.response && err.response.data && err.response.data.message;
@@ -253,17 +295,15 @@ app.get('/api/fixtures', async (req, res) => {
     console.warn('FOOTBALL_DATA_TOKEN is not set; serving sample fixtures.');
   }
 
-  if (matches.length === 0) {
-    console.warn('No live fixtures available; serving sample fixtures.');
-    return res.json(getSampleFixtures());
-  }
-
   try {
-    return res.json(matches.map(formatFixture));
+    const fixtures = pickFixtures(matches);
+    if (fixtures.length > 0) return res.json(fixtures);
   } catch (err) {
     console.error('Formatting error:', err.message);
-    return res.json(getSampleFixtures());
   }
+
+  console.warn('No fixtures available; serving sample fixtures.');
+  return res.json(getSampleFixtures());
 });
 
 app.listen(PORT, '0.0.0.0', () => {
