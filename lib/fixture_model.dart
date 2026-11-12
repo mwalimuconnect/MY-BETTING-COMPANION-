@@ -49,31 +49,53 @@ class FixtureModel {
     this.isSaved = false,
   });
 
+  /// Reads a JSON number (int or double) safely as an int.
+  static int _toInt(dynamic value, int fallback) {
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
+  /// Reads a JSON number (int or double) safely as a double.
+  static double _toDouble(dynamic value, double fallback) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
+  /// Reads a JSON list of strings, falling back if missing or wrong type.
+  static List<String> _toStringList(dynamic value, List<String> fallback) {
+    if (value is List) return value.map((e) => e.toString()).toList();
+    return fallback;
+  }
+
   factory FixtureModel.fromJson(Map<String, dynamic> json) {
     return FixtureModel(
-      key: json['key'] ?? '${json['homeTeam']}_${json['awayTeam']}',
-      league: json['league'] ?? '',
-      time: json['time'] ?? '',
-      homeTeam: json['homeTeam'] ?? '',
-      awayTeam: json['awayTeam'] ?? '',
-      homeForm: List<String>.from(json['homeForm'] ?? ['W', 'D', 'W']),
-      awayForm: List<String>.from(json['awayForm'] ?? ['L', 'D', 'W']),
-      homeWinProb: json['homeWinProb'] ?? 50,
-      drawProb: json['drawProb'] ?? 25,
-      awayWinProb: json['awayWinProb'] ?? 25,
-      over25Goals: json['over25Goals'] ?? '50%',
-      btts: json['btts'] ?? '50%',
-      cardRisk: json['cardRisk'] ?? 'Low',
-      topTip: json['topTip'] ?? '',
-      odds: (json['odds'] ?? 1.5).toDouble(),
-      isLive: json['isLive'] ?? false,
-      isFinished: json['isFinished'] ?? false,
-      actualScore: json['actualScore'] ?? 'Pending',
-      predictionCorrect: json['predictionCorrect'],
-      isProlific: json['isProlific'] ?? false,
-      isSample: json['isSample'] ?? false,
-      isEstimate: json['isEstimate'] ?? false,
-      isSaved: json['isSaved'] ?? false,
+      key: json['key']?.toString() ?? '${json['homeTeam']}_${json['awayTeam']}',
+      league: json['league']?.toString() ?? '',
+      time: json['time']?.toString() ?? '',
+      homeTeam: json['homeTeam']?.toString() ?? '',
+      awayTeam: json['awayTeam']?.toString() ?? '',
+      homeForm: _toStringList(json['homeForm'], ['W', 'D', 'W']),
+      awayForm: _toStringList(json['awayForm'], ['L', 'D', 'W']),
+      homeWinProb: _toInt(json['homeWinProb'], 50),
+      drawProb: _toInt(json['drawProb'], 25),
+      awayWinProb: _toInt(json['awayWinProb'], 25),
+      over25Goals: json['over25Goals']?.toString() ?? '50%',
+      btts: json['btts']?.toString() ?? '50%',
+      cardRisk: json['cardRisk']?.toString() ?? 'Low',
+      topTip: json['topTip']?.toString() ?? '',
+      odds: _toDouble(json['odds'], 1.5),
+      isLive: json['isLive'] == true,
+      isFinished: json['isFinished'] == true,
+      actualScore: json['actualScore']?.toString() ?? 'Pending',
+      predictionCorrect: json['predictionCorrect'] is bool
+          ? json['predictionCorrect'] as bool
+          : null,
+      isProlific: json['isProlific'] == true,
+      isSample: json['isSample'] == true,
+      isEstimate: json['isEstimate'] == true,
+      isSaved: json['isSaved'] == true,
     );
   }
 }
