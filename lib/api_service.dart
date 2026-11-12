@@ -35,8 +35,6 @@ class ApiService {
           
     } on SocketException catch (e) {
       debugPrint('DNS/Socket Exception caught: $e. Returning offline fallback fixtures.');
-      // Fallback to local sample data so your app dashboard populates instantly 
-      // even when network DNS lookups fail on mobile data.
       return _getFallbackFixtures();
     } catch (e) {
       debugPrint('Error fetching fixtures: $e');
@@ -44,9 +42,10 @@ class ApiService {
     }
   }
 
-  /// Offline fallback sample data matching your backend schema
+  /// Offline fallback sample data including finished Prolific matches for the Results table
   static List<FixtureModel> _getFallbackFixtures() {
     return [
+      // Upcoming Standard Match (Analyzer tab)
       FixtureModel.fromJson({
         "league": "Campeonato Brasileiro Série A",
         "time": "Sun 15 Nov, 00:30 EAT",
@@ -70,6 +69,7 @@ class ApiService {
         "isSample": true,
         "isEstimate": true
       }),
+      // Upcoming Prolific Match (Analyzer tab)
       FixtureModel.fromJson({
         "league": "UEFA Nations League",
         "time": "Today, 20:00 EAT",
@@ -89,6 +89,54 @@ class ApiService {
         "isFinished": false,
         "actualScore": "Pending",
         "predictionCorrect": null,
+        "isProlific": true,
+        "isSample": true,
+        "isEstimate": true
+      }),
+      // Finished Prolific Match 1 (Results & Accuracy table - WON)
+      FixtureModel.fromJson({
+        "league": "Primera Division",
+        "time": "Sun 8 Nov, 20:00 EAT",
+        "homeTeam": "Club Atlético de Madrid",
+        "awayTeam": "FC Barcelona",
+        "homeForm": ["W", "D", "W", "W", "L"],
+        "awayForm": ["W", "W", "W", "W", "W"],
+        "homeWinProb": 30,
+        "drawProb": 25,
+        "awayWinProb": 45,
+        "over25Goals": "75%",
+        "btts": "65%",
+        "cardRisk": "High",
+        "topTip": "FC Barcelona Win or Draw",
+        "odds": 1.73,
+        "isLive": false,
+        "isFinished": true,
+        "actualScore": "1-2",
+        "predictionCorrect": true,
+        "isProlific": true,
+        "isSample": true,
+        "isEstimate": true
+      }),
+      // Finished Prolific Match 2 (Results & Accuracy table - LOST)
+      FixtureModel.fromJson({
+        "league": "Serie A",
+        "time": "Sun 8 Nov, 22:45 EAT",
+        "homeTeam": "ACF Fiorentina",
+        "awayTeam": "Juventus FC",
+        "homeForm": ["W", "D", "W", "W", "L"],
+        "awayForm": ["W", "D", "W", "W", "W"],
+        "homeWinProb": 35,
+        "drawProb": 30,
+        "awayWinProb": 35,
+        "over25Goals": "55%",
+        "btts": "50%",
+        "cardRisk": "Medium",
+        "topTip": "ACF Fiorentina Win or Draw",
+        "odds": 1.95,
+        "isLive": false,
+        "isFinished": true,
+        "actualScore": "0-2",
+        "predictionCorrect": false,
         "isProlific": true,
         "isSample": true,
         "isEstimate": true
