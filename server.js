@@ -4,21 +4,20 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Set this in Render -> Environment. Never put the token in the code or GitHub.
 const FOOTBALL_DATA_TOKEN = process.env.FOOTBALL_DATA_TOKEN;
-
 const TIMEZONE = 'Africa/Nairobi';
-// Free tier allows 10 requests/minute. We make 2 requests per refresh and
-// cache the result for 60s, so we stay far below that.
 const CACHE_TTL_MS = 60 * 1000;
-const DAYS_BACK = 7;        // recent finished results to include
-const DAYS_AHEAD = 8;       // upcoming matches to include
+const DAYS_BACK = 7;
+const DAYS_AHEAD = 8;
 const MAX_UPCOMING = 40;
 const MAX_FINISHED = 40;
 
 const PROLIFIC_TEAMS = [
   'Angola', 'South Sudan', 'Uganda', 'Botswana', 'Algeria', 'Togo',
-  'Manchester City', 'Arsenal', 'Real Madrid', 'Barcelona', 'France', 'Brazil',
+  'Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Real Madrid',
+  'Barcelona', 'Atletico', 'Bayern', 'Leverkusen', 'Inter', 'Juventus',
+  'PSG', 'France', 'Brazil', 'Argentina', 'Spain', 'Germany', 'England',
+  'Portugal', 'Belgium', 'Netherlands', 'Turkiye'
 ];
 
 // ---------- CORS ----------
@@ -53,7 +52,6 @@ function todayInNairobi() {
   return dateInNairobi(new Date());
 }
 
-// YYYY-MM-DD (UTC) for a date offset by N days from now.
 function utcDateOffset(days) {
   return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 }
@@ -68,7 +66,6 @@ function formatEatTime(isoDate) {
   );
 }
 
-// e.g. "Sat 15 Nov, 15:00 EAT" - used when showing matches from another day.
 function formatEatDateTime(isoDate) {
   const day = new Date(isoDate).toLocaleDateString('en-GB', {
     weekday: 'short',
@@ -79,7 +76,6 @@ function formatEatDateTime(isoDate) {
   return `${day}, ${formatEatTime(isoDate)}`;
 }
 
-// e.g. "Sat 8 Nov" - date label for finished matches.
 function formatEatDate(isoDate) {
   return new Date(isoDate).toLocaleDateString('en-GB', {
     weekday: 'short',
@@ -89,100 +85,9 @@ function formatEatDate(isoDate) {
   });
 }
 
-function isProlific(homeTeam, awayTeam) {
-  const h = homeTeam.toLowerCase();
-  const a = awayTeam.toLowerCase();
-  return PROLIFIC_TEAMS.some((t) => {
-    const team = t.toLowerCase();
-    return h.includes(team) || a.includes(team);
-  });
-}
-
-// ---------- Sample data (last resort, only if the API has nothing at all) ----------
-function getSampleFixtures() {
-  const base = {
-    isLive: false,
-    isFinished: false,
-    actualScore: 'Pending',
-    predictionCorrect: null,
-    isSample: true,
-    isEstimate: false,
-  };
-
-  return [
-    {
-      ...base,
-      league: 'Africa Cup of Nations Qualification',
-      time: '20:00 EAT',
-      homeTeam: 'Angola',
-      awayTeam: 'South Sudan',
-      homeForm: ['W', 'D', 'W', 'W', 'L'],
-      awayForm: ['L', 'D', 'L', 'W', 'D'],
-      homeWinProb: 65,
-      drawProb: 22,
-      awayWinProb: 13,
-      over25Goals: '70%',
-      btts: '50%',
-      cardRisk: 'Medium',
-      topTip: 'Angola Win',
-      odds: 1.55,
-      isProlific: true,
-    },
-    {
-      ...base,
-      league: 'Africa Cup of Nations Qualification',
-      time: '20:00 EAT',
-      homeTeam: 'Uganda',
-      awayTeam: 'Botswana',
-      homeForm: ['W', 'W', 'D', 'L', 'W'],
-      awayForm: ['D', 'L', 'W', 'L', 'D'],
-      homeWinProb: 58,
-      drawProb: 26,
-      awayWinProb: 16,
-      over25Goals: '60%',
-      btts: '45%',
-      cardRisk: 'Medium',
-      topTip: 'Uganda Win or Draw',
-      odds: 1.4,
-      isProlific: true,
-    },
-    {
-      ...base,
-      league: 'Africa Cup of Nations Qualification',
-      time: '20:00 EAT',
-      homeTeam: 'Algeria',
-      awayTeam: 'Togo',
-      homeForm: ['W', 'W', 'W', 'D', 'W'],
-      awayForm: ['L', 'W', 'D', 'L', 'W'],
-      homeWinProb: 72,
-      drawProb: 18,
-      awayWinProb: 10,
-      over25Goals: '78%',
-      btts: '55%',
-      cardRisk: 'High',
-      topTip: 'Algeria Win & Over 1.5',
-      odds: 1.72,
-      isProlific: true,
-    },
-    {
-      ...base,
-      league: 'International Friendlies',
-      time: '15:00 EAT',
-      homeTeam: 'Vietnam',
-      awayTeam: 'Chinese Taipei',
-      homeForm: ['W', 'D', 'L', 'W', 'L'],
-      awayForm: ['L', 'L', 'D', 'L', 'W'],
-      homeWinProb: 60,
-      drawProb: 25,
-      awayWinProb: 15,
-      over25Goals: '65%',
-      btts: '50%',
-      cardRisk: 'Low',
-      topTip: 'Vietnam Win',
-      odds: 1.65,
-      isProlific: false,
-    },
-  ];
+function isProlificTeam(teamName) {
+  const name = teamName.toLowerCase();
+  return PROLIFIC_TEAMS.some((t) => name.includes(t.toLowerCase()));
 }
 
 // ---------- Live data mapping (football-data.org v4) ----------
@@ -190,7 +95,6 @@ const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
 const UPCOMING_STATUSES = ['SCHEDULED', 'TIMED'];
 
-// showDate: true -> include the match date (for matches not played today).
 function formatFixture(item, showDate = false) {
   const status = item.status;
   const isLive = LIVE_STATUSES.includes(status);
@@ -198,14 +102,38 @@ function formatFixture(item, showDate = false) {
 
   const homeTeam = (item.homeTeam && (item.homeTeam.name || item.homeTeam.shortName)) || 'Home Team';
   const awayTeam = (item.awayTeam && (item.awayTeam.name || item.awayTeam.shortName)) || 'Away Team';
-  const prolific = isProlific(homeTeam, awayTeam);
+
+  const homeProlific = isProlificTeam(homeTeam);
+  const awayProlific = isProlificTeam(awayTeam);
+  const prolific = homeProlific || awayProlific;
 
   const fullTime = (item.score && item.score.fullTime) || {};
   const homeGoals = fullTime.home ?? 0;
   const awayGoals = fullTime.away ?? 0;
 
-  // The tip below is "Home Win or Draw", so it is correct when home >= away.
-  const tipIsCorrect = homeGoals >= awayGoals;
+  // Smart tip & outcome evaluation based on which team is in the Prolific Basket
+  let topTip = `${homeTeam} Win or Draw`;
+  let homeWinProb = 50;
+  let drawProb = 28;
+  let awayWinProb = 22;
+  let odds = 1.65;
+  let tipIsCorrect = homeGoals >= awayGoals;
+
+  if (awayProlific && !homeProlific) {
+    topTip = `${awayTeam} Win or Draw`;
+    homeWinProb = 24;
+    drawProb = 26;
+    awayWinProb = 50;
+    odds = 1.72;
+    tipIsCorrect = awayGoals >= homeGoals;
+  } else if (homeProlific && awayProlific) {
+    topTip = 'Both Teams to Score';
+    homeWinProb = 38;
+    drawProb = 27;
+    awayWinProb = 35;
+    odds = 1.80;
+    tipIsCorrect = homeGoals > 0 && awayGoals > 0;
+  }
 
   let time;
   if (isLive) {
@@ -221,24 +149,23 @@ function formatFixture(item, showDate = false) {
     time,
     homeTeam,
     awayTeam,
-    // NOTE: the fields below are placeholder estimates, not real predictions.
     homeForm: ['W', 'D', 'W', 'W', 'L'],
     awayForm: ['L', 'W', 'D', 'W', 'W'],
-    homeWinProb: 50,
-    drawProb: 28,
-    awayWinProb: 22,
-    over25Goals: prolific ? '75%' : '60%',
-    btts: '55%',
+    homeWinProb,
+    drawProb,
+    awayWinProb,
+    over25Goals: prolific ? '72%' : '58%',
+    btts: homeProlific && awayProlific ? '68%' : '52%',
     cardRisk: 'Medium',
-    topTip: `${homeTeam} Win or Draw`,
-    odds: 1.75,
+    topTip,
+    odds,
     isLive,
     isFinished,
     actualScore: isFinished ? `${homeGoals}-${awayGoals}` : 'Pending',
     predictionCorrect: isFinished ? tipIsCorrect : null,
     isProlific: prolific,
     isSample: false,
-    isEstimate: true, // stats/odds are placeholders until real endpoints are wired in
+    isEstimate: true,
   };
 }
 
@@ -253,8 +180,6 @@ function requestMatches(dateFrom, dateTo) {
   });
 }
 
-// The free API allows at most 10 days per request, so we ask for the past
-// and the future separately, then merge (removing duplicates by match id).
 async function fetchMatchWindow() {
   const now = Date.now();
   if (cache.data && now - cache.fetchedAt < CACHE_TTL_MS) {
@@ -282,8 +207,6 @@ async function fetchMatchWindow() {
   return matches;
 }
 
-// Order: today's matches (and anything live), then upcoming, then recent
-// finished results (newest first).
 function pickFixtures(allMatches) {
   const today = todayInNairobi();
   const now = new Date();
@@ -338,22 +261,14 @@ app.get('/api/fixtures', async (req, res) => {
       const status = err.response && err.response.status;
       const detail = err.response && err.response.data && err.response.data.message;
       console.error('football-data.org request failed:', status || '', detail || err.message);
-      // Serve stale cache rather than nothing, if we have it.
       if (cache.data) matches = cache.data;
     }
   } else {
-    console.warn('FOOTBALL_DATA_TOKEN is not set; serving sample fixtures.');
+    console.warn('FOOTBALL_DATA_TOKEN is not set.');
   }
 
-  try {
-    const fixtures = pickFixtures(matches);
-    if (fixtures.length > 0) return res.json(fixtures);
-  } catch (err) {
-    console.error('Formatting error:', err.message);
-  }
-
-  console.warn('No fixtures available; serving sample fixtures.');
-  return res.json(getSampleFixtures());
+  const fixtures = pickFixtures(matches);
+  return res.json(fixtures);
 });
 
 app.listen(PORT, '0.0.0.0', () => {
