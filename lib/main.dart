@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'api_service.dart';
 import 'fixture_model.dart';
 
@@ -168,7 +166,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-  
+
+// ---------------------------------------------------------------------------
+// Competition filters (the 12 competitions on the football-data.org free plan)
+// ---------------------------------------------------------------------------
+class _CompetitionFilter {
+  final String label; // text on the chip (also the value stored as selectedLeague)
+  final IconData icon;
+  final List<String> serverNames; // competition names as sent by the server
+
+  const _CompetitionFilter(this.label, this.icon, this.serverNames);
+}
+
+const List<_CompetitionFilter> _competitionFilters = [
+  _CompetitionFilter('Premier League', Icons.flag, ['Premier League']),
+  _CompetitionFilter('La Liga', Icons.shield, ['Primera Division', 'La Liga']),
+  _CompetitionFilter('Serie A', Icons.sports, ['Serie A']),
+  _CompetitionFilter('Bundesliga', Icons.sports_soccer, ['Bundesliga']),
+  _CompetitionFilter('Ligue 1', Icons.sports_soccer, ['Ligue 1']),
+  _CompetitionFilter('Champions League', Icons.emoji_events, ['UEFA Champions League']),
+  _CompetitionFilter('Championship', Icons.flag, ['Championship']),
+  _CompetitionFilter('Eredivisie', Icons.sports_soccer, ['Eredivisie']),
+  _CompetitionFilter('Primeira Liga', Icons.sports_soccer, ['Primeira Liga']),
+  _CompetitionFilter('Brasileirao', Icons.sports_soccer, ['Campeonato Brasileiro Serie A']),
+  _CompetitionFilter('World Cup', Icons.public, ['FIFA World Cup']),
+  _CompetitionFilter('Euros', Icons.public, ['European Championship']),
+];
+
+/// Lower-cases and strips common accents so "Série A" matches "Serie A".
+String _normalize(String s) {
+  const from = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
+  const to = 'aaaaaeeeeiiiiooooouuuucn';
+  var out = s.toLowerCase().trim();
+  for (var i = 0; i < from.length; i++) {
+    out = out.replaceAll(from[i], to[i]);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Analyzer tab
 // ---------------------------------------------------------------------------
@@ -240,21 +275,24 @@ class MatchesAnalysisTab extends StatelessWidget {
   }
 
   bool _matchesLeague(FixtureModel f) {
-    final league = f.league.toLowerCase();
+    final leagueName = _normalize(f.league);
+
     switch (selectedLeague) {
+      case 'All Leagues':
+        return true;
       case 'Prolific':
         return f.isProlific;
       case 'International':
-        return _internationalKeywords.any(league.contains);
-      case 'Premier League':
-        return league.contains('premier') || league.contains('england');
-      case 'La Liga':
-        return league.contains('liga') || league.contains('spain');
-      case 'Serie A':
-        return league.contains('serie') || league.contains('italy');
-      default:
-        return true; // 'All Leagues'
+        return _internationalKeywords.any(leagueName.contains);
     }
+
+    // One of the 12 specific competitions: match the server's exact name.
+    for (final c in _competitionFilters) {
+      if (c.label == selectedLeague) {
+        return c.serverNames.any((n) => _normalize(n) == leagueName);
+      }
+    }
+    return true;
   }
 
   bool _matchesStatus(FixtureModel f) {
@@ -480,6 +518,20 @@ class MatchesAnalysisTab extends StatelessWidget {
       return matchesSearch && _matchesLeague(f) && _matchesStatus(f);
     }).toList();
 
+    // Competition chips: general filters first, then the 12 competitions.
+    final List<Widget> competitionChips = [
+      _buildFilterChip('All Competitions', Icons.sports_soccer,
+          selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
+      _buildFilterChip('Prolific Basket', Icons.local_fire_department,
+          selectedLeague == 'Prolific', (_) => onLeagueChanged('Prolific'),
+          activeColor: Colors.orange[800]),
+      _buildFilterChip('All International', Icons.public,
+          selectedLeague == 'International', (_) => onLeagueChanged('International')),
+      for (final c in _competitionFilters)
+        _buildFilterChip(c.label, c.icon, selectedLeague == c.label,
+            (_) => onLeagueChanged(c.label)),
+    ];
+
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
@@ -506,24 +558,10 @@ class MatchesAnalysisTab extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildFilterChip('All Competitions', Icons.sports_soccer,
-                    selectedLeague == 'All Leagues', (_) => onLeagueChanged('All Leagues')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Prolific Basket', Icons.local_fire_department,
-                    selectedLeague == 'Prolific', (_) => onLeagueChanged('Prolific'),
-                    activeColor: Colors.orange[800]),
-                const SizedBox(width: 8),
-                _buildFilterChip('All International', Icons.public,
-                    selectedLeague == 'International', (_) => onLeagueChanged('International')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Premier League', Icons.flag,
-                    selectedLeague == 'Premier League', (_) => onLeagueChanged('Premier League')),
-                const SizedBox(width: 8),
-                _buildFilterChip('La Liga', Icons.shield, selectedLeague == 'La Liga',
-                    (_) => onLeagueChanged('La Liga')),
-                const SizedBox(width: 8),
-                _buildFilterChip('Serie A', Icons.sports, selectedLeague == 'Serie A',
-                    (_) => onLeagueChanged('Serie A')),
+                for (var i = 0; i < competitionChips.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  competitionChips[i],
+                ],
               ],
             ),
           ),
@@ -531,7 +569,7 @@ class MatchesAnalysisTab extends StatelessWidget {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: [
+            children: [
                 _buildFilterChip('All Status', Icons.list, statusFilter == 'All',
                     (_) => onStatusChanged('All')),
                 const SizedBox(width: 8),
@@ -553,6 +591,7 @@ class MatchesAnalysisTab extends StatelessWidget {
     );
   }
 }
+
 // ---------------------------------------------------------------------------
 // Results & Accuracy tab
 // ---------------------------------------------------------------------------
@@ -695,3 +734,4 @@ class SavedSlipsTab extends StatelessWidget {
     );
   }
 }
+
