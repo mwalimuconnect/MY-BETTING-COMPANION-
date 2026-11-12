@@ -685,6 +685,136 @@ class PredictionsOutcomeTab extends StatelessWidget {
   }
 }
 
+
+class ResultsAccuracyTab extends StatelessWidget {
+  final List<FixtureModel> fixtures;
+
+  const ResultsAccuracyTab({Key? key, required this.fixtures}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    // Filter finished matches, focusing primarily on Prolific Basket matches if desired
+    final finishedFixtures = fixtures
+        .where((f) => f.isFinished == true && f.isProlific == true)
+        .toList();
+
+    // Fallback to all finished matches if no prolific ones are finished yet
+    final displayFixtures = finishedFixtures.isNotEmpty 
+        ? finishedFixtures 
+        : fixtures.where((f) => f.isFinished == true).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Prolific Basket: Predictions vs Outcomes',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.blueAccent,
+            ),
+          ),
+          const SizedBox(height: 12),
+          displayFixtures.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: Text(
+                      'No finished matches available for outcome comparison yet.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              : Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      headingRowColor: MaterialStateProperty.all(
+                        Colors.blue.withOpacity(0.1),
+                      ),
+                      columns: const [
+                        DataLabelColumn('Match'),
+                        DataLabelColumn('Tip / Prediction'),
+                        DataLabelColumn('Score'),
+                        DataLabelColumn('Status'),
+                      ],
+                      rows: displayFixtures.map((fixture) {
+                        final isCorrect = fixture.predictionCorrect ?? false;
+                        return DataRow(
+                          cells: [
+                            DataCell(
+                              Text(
+                                '${fixture.homeTeam} vs\n${fixture.awayTeam}',
+                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                fixture.topTip,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                fixture.actualScore,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            DataCell(
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isCorrect
+                                      ? Colors.green.withOpacity(0.15)
+                                      : Colors.red.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  isCorrect ? 'WON' : 'LOST',
+                                  style: TextStyle(
+                                    color: isCorrect ? Colors.green[800] : Colors.red[800],
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+// Helper wrapper for table column headers
+class DataLabelColumn extends DataColumn {
+  const DataLabelColumn(String labelText)
+      : super(
+          label: Text(
+            labelText,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+        );
+}
+
 // ---------------------------------------------------------------------------
 // Saved Slips tab
 // ---------------------------------------------------------------------------
