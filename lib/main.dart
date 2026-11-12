@@ -739,7 +739,7 @@ class ResultsAccuracyTab extends StatelessWidget {
                       headingRowColor: MaterialStateProperty.all(
                         Colors.blue.withOpacity(0.1),
                       ),
-                      columns: const [
+                      columns: [
                         DataLabelColumn('Match'),
                         DataLabelColumn('Tip / Prediction'),
                         DataLabelColumn('Score'),
