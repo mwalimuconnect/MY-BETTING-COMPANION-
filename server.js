@@ -8,11 +8,13 @@ const PORT = process.env.PORT || 10000;
 const FOOTBALL_DATA_TOKEN = process.env.FOOTBALL_DATA_TOKEN;
 
 const TIMEZONE = 'Africa/Nairobi';
-// Free tier allows 10 requests/minute; a 60s cache keeps us far below that.
+// Free tier allows 10 requests/minute. We make 2 requests per refresh and
+// cache the result for 60s, so we stay far below that.
 const CACHE_TTL_MS = 60 * 1000;
-const DAYS_BACK = 1;   // include yesterday (for late-night Nairobi matches)
-const DAYS_AHEAD = 8;  // look this far ahead when today has no matches
-const MAX_UPCOMING = 30;
+const DAYS_BACK = 7;        // recent finished results to include
+const DAYS_AHEAD = 8;       // upcoming matches to include
+const MAX_UPCOMING = 40;
+const MAX_FINISHED = 40;
 
 const PROLIFIC_TEAMS = [
   'Angola', 'South Sudan', 'Uganda', 'Botswana', 'Algeria', 'Togo',
@@ -75,6 +77,16 @@ function formatEatDateTime(isoDate) {
     timeZone: TIMEZONE,
   });
   return `${day}, ${formatEatTime(isoDate)}`;
+}
+
+// e.g. "Sat 8 Nov" - date label for finished matches.
+function formatEatDate(isoDate) {
+  return new Date(isoDate).toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: TIMEZONE,
+  });
 }
 
 function isProlific(homeTeam, awayTeam) {
@@ -178,6 +190,7 @@ const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
 const UPCOMING_STATUSES = ['SCHEDULED', 'TIMED'];
 
+// showDate: true -> include the match date (for matches not played today).
 function formatFixture(item, showDate = false) {
   const status = item.status;
   const isLive = LIVE_STATUSES.includes(status);
@@ -195,8 +208,10 @@ function formatFixture(item, showDate = false) {
   const tipIsCorrect = homeGoals >= awayGoals;
 
   let time;
-  if (isFinished || isLive) {
+  if (isLive) {
     time = `${homeGoals} - ${awayGoals}`;
+  } else if (isFinished) {
+    time = showDate ? formatEatDate(item.utcDate) : `${homeGoals} - ${awayGoals}`;
   } else {
     time = showDate ? formatEatDateTime(item.utcDate) : formatEatTime(item.utcDate);
   }
@@ -227,28 +242,37 @@ function formatFixture(item, showDate = false) {
   };
 }
 
-// ---------- Cache ----------
+// ---------- Fetching + cache ----------
 let cache = { data: null, fetchedAt: 0 };
 
-// Returns all matches from yesterday to a week or so ahead (one API call).
+function requestMatches(dateFrom, dateTo) {
+  return axios.get('https://api.football-data.org/v4/matches', {
+    headers: { 'X-Auth-Token': FOOTBALL_DATA_TOKEN },
+    params: { dateFrom, dateTo },
+    timeout: 15000,
+  });
+}
+
+// The free API allows at most 10 days per request, so we ask for the past
+// and the future separately, then merge (removing duplicates by match id).
 async function fetchMatchWindow() {
   const now = Date.now();
   if (cache.data && now - cache.fetchedAt < CACHE_TTL_MS) {
     return cache.data;
   }
 
-  const response = await axios.get('https://api.football-data.org/v4/matches', {
-    headers: { 'X-Auth-Token': FOOTBALL_DATA_TOKEN },
-    params: {
-      dateFrom: utcDateOffset(-DAYS_BACK),
-      dateTo: utcDateOffset(DAYS_AHEAD),
-    },
-    timeout: 15000,
+  const [past, future] = await Promise.all([
+    requestMatches(utcDateOffset(-DAYS_BACK), utcDateOffset(0)),
+    requestMatches(utcDateOffset(1), utcDateOffset(DAYS_AHEAD)),
+  ]);
+
+  const byId = new Map();
+  [...(past.data.matches || []), ...(future.data.matches || [])].forEach((m) => {
+    byId.set(m.id, m);
   });
+  const matches = Array.from(byId.values());
 
-  const available = response.headers['x-requests-available-minute'];
-  const matches = response.data.matches || [];
-
+  const available = future.headers['x-requests-available-minute'];
   console.log(
     `football-data.org: ${matches.length} matches fetched` +
       (available !== undefined ? ` (requests left this minute: ${available})` : '')
@@ -258,23 +282,49 @@ async function fetchMatchWindow() {
   return matches;
 }
 
-// Today's matches (Nairobi time); if there are none, the next upcoming ones.
+// Order: today's matches (and anything live), then upcoming, then recent
+// finished results (newest first).
 function pickFixtures(allMatches) {
   const today = todayInNairobi();
+  const now = new Date();
+  const sevenDaysAgo = new Date(Date.now() - DAYS_BACK * 86400000);
 
-  const todays = allMatches.filter((m) => dateInNairobi(new Date(m.utcDate)) === today);
-  if (todays.length > 0) {
-    console.log(`Showing ${todays.length} matches for ${today}`);
-    return todays.map((m) => formatFixture(m, false));
-  }
+  const isToday = (m) => dateInNairobi(new Date(m.utcDate)) === today;
+
+  const todays = allMatches
+    .filter((m) => isToday(m) || LIVE_STATUSES.includes(m.status))
+    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
 
   const upcoming = allMatches
-    .filter((m) => UPCOMING_STATUSES.includes(m.status) && new Date(m.utcDate) > new Date())
+    .filter(
+      (m) =>
+        !isToday(m) &&
+        UPCOMING_STATUSES.includes(m.status) &&
+        new Date(m.utcDate) > now
+    )
     .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
     .slice(0, MAX_UPCOMING);
 
-  console.log(`No matches on ${today}; showing ${upcoming.length} upcoming matches`);
-  return upcoming.map((m) => formatFixture(m, true));
+  const finished = allMatches
+    .filter(
+      (m) =>
+        !isToday(m) &&
+        !LIVE_STATUSES.includes(m.status) &&
+        FINISHED_STATUSES.includes(m.status) &&
+        new Date(m.utcDate) >= sevenDaysAgo
+    )
+    .sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate))
+    .slice(0, MAX_FINISHED);
+
+  console.log(
+    `Fixtures for ${today}: ${todays.length} today, ${upcoming.length} upcoming, ${finished.length} finished`
+  );
+
+  return [
+    ...todays.map((m) => formatFixture(m, false)),
+    ...upcoming.map((m) => formatFixture(m, true)),
+    ...finished.map((m) => formatFixture(m, true)),
+  ];
 }
 
 // ---------- Route ----------
