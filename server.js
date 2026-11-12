@@ -3,10 +3,13 @@ const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const API_FOOTBALL_KEY = process.env.FOOTBALL_API_KEY;
+
+// Set this in Render -> Environment. Never put the token in the code or GitHub.
+const FOOTBALL_DATA_TOKEN = process.env.FOOTBALL_DATA_TOKEN;
 
 const TIMEZONE = 'Africa/Nairobi';
-const CACHE_TTL_MS = 60 * 1000; // reuse API-Football results for 60s
+// Free tier allows 10 requests/minute; a 60s cache keeps us far below that.
+const CACHE_TTL_MS = 60 * 1000;
 
 const PROLIFIC_TEAMS = [
   'Angola', 'South Sudan', 'Uganda', 'Botswana', 'Algeria', 'Togo',
@@ -28,18 +31,26 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, hasApiKey: Boolean(API_FOOTBALL_KEY) });
+  res.json({ ok: true, hasApiKey: Boolean(FOOTBALL_DATA_TOKEN) });
 });
 
 // ---------- Helpers ----------
-// Today's date in Nairobi time (YYYY-MM-DD), not UTC.
-function todayInNairobi() {
+function dateInNairobi(date) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(date);
+}
+
+function todayInNairobi() {
+  return dateInNairobi(new Date());
+}
+
+// YYYY-MM-DD (UTC) for a date offset by N days from now.
+function utcDateOffset(days) {
+  return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 }
 
 function formatEatTime(isoDate) {
@@ -62,7 +73,6 @@ function isProlific(homeTeam, awayTeam) {
 }
 
 // ---------- Sample data (used only when the live API gives nothing) ----------
-// Every item is flagged isSample: true so the app can label it.
 function getSampleFixtures() {
   const base = {
     isLive: false,
@@ -149,25 +159,29 @@ function getSampleFixtures() {
   ];
 }
 
-// ---------- Live data mapping ----------
-function formatFixture(item) {
-  const statusShort = item.fixture.status.short;
-  const isLive = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE', 'INT'].includes(statusShort);
-  const isFinished = ['FT', 'AET', 'PEN'].includes(statusShort);
+// ---------- Live data mapping (football-data.org v4) ----------
+const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
+const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
 
-  const homeTeam = item.teams.home.name || 'Home Team';
-  const awayTeam = item.teams.away.name || 'Away Team';
+function formatFixture(item) {
+  const status = item.status;
+  const isLive = LIVE_STATUSES.includes(status);
+  const isFinished = FINISHED_STATUSES.includes(status);
+
+  const homeTeam = (item.homeTeam && (item.homeTeam.name || item.homeTeam.shortName)) || 'Home Team';
+  const awayTeam = (item.awayTeam && (item.awayTeam.name || item.awayTeam.shortName)) || 'Away Team';
   const prolific = isProlific(homeTeam, awayTeam);
 
-  const homeGoals = item.goals.home ?? 0;
-  const awayGoals = item.goals.away ?? 0;
+  const fullTime = (item.score && item.score.fullTime) || {};
+  const homeGoals = fullTime.home ?? 0;
+  const awayGoals = fullTime.away ?? 0;
 
   // The tip below is "Home Win or Draw", so it is correct when home >= away.
   const tipIsCorrect = homeGoals >= awayGoals;
 
   return {
-    league: item.league.name || 'Global Competition',
-    time: isFinished || isLive ? `${homeGoals} - ${awayGoals}` : formatEatTime(item.fixture.date),
+    league: (item.competition && item.competition.name) || 'Global Competition',
+    time: isFinished || isLive ? `${homeGoals} - ${awayGoals}` : formatEatTime(item.utcDate),
     homeTeam,
     awayTeam,
     // NOTE: the fields below are placeholder estimates, not real predictions.
@@ -200,23 +214,23 @@ async function fetchLiveFixtures(dateStr) {
     return cache.data;
   }
 
-  const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
-    headers: { 'x-apisports-key': API_FOOTBALL_KEY },
-    params: { date: dateStr, timezone: TIMEZONE },
+  // Fetch yesterday..tomorrow (UTC) then keep only matches that fall on
+  // today's date in Nairobi time.
+  const response = await axios.get('https://api.football-data.org/v4/matches', {
+    headers: { 'X-Auth-Token': FOOTBALL_DATA_TOKEN },
+    params: { dateFrom: utcDateOffset(-1), dateTo: utcDateOffset(1) },
     timeout: 15000,
   });
 
-  // API-Football often answers HTTP 200 with an "errors" field (bad key,
-  // quota used up, plan limits) and an empty "response". Log it.
-  const errors = response.data.errors;
-  const hasErrors =
-    errors && (Array.isArray(errors) ? errors.length > 0 : Object.keys(errors).length > 0);
-  if (hasErrors) {
-    console.error('API-Football errors:', JSON.stringify(errors));
-  }
-  console.log('API-Football results:', response.data.results, 'for', dateStr);
+  const available = response.headers['x-requests-available-minute'];
+  const all = response.data.matches || [];
+  const matches = all.filter((m) => dateInNairobi(new Date(m.utcDate)) === dateStr);
 
-  const matches = response.data.response || [];
+  console.log(
+    `football-data.org: ${all.length} matches fetched, ${matches.length} on ${dateStr}` +
+      (available !== undefined ? ` (requests left this minute: ${available})` : '')
+  );
+
   cache = { date: dateStr, data: matches, fetchedAt: now };
   return matches;
 }
@@ -225,16 +239,18 @@ async function fetchLiveFixtures(dateStr) {
 app.get('/api/fixtures', async (req, res) => {
   let matches = [];
 
-  if (API_FOOTBALL_KEY) {
+  if (FOOTBALL_DATA_TOKEN) {
     try {
       matches = await fetchLiveFixtures(todayInNairobi());
     } catch (err) {
-      console.error('API-Football request failed:', err.message);
+      const status = err.response && err.response.status;
+      const detail = err.response && err.response.data && err.response.data.message;
+      console.error('football-data.org request failed:', status || '', detail || err.message);
       // Serve stale cache rather than nothing, if we have it.
       if (cache.data) matches = cache.data;
     }
   } else {
-    console.warn('FOOTBALL_API_KEY is not set; serving sample fixtures.');
+    console.warn('FOOTBALL_DATA_TOKEN is not set; serving sample fixtures.');
   }
 
   if (matches.length === 0) {
