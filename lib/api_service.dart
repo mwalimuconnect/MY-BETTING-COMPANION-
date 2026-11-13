@@ -1,5 +1,6 @@
-import 'dart:io';
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'fixture_model.dart';
@@ -8,11 +9,13 @@ class ApiService {
   static const String apiUrl =
       'https://my-betting-companion.onrender.com/api/fixtures';
 
-  /// Fetches fixtures from the backend with built-in network fallback.
+  /// Fetches fixtures from the backend. Throws a readable Exception on failure
+  /// so the dashboard can show the error and the Retry button.
   static Future<List<FixtureModel>> fetchFixtures() async {
     debugPrint('Fetching fixtures from: $apiUrl');
 
     try {
+      // 45s covers a sleeping Render free-tier server waking up.
       final response = await http
           .get(Uri.parse(apiUrl))
           .timeout(const Duration(seconds: 45));
@@ -32,15 +35,22 @@ class ApiService {
       return decoded
           .map((json) => FixtureModel.fromJson(json as Map<String, dynamic>))
           .toList();
-          
     } on SocketException catch (e) {
-      debugPrint('DNS/Socket Exception caught: $e. Returning offline fallback fixtures.');
-      return _getFallbackFixtures();
+      debugPrint('Socket error: $e');
+      throw Exception(
+          'Cannot reach server (${e.message}). Check internet, VPN or private DNS.');
+    } on TimeoutException {
+      debugPrint('Request timed out');
+      throw Exception('Server took too long to respond. Tap Retry.');
+    } on FormatException catch (e) {
+      debugPrint('Bad JSON: $e');
+      throw Exception('Server sent invalid data: ${e.message}');
     } catch (e) {
       debugPrint('Error fetching fixtures: $e');
       rethrow;
     }
   }
+}
 
   /// Offline fallback sample data including finished Prolific matches for the Results table
   static List<FixtureModel> _getFallbackFixtures() {
