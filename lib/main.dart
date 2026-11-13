@@ -524,7 +524,124 @@ class MatchesAnalysisTab extends StatelessWidget {
         ),
       );
     }
-    return Column(children: filtered.map(_buildFixtureCard).toList());
+    // Group matches by date (the part of the time text before the comma)
+    final Map<String, List<FixtureModel>> byDate = {};
+    for (final f in filtered) {
+      final date = f.time.contains(',') ? f.time.split(',').first.trim() : f.time;
+      byDate.putIfAbsent(date, () => []).add(f);
+    }
+
+    const headStyle =
+        TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: kPrimary);
+    const cellStyle = TextStyle(fontSize: 11.5);
+
+    Widget cell(Widget child) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: child,
+        );
+
+    String timeOnly(String t) {
+      if (!t.contains(',')) return '';
+      return t.split(',').last.trim().replaceAll(' EAT', '');
+    }
+
+    TableRow headerRow() => TableRow(
+          decoration: const BoxDecoration(color: Color(0xFFE8F1FF)),
+          children: [
+            cell(const Text('Time', style: headStyle)),
+            cell(const Text('Home', style: headStyle)),
+            cell(const Text('Away', style: headStyle)),
+            cell(const Text('Tip', style: headStyle)),
+            cell(const SizedBox()),
+          ],
+        );
+
+    TableRow matchRow(FixtureModel f) {
+      Widget timeWidget;
+      if (f.isFinished) {
+        timeWidget = Text('FT\n${f.actualScore}',
+            style: cellStyle.copyWith(fontWeight: FontWeight.bold));
+      } else if (f.isLive) {
+        timeWidget = Text('LIVE\n${f.time}',
+            style: cellStyle.copyWith(
+                color: Colors.red, fontWeight: FontWeight.bold));
+      } else {
+        timeWidget = Text(timeOnly(f.time), style: cellStyle);
+      }
+      return TableRow(
+        children: [
+          cell(timeWidget),
+          cell(Text(f.homeTeam,
+              style: cellStyle.copyWith(fontWeight: FontWeight.w600))),
+          cell(Text(f.awayTeam,
+              style: cellStyle.copyWith(fontWeight: FontWeight.w600))),
+          cell(Text(f.topTip, style: cellStyle)),
+          InkWell(
+            onTap: () => onToggleSave(f),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Icon(
+                f.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                color: kPrimary,
+                size: 20,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final hasEstimates = filtered.any((f) => f.isEstimate);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hasEstimates)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              'Tips are placeholder estimates, not real predictions.',
+              style: TextStyle(color: Colors.orange[800], fontSize: 11),
+            ),
+          ),
+        for (final entry in byDate.entries) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6, top: 4),
+            child: Text(
+              '${entry.key}  •  ${entry.value.length} match${entry.value.length == 1 ? '' : 'es'}',
+              style: const TextStyle(
+                  color: kPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 4)],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Table(
+              columnWidths: const {
+                0: FlexColumnWidth(1.1),
+                1: FlexColumnWidth(2),
+                2: FlexColumnWidth(2),
+                3: FlexColumnWidth(2.3),
+                4: FixedColumnWidth(36),
+              },
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              border: const TableBorder(
+                horizontalInside: BorderSide(color: Color(0xFFE9ECEF)),
+              ),
+              children: [
+                headerRow(),
+                ...entry.value.map(matchRow),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
