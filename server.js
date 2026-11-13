@@ -12,6 +12,16 @@ const DAYS_AHEAD = 8;
 const MAX_UPCOMING = 40;
 const MAX_FINISHED = 40;
 
+// ---------- Model settings ----------
+const COMPETITIONS = ['PL', 'ELC', 'BL1', 'SA', 'PD', 'FL1', 'DED', 'PPL', 'BSA', 'CL', 'WC', 'EC'];
+const RATINGS_TTL_MS = 6 * 60 * 60 * 1000; // rebuild ratings every 6 hours
+const RATINGS_GAP_MS = 8000; // free plan allows 10 requests/minute
+const MIN_LEAGUE_MATCHES = 20; // need this many finished matches in a competition
+const MIN_GAMES = 5; // each team needs this many games
+const SHRINK_GAMES = 4; // pulls small samples toward the league average
+const MIN_TIP_PROB = 45; // no tip unless a side has at least this % to win
+const MAX_GOALS = 8;
+
 const PROLIFIC_TEAMS = [
   'Angola', 'South Sudan', 'Uganda', 'Botswana', 'Algeria', 'Togo',
   'Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Real Madrid',
@@ -35,10 +45,17 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, hasApiKey: Boolean(FOOTBALL_DATA_TOKEN) });
+  res.json({
+    ok: true,
+    hasApiKey: Boolean(FOOTBALL_DATA_TOKEN),
+    ratingsLoading,
+    ratingsCompetitions: Object.keys(ratings),
+  });
 });
 
 // ---------- Helpers ----------
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function dateInNairobi(date) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: TIMEZONE,
@@ -90,6 +107,177 @@ function isProlificTeam(teamName) {
   return PROLIFIC_TEAMS.some((t) => name.includes(t.toLowerCase()));
 }
 
+// ---------- Prediction model ----------
+let ratings = {}; // competition code -> { teams, avgHome, avgAway, avgTeam }
+let ratingsBuiltAt = 0;
+let ratingsLoading = false;
+
+function poisson(k, lambda) {
+  let p = Math.exp(-lambda);
+  for (let i = 1; i <= k; i++) p *= lambda / i;
+  return p;
+}
+
+function buildRatings(matches) {
+  const finished = matches
+    .filter(
+      (m) =>
+        m.score &&
+        m.score.fullTime &&
+        m.score.fullTime.home !== null &&
+        m.score.fullTime.home !== undefined &&
+        m.score.fullTime.away !== null &&
+        m.score.fullTime.away !== undefined &&
+        m.homeTeam && m.homeTeam.id &&
+        m.awayTeam && m.awayTeam.id
+    )
+    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
+
+  if (finished.length < MIN_LEAGUE_MATCHES) return null;
+
+  const teams = {};
+  let homeGoals = 0;
+  let awayGoals = 0;
+
+  const team = (id) => {
+    if (!teams[id]) teams[id] = { gf: 0, ga: 0, n: 0, form: [] };
+    return teams[id];
+  };
+
+  for (const m of finished) {
+    const gh = m.score.fullTime.home;
+    const ga = m.score.fullTime.away;
+    homeGoals += gh;
+    awayGoals += ga;
+
+    const h = team(m.homeTeam.id);
+    const a = team(m.awayTeam.id);
+    h.gf += gh; h.ga += ga; h.n += 1;
+    a.gf += ga; a.ga += gh; a.n += 1;
+    h.form.push(gh > ga ? 'W' : gh === ga ? 'D' : 'L');
+    a.form.push(ga > gh ? 'W' : ga === gh ? 'D' : 'L');
+  }
+
+  const n = finished.length;
+  const avgHome = homeGoals / n;
+  const avgAway = awayGoals / n;
+  const avgTeam = (avgHome + avgAway) / 2;
+  if (avgTeam <= 0) return null;
+
+  return { teams, avgHome, avgAway, avgTeam };
+}
+
+function predictMatch(code, homeId, awayId, homeName, awayName) {
+  const r = ratings[code];
+  if (!r || !homeId || !awayId) return null;
+  const h = r.teams[homeId];
+  const a = r.teams[awayId];
+  if (!h || !a || h.n < MIN_GAMES || a.n < MIN_GAMES) return null;
+
+  const K = SHRINK_GAMES;
+  const atk = (t) => (t.gf + K * r.avgTeam) / (t.n + K) / r.avgTeam;
+  const def = (t) => (t.ga + K * r.avgTeam) / (t.n + K) / r.avgTeam;
+
+  const lambdaHome = r.avgHome * atk(h) * def(a);
+  const lambdaAway = r.avgAway * atk(a) * def(h);
+
+  let pH = 0, pD = 0, pA = 0, pOver = 0, pBtts = 0, total = 0;
+  for (let i = 0; i <= MAX_GOALS; i++) {
+    for (let j = 0; j <= MAX_GOALS; j++) {
+      const p = poisson(i, lambdaHome) * poisson(j, lambdaAway);
+      total += p;
+      if (i > j) pH += p;
+      else if (i === j) pD += p;
+      else pA += p;
+      if (i + j >= 3) pOver += p;
+      if (i > 0 && j > 0) pBtts += p;
+    }
+  }
+
+  const homeWinProb = Math.round((pH / total) * 100);
+  const awayWinProb = Math.round((pA / total) * 100);
+  const drawProb = 100 - homeWinProb - awayWinProb;
+
+  let topTip = '';
+  let tipProb = null;
+  const homeFav = homeWinProb >= awayWinProb;
+  const favProb = homeFav ? homeWinProb : awayWinProb;
+  if (favProb >= MIN_TIP_PROB) {
+    topTip = `${homeFav ? homeName : awayName} Win`;
+    tipProb = favProb;
+  }
+
+  return {
+    homeWinProb,
+    drawProb,
+    awayWinProb,
+    over25Goals: `${Math.round((pOver / total) * 100)}%`,
+    btts: `${Math.round((pBtts / total) * 100)}%`,
+    topTip,
+    tipProb,
+    homeForm: h.form.slice(-5),
+    awayForm: a.form.slice(-5),
+  };
+}
+
+async function fetchCompetitionMatches(code) {
+  const res = await axios.get(
+    `https://api.football-data.org/v4/competitions/${code}/matches`,
+    {
+      headers: { 'X-Auth-Token': FOOTBALL_DATA_TOKEN },
+      params: { status: 'FINISHED' },
+      timeout: 20000,
+    }
+  );
+  return res.data.matches || [];
+}
+
+// Runs in the background, one competition at a time, to stay under the rate limit.
+async function refreshRatings() {
+  if (ratingsLoading || !FOOTBALL_DATA_TOKEN) return;
+  ratingsLoading = true;
+  console.log('Rebuilding team ratings...');
+
+  for (const code of COMPETITIONS) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const matches = await fetchCompetitionMatches(code);
+        const built = buildRatings(matches);
+        if (built) {
+          ratings[code] = built;
+          console.log(`Ratings ${code}: ${Object.keys(built.teams).length} teams from ${matches.length} matches`);
+        } else {
+          delete ratings[code];
+          console.log(`Ratings ${code}: not enough finished matches yet`);
+        }
+        break;
+      } catch (err) {
+        const status = err.response && err.response.status;
+        console.error(`Ratings ${code} failed:`, status || '', err.message);
+        if (status === 429 && attempt === 1) {
+          await sleep(65000); // rate limited: wait a minute, then retry once
+          continue;
+        }
+        break; // 403 (not in plan) or other error: skip this competition
+      }
+    }
+    await sleep(RATINGS_GAP_MS);
+  }
+
+  ratingsBuiltAt = Date.now();
+  ratingsLoading = false;
+  console.log(`Ratings ready for: ${Object.keys(ratings).join(', ') || 'none'}`);
+}
+
+function ensureRatings() {
+  if (!ratingsLoading && Date.now() - ratingsBuiltAt > RATINGS_TTL_MS) {
+    refreshRatings().catch((e) => {
+      ratingsLoading = false;
+      console.error('refreshRatings crashed:', e.message);
+    });
+  }
+}
+
 // ---------- Live data mapping (football-data.org v4) ----------
 const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
@@ -103,37 +291,23 @@ function formatFixture(item, showDate = false) {
   const homeTeam = (item.homeTeam && (item.homeTeam.name || item.homeTeam.shortName)) || 'Home Team';
   const awayTeam = (item.awayTeam && (item.awayTeam.name || item.awayTeam.shortName)) || 'Away Team';
 
-  const homeProlific = isProlificTeam(homeTeam);
-  const awayProlific = isProlificTeam(awayTeam);
-  const prolific = homeProlific || awayProlific;
+  const prolific = isProlificTeam(homeTeam) || isProlificTeam(awayTeam);
 
   const fullTime = (item.score && item.score.fullTime) || {};
   const homeGoals = fullTime.home ?? 0;
   const awayGoals = fullTime.away ?? 0;
 
-  // Smart tip & outcome evaluation based on which team is in the Prolific Basket
-  let topTip = `${homeTeam} Win or Draw`;
-  let homeWinProb = 50;
-  let drawProb = 28;
-  let awayWinProb = 22;
-  let odds = 1.65;
-  let tipIsCorrect = homeGoals >= awayGoals;
-
-  if (awayProlific && !homeProlific) {
-    topTip = `${awayTeam} Win or Draw`;
-    homeWinProb = 24;
-    drawProb = 26;
-    awayWinProb = 50;
-    odds = 1.72;
-    tipIsCorrect = awayGoals >= homeGoals;
-  } else if (homeProlific && awayProlific) {
-    topTip = 'Both Teams to Score';
-    homeWinProb = 38;
-    drawProb = 27;
-    awayWinProb = 35;
-    odds = 1.80;
-    tipIsCorrect = homeGoals > 0 && awayGoals > 0;
-  }
+  // Predictions only for matches that have not finished (no hindsight).
+  const code = item.competition && item.competition.code;
+  const pred = isFinished
+    ? null
+    : predictMatch(
+        code,
+        item.homeTeam && item.homeTeam.id,
+        item.awayTeam && item.awayTeam.id,
+        homeTeam,
+        awayTeam
+      );
 
   let time;
   if (isLive) {
@@ -149,23 +323,24 @@ function formatFixture(item, showDate = false) {
     time,
     homeTeam,
     awayTeam,
-    homeForm: ['W', 'D', 'W', 'W', 'L'],
-    awayForm: ['L', 'W', 'D', 'W', 'W'],
-    homeWinProb,
-    drawProb,
-    awayWinProb,
-    over25Goals: prolific ? '72%' : '58%',
-    btts: homeProlific && awayProlific ? '68%' : '52%',
-    cardRisk: 'Medium',
-    topTip,
-    odds,
+    homeForm: pred ? pred.homeForm : [],
+    awayForm: pred ? pred.awayForm : [],
+    homeWinProb: pred ? pred.homeWinProb : 0,
+    drawProb: pred ? pred.drawProb : 0,
+    awayWinProb: pred ? pred.awayWinProb : 0,
+    over25Goals: pred ? pred.over25Goals : 'N/A',
+    btts: pred ? pred.btts : 'N/A',
+    cardRisk: 'N/A',
+    topTip: pred ? pred.topTip : '',
+    tipProb: pred ? pred.tipProb : null,
+    odds: null, // no real bookmaker odds available
     isLive,
     isFinished,
     actualScore: isFinished ? `${homeGoals}-${awayGoals}` : 'Pending',
-    predictionCorrect: isFinished ? tipIsCorrect : null,
+    predictionCorrect: null,
     isProlific: prolific,
     isSample: false,
-    isEstimate: true,
+    isEstimate: false,
   };
 }
 
@@ -252,6 +427,8 @@ function pickFixtures(allMatches) {
 
 // ---------- Route ----------
 app.get('/api/fixtures', async (req, res) => {
+  ensureRatings(); // starts in the background, never blocks the response
+
   let matches = [];
 
   if (FOOTBALL_DATA_TOKEN) {
@@ -273,4 +450,5 @@ app.get('/api/fixtures', async (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server active on port ${PORT}`);
+  ensureRatings();
 });
