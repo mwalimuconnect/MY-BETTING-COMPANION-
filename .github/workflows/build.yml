@@ -44,6 +44,15 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=my_betting_companion --org=com.example
 
+      # NEW: flutter create wipes the manifest, so add INTERNET back
+      - name: Add INTERNET permission and app label
+        run: |
+          F=android/app/src/main/AndroidManifest.xml
+          grep -q "android.permission.INTERNET" $F || sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' $F
+          sed -i 's|android:label="[^"]*"|android:label="My Betting Companion"|' $F
+          echo "---- Manifest used for build ----"
+          head -n 12 $F
+
       - name: Use Stable Gradle Distribution URL
         run: |
           PROPS_FILE="android/gradle/wrapper/gradle-wrapper.properties"
@@ -70,6 +79,12 @@ jobs:
       - name: Build Release APK via Flutter CLI
         run: |
           flutter build apk --release --no-pub
+
+      # NEW: confirms the permission is really in the APK
+      - name: Verify APK permissions
+        run: |
+          AAPT=$(ls -d $ANDROID_HOME/build-tools/*/ | tail -1)aapt
+          $AAPT dump permissions build/app/outputs/flutter-apk/app-release.apk
 
       - name: Locate and Prepare APK
         run: |
