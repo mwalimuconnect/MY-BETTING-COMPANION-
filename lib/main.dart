@@ -449,22 +449,10 @@ class MatchesAnalysisTab extends StatelessWidget {
               ],
             ),
             const Divider(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    'Tip: ${fixture.topTip}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Over 2.5: ${fixture.over25Goals}',
-                  style: TextStyle(
-                      fontSize: 11, color: Colors.grey[700], fontWeight: FontWeight.w600),
-                ),
-              ],
+            Text(
+              'Tip: ${fixture.topTip}',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.black87),
             ),
           ],
         ),
