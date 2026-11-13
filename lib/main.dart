@@ -729,6 +729,76 @@ class MatchesAnalysisTab extends StatelessWidget {
   }
 }
 
+void _showMatchInsights(BuildContext context, Fixture fixture) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) {
+      return Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.between,
+              children: [
+                Text(
+                  "${fixture.homeTeam} vs ${fixture.awayTeam}",
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const Divider(),
+            const SizedBox(height: 10),
+            
+            // Prediction Breakdown Section
+            const Text("AI Prediction & Analysis", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+            const SizedBox(height: 8),
+            Text("Recommended Tip: ${fixture.tip ?? 'No tip available'}"),
+            const SizedBox(height: 12),
+            
+            // Stats / Probabilities
+            _buildStatRow("Home Win Probability", "${fixture.homeWinProb ?? 50}%"),
+            _buildStatRow("Draw Probability", "${fixture.drawProb ?? 20}%"),
+            _buildStatRow("Away Win Probability", "${fixture.awayWinProb ?? 30}%"),
+            _buildStatRow("Both Teams to Score (BTTS)", fixture.btts ?? 'N/A'),
+            _buildStatRow("Over 2.5 Goals", fixture.over25 ?? 'N/A'),
+            
+            const SizedBox(height: 20),
+            const Text("Recent Form Analysis", style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text("Home Form: ${fixture.homeForm?.join(' - ') ?? 'N/A'}"),
+            Text("Away Form: ${fixture.awayForm?.join(' - ') ?? 'N/A'}"),
+            
+            const SizedBox(height: 30),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+Widget _buildStatRow(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4.0),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.between,
+      children: [
+        Text(label, style: TextStyle(color: Colors.grey[700])),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
+}
 // ---------------------------------------------------------------------------
 // Results & Accuracy tab
 // ---------------------------------------------------------------------------
