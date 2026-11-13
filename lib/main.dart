@@ -174,7 +174,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             Text(
-              'AI-POWERED MATCH ANALYZER & STATS',
+              'EXPERT ANALYSIS & STATS',
               style: TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.8),
             ),
           ],
