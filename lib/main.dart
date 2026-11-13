@@ -622,15 +622,6 @@ class MatchesAnalysisTab extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Results & Accuracy tab
 // ---------------------------------------------------------------------------
-class PredictionsOutcomeTab extends StatefulWidget {
-  final List<FixtureModel> fixtures;
-
-  const PredictionsOutcomeTab({Key? key, required this.fixtures}) : super(key: key);
-
-  @override
-  State<PredictionsOutcomeTab> createState() => _PredictionsOutcomeTabState();
-}
-
 class _PredictionsOutcomeTabState extends State<PredictionsOutcomeTab> {
   List<LogEntry> _entries = [];
   bool _loading = true;
@@ -686,8 +677,9 @@ class _PredictionsOutcomeTabState extends State<PredictionsOutcomeTab> {
   }
 
   Widget _summary(LogStats s) {
-    String pct(double v) => '${(v * 100).toStringAsFixed(1)}%';
-    final sign = s.profit >= 0 ? '+' : '';
+    final hit = s.settled == 0
+        ? '-'
+        : '${(s.hitRate * 100).toStringAsFixed(1)}%';
     return Card(
       color: Colors.white,
       elevation: 1,
@@ -703,16 +695,15 @@ class _PredictionsOutcomeTabState extends State<PredictionsOutcomeTab> {
             Text('Settled: ${s.settled}   Won: ${s.wins}',
                 style: const TextStyle(fontSize: 13)),
             const SizedBox(height: 6),
-            Text('Hit rate: ${s.settled == 0 ? '-' : pct(s.hitRate)}',
+            Text('Hit rate: $hit',
                 style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
             Text(
-                'Break-even rate (from odds): ${s.settled == 0 ? '-' : pct(s.breakEven)}',
-                style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-            Text(
-                'Profit at 1 unit per tip: ${s.settled == 0 ? '-' : '$sign${s.profit.toStringAsFixed(2)} units'}',
-                style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+              'Odds are not shown: the server does not provide real bookmaker odds yet, so profit cannot be measured.',
+              style: TextStyle(color: Colors.grey[700], fontSize: 11),
+            ),
             if (s.settled < 100) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'Small sample: under ~100 settled tips, results are mostly luck.',
                 style: TextStyle(color: Colors.orange[800], fontSize: 11),
@@ -763,7 +754,7 @@ class _PredictionsOutcomeTabState extends State<PredictionsOutcomeTab> {
                               title: Text('${e.home} vs ${e.away}',
                                   style: const TextStyle(fontSize: 14)),
                               subtitle: Text(
-                                  '${e.tip} (odds ${e.odds})${e.settled ? '  •  FT ${e.score}' : '  •  ${e.kickoff}'}',
+                                  '${e.tip}${e.settled ? '  •  FT ${e.score}' : '  •  ${e.kickoff}'}',
                                   style: const TextStyle(fontSize: 12)),
                               trailing: _chip(e),
                             ),
@@ -776,7 +767,7 @@ class _PredictionsOutcomeTabState extends State<PredictionsOutcomeTab> {
     );
   }
 }
-                                                                                                 
+                                                                                                                                             
 // ---------------------------------------------------------------------------
 // Saved Slips tab
 // ---------------------------------------------------------------------------
