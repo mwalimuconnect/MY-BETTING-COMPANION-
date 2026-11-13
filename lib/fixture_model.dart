@@ -13,6 +13,7 @@ class FixtureModel {
   final String btts;
   final String cardRisk;
   final String topTip;
+  final int? tipProb;
   final double odds;
   final bool isLive;
   final bool isFinished;
@@ -38,6 +39,7 @@ class FixtureModel {
     required this.btts,
     required this.cardRisk,
     required this.topTip,
+    required this.tipProb
     required this.odds,
     required this.isLive,
     required this.isFinished,
@@ -85,6 +87,7 @@ class FixtureModel {
       btts: json['btts']?.toString() ?? '50%',
       cardRisk: json['cardRisk']?.toString() ?? 'Low',
       topTip: json['topTip']?.toString() ?? '',
+      tipProb: json['tipProb'] is num ? (json['tipProb'] as num).toInt() : null,
       odds: _toDouble(json['odds'], 1.5),
       isLive: json['isLive'] == true,
       isFinished: json['isFinished'] == true,
