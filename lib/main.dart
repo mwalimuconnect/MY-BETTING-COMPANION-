@@ -63,7 +63,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _persistSaved() async {
     final prefs = await SharedPreferences.getInstance();
-    aw(ait prefs.setStringList('saved_slip_keys', _savedKeys.toList());
+    await prefs.setStringList('saved_slip_keys', _savedKeys.toList());
   }
 
     List<FixtureModel> data = [];
