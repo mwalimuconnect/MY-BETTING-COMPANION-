@@ -47,19 +47,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedLeague = 'All Leagues';
   String _statusFilter = 'All'; // 'All', 'Live', 'Upcoming', 'Finished'
 
+  Set<String> _savedKeys = {};
+ 
   @override
   void initState() {
     super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _savedKeys = (prefs.getStringList('saved_slip_keys') ?? []).toSet();
     _loadFixtures();
   }
 
-  Future<void> _loadFixtures() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    final savedKeys = _fixtures.where((f) => f.isSaved).map((f) => f.key).toSet();
+  Future<void> _persistSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    aw(ait prefs.setStringList('saved_slip_keys', _savedKeys.toList());
+  }
 
     List<FixtureModel> data = [];
     String? error;
@@ -78,7 +83,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     for (final f in data) {
-      f.isSaved = savedKeys.contains(f.key);
+      f.isSaved = _savedKeys.contains(f.key);
     }
 
     if (error == null) {
@@ -97,8 +102,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  void _toggleSave(FixtureModel fixture, {bool showMessage = true}) {
-    setState(() => fixture.isSaved = !fixture.isSaved);
+  setState(() {
+      fixture.isSaved = !fixture.isSaved;
+      final k = fixture.key;
+      if (k != null) {
+        if (fixture.isSaved) {
+          _savedKeys.add(k);
+        } else {
+          _savedKeys.remove(k);
+        }
+      }
+    });
+    _persistSaved();
     if (showMessage) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
