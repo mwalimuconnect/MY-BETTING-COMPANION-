@@ -46,9 +46,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _searchQuery = '';
   String _selectedLeague = 'All Leagues';
   String _statusFilter = 'All'; // 'All', 'Live', 'Upcoming', 'Finished'
-
   Set<String> _savedKeys = {};
- 
+
   @override
   void initState() {
     super.initState();
@@ -66,11 +65,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await prefs.setStringList('saved_slip_keys', _savedKeys.toList());
   }
 
+  Future<void> _loadFixtures() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
     List<FixtureModel> data = [];
     String? error;
 
-    // Two attempts: the first request may hit a sleeping Render server.
-    for (int attempt = 1; attempt <= 2; attempt++) {
+    // Retry a few times: the first request may hit a sleeping Render server.
+    for (int attempt = 1; attempt <= 3; attempt++) {
       try {
         data = await ApiService.fetchFixtures();
         error = null;
@@ -78,7 +83,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       } catch (e) {
         error = e.toString();
         debugPrint('Fetch attempt $attempt failed: $e');
-        if (attempt < 2) await Future.delayed(const Duration(seconds: 3));
+        if (attempt < 3) await Future.delayed(const Duration(seconds: 5));
       }
     }
 
@@ -100,8 +105,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _error = error;
       _isLoading = false;
     });
-  }
-
+  }  
+    
   void _toggleSave(FixtureModel fixture, {bool showMessage = true}) {
     setState(() {
       fixture.isSaved = !fixture.isSaved;
