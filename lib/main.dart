@@ -121,7 +121,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
     _persistSaved();
     if (showMessage) {
-    
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(fixture.isSaved
@@ -131,6 +130,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
+  }
+
+  // Method to display prediction breakdown insights bottom sheet
+  void _showMatchInsights(BuildContext context, FixtureModel fixture) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.between,
+                children: [
+                  Expanded(
+                    child: Text(
+                      "${fixture.homeTeam} vs ${fixture.awayTeam}",
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(),
+              const SizedBox(height: 10),
+              
+              // Prediction Breakdown Section
+              const Text("AI Prediction & Analysis", style: TextStyle(fontWeight: FontWeight.bold, color: kPrimary)),
+              const SizedBox(height: 8),
+              Text("Recommended Tip: ${fixture.topTip}"),
+              const SizedBox(height: 16),
+              
+              // Stats / Probabilities (using safe defaults if null)
+              _buildStatRow("Home Win Probability", "${fixture.homeWinProb ?? 50}%"),
+              _buildStatRow("Draw Probability", "${fixture.drawProb ?? 20}%"),
+              _buildStatRow("Away Win Probability", "${fixture.awayWinProb ?? 30}%"),
+              _buildStatRow("Both Teams to Score (BTTS)", fixture.btts ?? 'N/A'),
+              _buildStatRow("Over 2.5 Goals", fixture.over25 ?? 'N/A'),
+              
+              const SizedBox(height: 20),
+              const Text("Recent Form Analysis", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text("Home Form: ${fixture.homeForm != null ? fixture.homeForm.join(' - ') : 'N/A'}"),
+              Text("Away Form: ${fixture.awayForm != null ? fixture.awayForm.join(' - ') : 'N/A'}"),
+              
+              const SizedBox(height: 30),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.between,
+        children: [
+          Text(label, style: TextStyle(color: Colors.grey[700])),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -150,11 +223,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onStatusChanged: (s) => setState(() => _statusFilter = s),
         onRefresh: _loadFixtures,
         onToggleSave: _toggleSave,
+        onTapFixture: (f) => _showMatchInsights(context, f),
       ),
       PredictionsOutcomeTab(fixtures: _fixtures),
       SavedSlipsTab(
         savedFixtures: savedFixtures,
         onToggleSave: (f) => _toggleSave(f, showMessage: false),
+        onTapFixture: (f) => _showMatchInsights(context, f),
       ),
     ];
 
@@ -198,7 +273,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
 // ---------------------------------------------------------------------------
 // Competition filters (the 12 competitions on the football-data.org free plan)
 // ---------------------------------------------------------------------------
@@ -251,6 +325,7 @@ class MatchesAnalysisTab extends StatelessWidget {
   final Function(String) onStatusChanged;
   final Future<void> Function() onRefresh;
   final Function(FixtureModel) onToggleSave;
+  final Function(FixtureModel) onTapFixture;
 
   const MatchesAnalysisTab({
     Key? key,
@@ -265,6 +340,7 @@ class MatchesAnalysisTab extends StatelessWidget {
     required this.onStatusChanged,
     required this.onRefresh,
     required this.onToggleSave,
+    required this.onTapFixture,
   }) : super(key: key);
 
   static const List<String> _internationalKeywords = [
@@ -346,117 +422,6 @@ class MatchesAnalysisTab extends StatelessWidget {
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4)),
       child: Text(text,
           style: TextStyle(color: fg, fontSize: 9, fontWeight: FontWeight.bold)),
-    );
-  }
-
-  Widget _buildFixtureCard(FixtureModel fixture) {
-    return Card(
-      color: Colors.white,
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        fixture.league,
-                        style: const TextStyle(
-                            color: kPrimary, fontSize: 13, fontWeight: FontWeight.bold),
-                      ),
-                      if (fixture.isProlific)
-                        _badge('\u{1F525} PROLIFIC', Colors.orange.shade100, Colors.orange),
-                      if (fixture.isSample)
-                        _badge('SAMPLE', Colors.purple.shade100, Colors.purple.shade700)
-                      else if (fixture.isEstimate)
-                        _badge('ESTIMATE', Colors.blueGrey.shade100, Colors.blueGrey.shade700),
-                    ],
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (fixture.isFinished)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                            color: Colors.grey[700], borderRadius: BorderRadius.circular(4)),
-                        child: Text('FT: ${fixture.actualScore}',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold)),
-                      )
-                    else if (fixture.isLive)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                            color: Colors.red, borderRadius: BorderRadius.circular(4)),
-                        child: Text('LIVE: ${fixture.time}',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold)),
-                      )
-                    else
-                      Text(fixture.time,
-                          style: const TextStyle(
-                              color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(
-                        fixture.isSaved ? Icons.bookmark : Icons.bookmark_border,
-                        color: kPrimary,
-                        size: 20,
-                      ),
-                      onPressed: () => onToggleSave(fixture),
-                      constraints: const BoxConstraints(),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                Flexible(
-                  child: Text(fixture.homeTeam,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text('VS',
-                      style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                ),
-                Flexible(
-                  child: Text(fixture.awayTeam,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                ),
-              ],
-            ),
-            const Divider(height: 20),
-            Text(
-              'Tip: ${fixture.topTip}',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, color: Colors.black87),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -635,7 +600,17 @@ class MatchesAnalysisTab extends StatelessWidget {
               ),
               children: [
                 headerRow(),
-                ...entry.value.map(matchRow),
+                // Wrap each match row in a GestureDetector to trigger insights
+                ...entry.value.map((f) => TableRow(
+                  children: matchRow(f).children.asMap().entries.map((cellEntry) {
+                    // If it's the bookmark action cell, leave its own tap intact, else wrap row click
+                    if (cellEntry.key == 4) return cellEntry.value;
+                    return InkWell(
+                      onTap: () => onTapFixture(f),
+                      child: cellEntry.value,
+                    );
+                  }).toList(),
+                )),
               ],
             ),
           ),
@@ -729,76 +704,6 @@ class MatchesAnalysisTab extends StatelessWidget {
   }
 }
 
-void _showMatchInsights(BuildContext context, Fixture fixture) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (context) {
-      return Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.between,
-              children: [
-                Text(
-                  "${fixture.homeTeam} vs ${fixture.awayTeam}",
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const Divider(),
-            const SizedBox(height: 10),
-            
-            // Prediction Breakdown Section
-            const Text("AI Prediction & Analysis", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-            const SizedBox(height: 8),
-            Text("Recommended Tip: ${fixture.tip ?? 'No tip available'}"),
-            const SizedBox(height: 12),
-            
-            // Stats / Probabilities
-            _buildStatRow("Home Win Probability", "${fixture.homeWinProb ?? 50}%"),
-            _buildStatRow("Draw Probability", "${fixture.drawProb ?? 20}%"),
-            _buildStatRow("Away Win Probability", "${fixture.awayWinProb ?? 30}%"),
-            _buildStatRow("Both Teams to Score (BTTS)", fixture.btts ?? 'N/A'),
-            _buildStatRow("Over 2.5 Goals", fixture.over25 ?? 'N/A'),
-            
-            const SizedBox(height: 20),
-            const Text("Recent Form Analysis", style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text("Home Form: ${fixture.homeForm?.join(' - ') ?? 'N/A'}"),
-            Text("Away Form: ${fixture.awayForm?.join(' - ') ?? 'N/A'}"),
-            
-            const SizedBox(height: 30),
-          ],
-        ),
-      );
-    },
-  );
-}
-
-Widget _buildStatRow(String label, String value) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4.0),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.between,
-      children: [
-        Text(label, style: TextStyle(color: Colors.grey[700])),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-      ],
-    ),
-  );
-}
 // ---------------------------------------------------------------------------
 // Results & Accuracy tab
 // ---------------------------------------------------------------------------
@@ -963,11 +868,13 @@ class _PredictionsOutcomeTabState extends State<PredictionsOutcomeTab> {
 class SavedSlipsTab extends StatelessWidget {
   final List<FixtureModel> savedFixtures;
   final Function(FixtureModel) onToggleSave;
+  final Function(FixtureModel) onTapFixture;
 
   const SavedSlipsTab({
     Key? key,
     required this.savedFixtures,
     required this.onToggleSave,
+    required this.onTapFixture,
   }) : super(key: key);
 
   @override
@@ -990,6 +897,7 @@ class SavedSlipsTab extends StatelessWidget {
                       final fixture = savedFixtures[index];
                       return Card(
                         child: ListTile(
+                          onTap: () => onTapFixture(fixture),
                           title: Text('${fixture.homeTeam} vs ${fixture.awayTeam}'),
                           subtitle: Text('Tip: ${fixture.topTip}'),
                           trailing: IconButton(
@@ -1006,4 +914,3 @@ class SavedSlipsTab extends StatelessWidget {
     );
   }
 }
-
