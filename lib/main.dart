@@ -102,7 +102,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  setState(() {
+  void _toggleSave(FixtureModel fixture, {bool showMessage = true}) {
+    setState(() {
       fixture.isSaved = !fixture.isSaved;
       final k = fixture.key;
       if (k != null) {
@@ -115,6 +116,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
     _persistSaved();
     if (showMessage) {
+    
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(fixture.isSaved
