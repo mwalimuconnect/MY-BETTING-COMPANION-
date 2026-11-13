@@ -133,7 +133,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // Method to display prediction breakdown insights bottom sheet
-  void _showMatchInsights(BuildContext context, FixtureModel fixture) {
+    void _showMatchInsights(BuildContext context, FixtureModel fixture) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -149,7 +149,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               // Header
               Row(
-                mainAxisAlignment: MainAxisAlignment.between,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
                     child: Text(
@@ -170,20 +170,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const Text("AI Prediction & Analysis", style: TextStyle(fontWeight: FontWeight.bold, color: kPrimary)),
               const SizedBox(height: 8),
               Text("Recommended Tip: ${fixture.topTip}"),
+              if (fixture.tipProb != null) ...[
+                const SizedBox(height: 4),
+                Text("Confidence: ${fixture.tipProb}%"),
+              ],
               const SizedBox(height: 16),
               
-              // Stats / Probabilities (using safe defaults if null)
-              _buildStatRow("Home Win Probability", "${fixture.homeWinProb ?? 50}%"),
-              _buildStatRow("Draw Probability", "${fixture.drawProb ?? 20}%"),
-              _buildStatRow("Away Win Probability", "${fixture.awayWinProb ?? 30}%"),
-              _buildStatRow("Both Teams to Score (BTTS)", fixture.btts ?? 'N/A'),
-              _buildStatRow("Over 2.5 Goals", fixture.over25 ?? 'N/A'),
+              // Stats / Probabilities using exact model properties
+              _buildStatRow("Home Win Probability", "${fixture.homeWinProb}%"),
+              _buildStatRow("Draw Probability", "${fixture.drawProb}%"),
+              _buildStatRow("Away Win Probability", "${fixture.awayWinProb}%"),
+              _buildStatRow("Over 2.5 Goals", fixture.over25Goals),
+              _buildStatRow("Both Teams to Score (BTTS)", fixture.btts),
+              _buildStatRow("Card Risk", fixture.cardRisk),
+              _buildStatRow("Estimated Odds", "${fixture.odds}"),
               
               const SizedBox(height: 20),
               const Text("Recent Form Analysis", style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              Text("Home Form: ${fixture.homeForm != null ? fixture.homeForm.join(' - ') : 'N/A'}"),
-              Text("Away Form: ${fixture.awayForm != null ? fixture.awayForm.join(' - ') : 'N/A'}"),
+              Text("Home Form: ${fixture.homeForm.isNotEmpty ? fixture.homeForm.join(' - ') : 'N/A'}"),
+              Text("Away Form: ${fixture.awayForm.isNotEmpty ? fixture.awayForm.join(' - ') : 'N/A'}"),
               
               const SizedBox(height: 30),
             ],
@@ -197,7 +203,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.between,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: TextStyle(color: Colors.grey[700])),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
