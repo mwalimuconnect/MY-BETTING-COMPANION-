@@ -449,7 +449,7 @@ class MatchesAnalysisTab extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Tip: ${fixture.topTip} (Odds: ${fixture.odds})',
+                    'Tip: ${fixture.topTip}',
                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
                   ),
                 ),
@@ -802,7 +802,7 @@ class SavedSlipsTab extends StatelessWidget {
                       return Card(
                         child: ListTile(
                           title: Text('${fixture.homeTeam} vs ${fixture.awayTeam}'),
-                          subtitle: Text('Tip: ${fixture.topTip} (Odds: ${fixture.odds})'),
+                          subtitle: Text('Tip: ${fixture.topTip}'),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete, color: Colors.red),
                             onPressed: () => onToggleSave(fixture),
