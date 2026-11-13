@@ -615,6 +615,15 @@ class MatchesAnalysisTab extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Results & Accuracy tab
 // ---------------------------------------------------------------------------
+class PredictionsOutcomeTab extends StatefulWidget {
+  final List<FixtureModel> fixtures;
+
+  const PredictionsOutcomeTab({Key? key, required this.fixtures}) : super(key: key);
+
+  @override
+  State<PredictionsOutcomeTab> createState() => _PredictionsOutcomeTabState();
+}
+
 class _PredictionsOutcomeTabState extends State<PredictionsOutcomeTab> {
   List<LogEntry> _entries = [];
   bool _loading = true;
