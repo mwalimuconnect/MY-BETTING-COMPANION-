@@ -80,6 +80,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       f.isSaved = savedKeys.contains(f.key);
     }
 
+    if (error == null) {
+      try {
+        await PredictionLog.update(data);
+      } catch (e) {
+        debugPrint('Prediction log update failed: $e');
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       if (error == null) _fixtures = data; // keep old list if refresh failed
@@ -596,226 +604,161 @@ class MatchesAnalysisTab extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Results & Accuracy tab
 // ---------------------------------------------------------------------------
-class PredictionsOutcomeTab extends StatelessWidget {
+class PredictionsOutcomeTab extends StatefulWidget {
   final List<FixtureModel> fixtures;
 
   const PredictionsOutcomeTab({Key? key, required this.fixtures}) : super(key: key);
 
   @override
+  State<PredictionsOutcomeTab> createState() => _PredictionsOutcomeTabState();
+}
+
+class _PredictionsOutcomeTabState extends State<PredictionsOutcomeTab> {
+  List<LogEntry> _entries = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  @override
+  void didUpdateWidget(covariant PredictionsOutcomeTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.fixtures, widget.fixtures)) _reload();
+  }
+
+  Future<void> _reload() async {
+    final e = await PredictionLog.load();
+    if (!mounted) return;
+    setState(() {
+      _entries = e.reversed.toList(); // newest first
+      _loading = false;
+    });
+  }
+
+  Widget _chip(LogEntry e) {
+    String text;
+    Color bg;
+    Color fg;
+    if (!e.settled) {
+      text = 'PENDING';
+      bg = Colors.grey.shade200;
+      fg = Colors.grey.shade700;
+    } else if (e.isVoid) {
+      text = 'VOID';
+      bg = Colors.blueGrey.shade100;
+      fg = Colors.blueGrey.shade700;
+    } else if (e.won == true) {
+      text = 'WON';
+      bg = Colors.green.shade100;
+      fg = Colors.green.shade800;
+    } else {
+      text = 'LOST';
+      bg = Colors.red.shade100;
+      fg = Colors.red.shade800;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      child: Text(text,
+          style: TextStyle(color: fg, fontWeight: FontWeight.bold, fontSize: 12)),
+    );
+  }
+
+  Widget _summary(LogStats s) {
+    String pct(double v) => '${(v * 100).toStringAsFixed(1)}%';
+    final sign = s.profit >= 0 ? '+' : '';
+    return Card(
+      color: Colors.white,
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Logged: ${s.total}   Pending: ${s.pending}   Void: ${s.voided}',
+                style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 6),
+            Text('Settled: ${s.settled}   Won: ${s.wins}',
+                style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 6),
+            Text('Hit rate: ${s.settled == 0 ? '-' : pct(s.hitRate)}',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+                'Break-even rate (from odds): ${s.settled == 0 ? '-' : pct(s.breakEven)}',
+                style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+            Text(
+                'Profit at 1 unit per tip: ${s.settled == 0 ? '-' : '$sign${s.profit.toStringAsFixed(2)} units'}',
+                style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+            if (s.settled < 100) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Small sample: under ~100 settled tips, results are mostly luck.',
+                style: TextStyle(color: Colors.orange[800], fontSize: 11),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final finishedFixtures = fixtures.where((f) => f.isFinished).toList();
-    final hasEstimates = finishedFixtures.any((f) => f.isEstimate);
+    final stats = PredictionLog.stats(_entries);
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text('Prediction Log',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kPrimary)),
+          const SizedBox(height: 4),
           const Text(
-            'Predictions vs Outcomes Accuracy',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kPrimary),
+            'Tips are saved before kickoff and checked against the real final score.',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
           ),
-          if (hasEstimates) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Note: tips here are placeholder estimates, not real predictions yet.',
-              style: TextStyle(color: Colors.orange[800], fontSize: 12),
-            ),
-          ],
+          const SizedBox(height: 12),
+          _summary(stats),
           const SizedBox(height: 12),
           Expanded(
-            child: finishedFixtures.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No finished matches available for outcome comparison yet.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                : SingleChildScrollView(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        headingRowColor: WidgetStateProperty.all(const Color(0xFFE8F1FF)),
-                        columns: const [
-                          DataColumn(
-                              label: Text('Fixture',
-                                  style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(
-                              label: Text('AI Tip',
-                                  style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(
-                              label: Text('Actual Score',
-                                  style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(
-                              label: Text('Result',
-                                  style: TextStyle(fontWeight: FontWeight.bold))),
-                        ],
-                        rows: finishedFixtures.map((f) {
-                          final isWon = f.predictionCorrect ?? false;
-                          return DataRow(cells: [
-                            DataCell(Text('${f.homeTeam} vs ${f.awayTeam}')),
-                            DataCell(Text(f.topTip)),
-                            DataCell(Text(f.actualScore)),
-                            DataCell(
-                              Container(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: isWon ? Colors.green.shade100 : Colors.red.shade100,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  isWon ? 'WON \u2705' : 'LOST \u274C',
-                                  style: TextStyle(
-                                    color: isWon ? Colors.green[800] : Colors.red[800],
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _entries.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Nothing logged yet. Open the Analyzer tab and upcoming matches will be recorded automatically.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _entries.length,
+                        itemBuilder: (context, i) {
+                          final e = _entries[i];
+                          return Card(
+                            child: ListTile(
+                              title: Text('${e.home} vs ${e.away}',
+                                  style: const TextStyle(fontSize: 14)),
+                              subtitle: Text(
+                                  '${e.tip} (odds ${e.odds})${e.settled ? '  •  FT ${e.score}' : '  •  ${e.kickoff}'}',
+                                  style: const TextStyle(fontSize: 12)),
+                              trailing: _chip(e),
                             ),
-                          ]);
-                        }).toList(),
+                          );
+                        },
                       ),
-                    ),
-                  ),
           ),
         ],
       ),
     );
   }
 }
-
-class ResultsAccuracyTab extends StatelessWidget {
-  final List<FixtureModel> fixtures;
-
-  const ResultsAccuracyTab({Key? key, required this.fixtures}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // Filter finished matches, focusing primarily on Prolific Basket matches if desired
-    final finishedFixtures = fixtures
-        .where((f) => f.isFinished == true && f.isProlific == true)
-        .toList();
-
-    // Fallback to all finished matches if no prolific ones are finished yet
-    final displayFixtures = finishedFixtures.isNotEmpty 
-        ? finishedFixtures 
-        : fixtures.where((f) => f.isFinished == true).toList();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Prolific Basket: Predictions vs Outcomes',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueAccent,
-            ),
-          ),
-          const SizedBox(height: 12),
-          displayFixtures.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32.0),
-                    child: Text(
-                      'No finished matches available for outcome comparison yet.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                )
-              : Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: DataTable(
-                      headingRowColor: MaterialStateProperty.all(
-                        Colors.blue.withOpacity(0.1),
-                      ),
-                      columns: [
-                        DataLabelColumn('Match'),
-                        DataLabelColumn('Tip / Prediction'),
-                        DataLabelColumn('Score'),
-                        DataLabelColumn('Status'),
-                      ],
-                      rows: displayFixtures.map((fixture) {
-                        final isCorrect = fixture.predictionCorrect ?? false;
-                        return DataRow(
-                          cells: [
-                            DataCell(
-                              Text(
-                                '${fixture.homeTeam} vs\n${fixture.awayTeam}',
-                                style: const TextStyle(fontWeight: FontWeight.w500),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                fixture.topTip,
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                fixture.actualScore,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            DataCell(
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isCorrect
-                                      ? Colors.green.withOpacity(0.15)
-                                      : Colors.red.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  isCorrect ? 'WON' : 'LOST',
-                                  style: TextStyle(
-                                    color: isCorrect ? Colors.green[800] : Colors.red[800],
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ),
-        ],
-      ),
-    );
-  }
-}
-
-// Helper wrapper for table column headers (non-const to accept dynamic strings safely)
-class DataLabelColumn extends DataColumn {
-  DataLabelColumn(String labelText)
-      : super(
-          label: Text(
-            labelText,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-        );
-      }
-
-                                                     
+                                                                                                 
 // ---------------------------------------------------------------------------
 // Saved Slips tab
 // ---------------------------------------------------------------------------
