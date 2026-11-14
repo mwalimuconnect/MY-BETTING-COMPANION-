@@ -98,6 +98,41 @@ class NotificationService {
     }
   }
 
+  /// Scans fixtures and sends an immediate notification if an accumulator 
+  /// slip targeting 5.00 - 10.00 odds is successfully generated.
+  static Future<void> checkAndNotifyAutoSlip(List<dynamic> fixtures) async {
+    if (!_ready) return;
+
+    double cumulativeOdds = 1.0;
+    int selectionCount = 0;
+
+    for (final f in fixtures) {
+      double odds = 1.5; // Fallback odds or pull from model property
+      try {
+        if (f is Map && f['odds'] != null) {
+          odds = double.tryParse(f['odds'].toString()) ?? 1.5;
+        } else if (f is FixtureModel) {
+          // Adjust if your model exposes an odds field
+          odds = 1.6; 
+        }
+      } catch (_) {}
+
+      if (cumulativeOdds * odds <= 12.0) {
+        cumulativeOdds *= odds;
+        selectionCount++;
+      }
+
+      // Check if cumulative odds fall inside the target [5.00 - 10.00] window
+      if (cumulativeOdds >= 5.00 && cumulativeOdds <= 10.00) {
+        await showNow(
+          '🔥 Prolific Slip Ready!',
+          'Your accumulator slip with total odds of ${cumulativeOdds.toStringAsFixed(2)}x ($selectionCount matches) is ready!',
+        );
+        break; // Triggered once per check
+      }
+    }
+  }
+
   static Future<void> cancelAll() async {
     if (!_ready) return;
     try {
