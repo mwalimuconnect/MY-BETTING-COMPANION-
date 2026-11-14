@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fixture_model.dart';
 
@@ -14,6 +15,75 @@ bool? evaluateTip(String tip, String home, String away, String score) {
   if (tip == '$home Win') return h > a;
   if (tip == '$away Win') return a > h;
   return null;
+}
+
+/// Helper widget to render the PROLIFIC 🔥 header in bold Teal Green capital letters
+Widget buildProlificHeader() {
+  return const Padding(
+    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+    child: Text(
+      'PROLIFIC 🔥',
+      style: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF008080), // Teal Green
+        letterSpacing: 1.2,
+      ),
+    ),
+  );
+}
+
+/// Helper builder to render your logged prediction items cleanly
+Widget buildPredictionLogList(List<LogEntry> entries) {
+  if (entries.isEmpty) {
+    return const Padding(
+      padding: EdgeInsets.all(24),
+      child: Text(
+        'No prediction logs found.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.grey),
+      ),
+    );
+  }
+
+  return ListView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: entries.length,
+    itemBuilder: (context, index) {
+      final entry = entries[index];
+      
+      Color statusColor = Colors.orange;
+      String statusText = 'Pending';
+      if (entry.settled) {
+        if (entry.isVoid) {
+          statusColor = Colors.grey;
+          statusText = 'Void';
+        } else if (entry.won == true) {
+          statusColor = Colors.green;
+          statusText = 'Won';
+        } else {
+          statusColor = Colors.red;
+          statusText = 'Lost';
+        }
+      }
+
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: ListTile(
+          title: Text('${entry.home} vs ${entry.away}'),
+          subtitle: Text('Tip: ${entry.tip} | League: ${entry.league}'),
+          trailing: Chip(
+            label: Text(
+              statusText,
+              style: const TextStyle(color: Colors.white, fontSize: 10),
+            ),
+            backgroundColor: statusColor,
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class LogEntry {
