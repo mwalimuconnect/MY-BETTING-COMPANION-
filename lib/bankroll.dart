@@ -422,7 +422,7 @@ class _BankrollTabState extends State<BankrollTab> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return Padding(
+        return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,9 +430,10 @@ class _BankrollTabState extends State<BankrollTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Bankroll',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold, color: kPrimary)),
+              const Text(
+                'Bankroll',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kPrimary),
+              ),
               Row(
                 children: [
                   IconButton(
@@ -443,7 +444,7 @@ class _BankrollTabState extends State<BankrollTab> {
                   ElevatedButton.icon(
                     onPressed: _addBet,
                     icon: const Icon(Icons.add),
-                    label: const Text('Add bet'),
+                    label: const Text('Add Bet'),
                   ),
                 ],
               ),
@@ -459,7 +460,7 @@ class _BankrollTabState extends State<BankrollTab> {
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      'No bets logged yet. Tap "Add bet" to record a stake and its odds, then mark it won or lost when it finishes.',
+                      'No bets logged yet. Tap "Add bet" to record a stake and its odds, then mark it won or lost when finished.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: mutedText(context)),
                     ),
@@ -480,8 +481,7 @@ class _BankrollTabState extends State<BankrollTab> {
                             PopupMenuItem(value: 'won', child: Text('Mark won')),
                             PopupMenuItem(value: 'lost', child: Text('Mark lost')),
                             PopupMenuItem(value: 'void', child: Text('Mark void')),
-                            PopupMenuItem(
-                                value: 'pending', child: Text('Mark pending')),
+                            PopupMenuItem(value: 'pending', child: Text('Mark pending')),
                             PopupMenuItem(value: 'delete', child: Text('Delete')),
                           ],
                         ),
@@ -489,7 +489,7 @@ class _BankrollTabState extends State<BankrollTab> {
                     ),
                 const SizedBox(height: 16),
                 Text(
-                  'Only bet what you can afford to lose. Tips are model estimates, not guarantees. If betting stops being fun, take a break.',
+                  'Only bet what you can afford to lose. Tips are model estimates, not guarantees.',
                   style: TextStyle(color: mutedText(context), fontSize: 11),
                 ),
                 const SizedBox(height: 24),
@@ -500,4 +500,7 @@ class _BankrollTabState extends State<BankrollTab> {
       ),
     );
   }
-}
+
+  String _betSubtitle(dynamic b) {
+    return 'Stake: ${b.stake} | Odds: ${b.odds}';
+  }
