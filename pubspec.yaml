@@ -15,11 +15,17 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # Modern compatible versions
+  # Networking & Storage
   http: ^1.2.0
+  shared_preferences: ^2.2.3
+
+  # Utilities & Views
   url_launcher: ^6.2.5
   webview_flutter: ^4.7.0
-  shared_preferences: ^2.2.3
+
+  # Notifications & Timezones (Required for kickoff reminders)
+  flutter_local_notifications: ^17.1.2
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:
