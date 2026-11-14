@@ -1,11 +1,39 @@
+class H2HEntry {
+  final String date;
+  final String home;
+  final String away;
+  final String score;
+
+  const H2HEntry({
+    required this.date,
+    required this.home,
+    required this.away,
+    required this.score,
+  });
+
+  factory H2HEntry.fromJson(Map<String, dynamic> json) {
+    return H2HEntry(
+      date: json['date']?.toString() ?? '',
+      home: json['home']?.toString() ?? '',
+      away: json['away']?.toString() ?? '',
+      score: json['score']?.toString() ?? '',
+    );
+  }
+}
+
 class FixtureModel {
   final String? key;
+  final String utcDate; // ISO time of kickoff (UTC)
+  final String competitionCode;
+  final String dateLabel; // e.g. "Thu 19 Nov"
+  final String kickoffTime; // e.g. "01:30 EAT"
   final String league;
   final String time;
   final String homeTeam;
   final String awayTeam;
   final List<String> homeForm;
   final List<String> awayForm;
+  final List<H2HEntry> h2h;
   final int homeWinProb;
   final int drawProb;
   final int awayWinProb;
@@ -26,12 +54,17 @@ class FixtureModel {
 
   FixtureModel({
     this.key,
+    this.utcDate = '',
+    this.competitionCode = '',
+    this.dateLabel = '',
+    this.kickoffTime = '',
     required this.league,
     required this.time,
     required this.homeTeam,
     required this.awayTeam,
     required this.homeForm,
     required this.awayForm,
+    this.h2h = const [],
     required this.homeWinProb,
     required this.drawProb,
     required this.awayWinProb,
@@ -50,6 +83,12 @@ class FixtureModel {
     this.isEstimate = false,
     this.isSaved = false,
   });
+
+  /// Kickoff as a DateTime (UTC), or null if the server did not send it.
+  DateTime? get kickoff => DateTime.tryParse(utcDate);
+
+  /// True when the server produced a real prediction for this match.
+  bool get hasPrediction => (homeWinProb + drawProb + awayWinProb) > 0;
 
   /// Reads a JSON number (int or double) safely as an int.
   static int _toInt(dynamic value, int fallback) {
@@ -71,15 +110,31 @@ class FixtureModel {
     return fallback;
   }
 
+  static List<H2HEntry> _toH2H(dynamic value) {
+    if (value is! List) return const [];
+    final out = <H2HEntry>[];
+    for (final e in value) {
+      if (e is Map) {
+        out.add(H2HEntry.fromJson(Map<String, dynamic>.from(e)));
+      }
+    }
+    return out;
+  }
+
   factory FixtureModel.fromJson(Map<String, dynamic> json) {
     return FixtureModel(
       key: json['key']?.toString() ?? '${json['homeTeam']}_${json['awayTeam']}',
+      utcDate: json['utcDate']?.toString() ?? '',
+      competitionCode: json['competitionCode']?.toString() ?? '',
+      dateLabel: json['dateLabel']?.toString() ?? '',
+      kickoffTime: json['kickoffTime']?.toString() ?? '',
       league: json['league']?.toString() ?? '',
       time: json['time']?.toString() ?? '',
       homeTeam: json['homeTeam']?.toString() ?? '',
       awayTeam: json['awayTeam']?.toString() ?? '',
       homeForm: _toStringList(json['homeForm'], []),
       awayForm: _toStringList(json['awayForm'], []),
+      h2h: _toH2H(json['h2h']),
       homeWinProb: _toInt(json['homeWinProb'], 0),
       drawProb: _toInt(json['drawProb'], 0),
       awayWinProb: _toInt(json['awayWinProb'], 0),
