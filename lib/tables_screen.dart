@@ -13,12 +13,16 @@ class _TablesScreenState extends State<TablesScreen> with SingleTickerProviderSt
   late TabController _tabController;
   String _selectedLeague = 'PL'; // Default competition code
 
+  // Expanded list of popular leagues and competitions
   final Map<String, String> _leagues = {
     'PL': 'Premier League',
     'CL': 'Champions League',
     'PD': 'La Liga',
     'SA': 'Serie A',
     'BL1': 'Bundesliga',
+    'FL1': 'Ligue 1',
+    'DED': 'Eredivisie',
+    'PPL': 'Primeira Liga',
   };
 
   @override
@@ -140,37 +144,35 @@ class LeagueStandingsView extends StatelessWidget {
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   elevation: 1,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: group.rows.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, color: lineColor(context)),
-                    itemBuilder: (context, rIndex) {
-                      final row = group.rows[rIndex];
-                      return ListTile(
-                        dense: true,
-                        leading: Container(
-                          width: 28,
-                          alignment: Alignment.center,
-                          child: Text(
-                            '${row.position}',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: mutedText(context)),
-                          ),
-                        ),
-                        title: Text(
-                          row.team,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                        ),
-                        subtitle: Text(
-                          'P: ${row.played}  W: ${row.won}  D: ${row.draw}  L: ${row.lost}  GD: ${row.goalDifference > 0 ? "+${row.goalDifference}" : row.goalDifference}',
-                          style: TextStyle(fontSize: 11, color: mutedText(context)),
-                        ),
-                        trailing: Text(
-                          '${row.points} pts',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kPrimary),
-                        ),
-                      );
-                    },
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columnSpacing: 16,
+                      columns: const [
+                        DataColumn(label: Text('Pos', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('Team', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('P', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('GF', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('GA', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('GD', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('YC', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('RC', style: TextStyle(fontWeight: FontWeight.bold))),
+                        DataColumn(label: Text('Pts', style: TextStyle(fontWeight: FontWeight.bold, color: kPrimary))),
+                      ],
+                      rows: group.rows.map((row) {
+                        return DataRow(cells: [
+                          DataCell(Text('${row.position}', style: TextStyle(fontWeight: FontWeight.bold, color: mutedText(context)))),
+                          DataCell(Text(row.team, style: const TextStyle(fontWeight: FontWeight.w600))),
+                          DataCell(Text('${row.played}')),
+                          DataCell(Text('${row.goalsFor}')),
+                          DataCell(Text('${row.goalsAgainst}')),
+                          DataCell(Text(row.goalDifference > 0 ? '+${row.goalDifference}' : '${row.goalDifference}')),
+                          DataCell(Text('${row.yellowCards}', style: const TextStyle(color: Colors.amber))),
+                          DataCell(Text('${row.redCards}', style: const TextStyle(color: Colors.red))),
+                          DataCell(Text('${row.points}', style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary))),
+                        ]);
+                      }).toList(),
+                    ),
                   ),
                 ),
               ],
