@@ -7,6 +7,7 @@ import 'league_data.dart';
 import 'notification_service.dart';
 import 'prediction_log.dart';
 import 'slip_store.dart';
+import 'tables_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
