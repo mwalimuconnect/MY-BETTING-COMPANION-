@@ -57,7 +57,7 @@ class StandingRow {
 }
 
 class StandingGroup {
-  final String name; // empty for normal leagues, "GROUP A" etc. for tournaments
+  final String name;
   final List<StandingRow> rows;
 
   const StandingGroup({required this.name, required this.rows});
