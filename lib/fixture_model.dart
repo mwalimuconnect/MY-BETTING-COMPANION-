@@ -4,8 +4,32 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'api_service.dart';
-import 'slip_generator.dart';
+import 'app_settings.dart';
 import 'notification_service.dart';
+import 'slip_generator.dart';
+
+class H2HEntry {
+  final String date;
+  final String home;
+  final String away;
+  final String score;
+
+  const H2HEntry({
+    required this.date,
+    required this.home,
+    required this.away,
+    required this.score,
+  });
+
+  factory H2HEntry.fromJson(Map<String, dynamic> json) {
+    return H2HEntry(
+      date: json['date']?.toString() ?? '',
+      home: json['home']?.toString() ?? '',
+      away: json['away']?.toString() ?? '',
+      score: json['score']?.toString() ?? '',
+    );
+  }
+}
 
 class FixtureModel {
   final String? key;
@@ -15,19 +39,37 @@ class FixtureModel {
   final DateTime? time; // Alias for kickoff required by UI
   final bool isLive;
   final bool isFinished;
-  final double odds;
-  final String prediction;
+  final double odds; // 0 = no real bookmaker odds available
+  final String prediction; // same as topTip
   final String league;
-  
-  // UI Properties and Getters
+
+  // UI properties
   final bool hasPrediction;
-  final String topTip;
-  final double tipProb;
+  final String topTip; // empty when the model has no clear tip
+  final double tipProb; // 0 when there is no tip
   final double homeWinProb;
   final double drawProb;
   final double awayWinProb;
 
-  const FixtureModel({
+  // Extra data from the server (all optional)
+  final String utcDate; // ISO kickoff time (UTC)
+  final String competitionCode;
+  final String dateLabel; // e.g. "Thu 19 Nov"
+  final String kickoffTime; // e.g. "01:30 EAT"
+  final String actualScore; // e.g. "2-1", or "Pending"
+  final List<String> homeForm;
+  final List<String> awayForm;
+  final List<H2HEntry> h2h;
+  final String over25Goals;
+  final String btts;
+  final String cardRisk;
+  final bool isProlific;
+  final bool isSample;
+  final bool isEstimate;
+  final bool? predictionCorrect;
+  bool isSaved;
+
+  FixtureModel({
     required this.key,
     required this.homeTeam,
     required this.awayTeam,
@@ -44,21 +86,65 @@ class FixtureModel {
     required this.homeWinProb,
     required this.drawProb,
     required this.awayWinProb,
+    this.utcDate = '',
+    this.competitionCode = '',
+    this.dateLabel = '',
+    this.kickoffTime = '',
+    this.actualScore = 'Pending',
+    this.homeForm = const [],
+    this.awayForm = const [],
+    this.h2h = const [],
+    this.over25Goals = 'N/A',
+    this.btts = 'N/A',
+    this.cardRisk = 'N/A',
+    this.isProlific = false,
+    this.isSample = false,
+    this.isEstimate = false,
+    this.predictionCorrect,
+    this.isSaved = false,
   });
 
-  factory FixtureModel.fromJson(Map<String, dynamic> j) {
-    DateTime? parsedTime;
-    try {
-      if (j['kickoff'] != null) {
-        parsedTime = DateTime.parse(j['kickoff'].toString());
-      } else if (j['time'] != null) {
-        parsedTime = DateTime.parse(j['time'].toString());
-      }
-    } catch (_) {}
+  /// Text such as "Thu 19 Nov, 01:30 EAT" (empty if the server sent no date).
+  String get timeLabel {
+    if (dateLabel.isEmpty) return kickoffTime;
+    if (kickoffTime.isEmpty) return dateLabel;
+    return '$dateLabel, $kickoffTime';
+  }
 
-    String tip = j['topTip']?.toString() ?? 
-                 j['toptip']?.toString() ?? 
-                 j['prediction']?.toString() ?? '1X';
+  /// Tip confidence as a whole number, or null when there is no tip.
+  int? get tipProbInt => tipProb > 0 ? tipProb.round() : null;
+
+  static double _d(dynamic v, double fallback) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? fallback;
+    return fallback;
+  }
+
+  static List<String> _list(dynamic v) {
+    if (v is List) return v.map((e) => e.toString()).toList();
+    return <String>[];
+  }
+
+  static List<H2HEntry> _h2h(dynamic v) {
+    if (v is! List) return const [];
+    final out = <H2HEntry>[];
+    for (final e in v) {
+      if (e is Map) out.add(H2HEntry.fromJson(Map<String, dynamic>.from(e)));
+    }
+    return out;
+  }
+
+  factory FixtureModel.fromJson(Map<String, dynamic> j) {
+    final String utc = j['utcDate']?.toString() ?? '';
+
+    DateTime? parsedTime = DateTime.tryParse(utc);
+    parsedTime ??= j['kickoff'] != null ? DateTime.tryParse(j['kickoff'].toString()) : null;
+
+    // No invented predictions: if the server has no tip, these stay empty/zero.
+    final String tip = j['topTip']?.toString() ?? j['prediction']?.toString() ?? '';
+    final double home = _d(j['homeWinProb'], 0);
+    final double draw = _d(j['drawProb'], 0);
+    final double away = _d(j['awayWinProb'], 0);
 
     return FixtureModel(
       key: j['key']?.toString() ?? j['id']?.toString(),
@@ -68,25 +154,43 @@ class FixtureModel {
       time: parsedTime,
       isLive: j['isLive'] == true,
       isFinished: j['isFinished'] == true,
-      odds: j['odds'] is num ? (j['odds'] as num).toDouble() : 1.65,
-      prediction: j['prediction']?.toString() ?? '1X',
+      odds: _d(j['odds'], 0),
+      prediction: tip,
       league: j['league']?.toString() ?? 'General League',
-      hasPrediction: j['hasPrediction'] == true || j['prediction'] != null,
+      hasPrediction: (home + draw + away) > 0,
       topTip: tip,
-      tipProb: j['tipProb'] is num ? (j['tipProb'] as num).toDouble() : 75.0,
-      homeWinProb: j['homeWinProb'] is num ? (j['homeWinProb'] as num).toDouble() : 45.0,
-      drawProb: j['drawProb'] is num ? (j['drawProb'] as num).toDouble() : 25.0,
-      awayWinProb: j['awayWinProb'] is num ? (j['awayWinProb'] as num).toDouble() : 30.0,
+      tipProb: _d(j['tipProb'], 0),
+      homeWinProb: home,
+      drawProb: draw,
+      awayWinProb: away,
+      utcDate: utc,
+      competitionCode: j['competitionCode']?.toString() ?? '',
+      dateLabel: j['dateLabel']?.toString() ?? '',
+      kickoffTime: j['kickoffTime']?.toString() ?? '',
+      actualScore: j['actualScore']?.toString() ?? 'Pending',
+      homeForm: _list(j['homeForm']),
+      awayForm: _list(j['awayForm']),
+      h2h: _h2h(j['h2h']),
+      over25Goals: j['over25Goals']?.toString() ?? 'N/A',
+      btts: j['btts']?.toString() ?? 'N/A',
+      cardRisk: j['cardRisk']?.toString() ?? 'N/A',
+      isProlific: j['isProlific'] == true,
+      isSample: j['isSample'] == true,
+      isEstimate: j['isEstimate'] == true,
+      predictionCorrect:
+          j['predictionCorrect'] is bool ? j['predictionCorrect'] as bool : null,
     );
   }
 }
 
 class FixtureApi {
+  static String _lastSlipSignature = '';
+
   static Future<List<FixtureModel>> fetchFixtures() async {
     try {
       final res = await http
           .get(Uri.parse('$kApiBase/api/fixtures'))
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 45));
 
       if (res.statusCode != 200) {
         throw Exception('Failed to load fixtures: ${res.statusCode}');
@@ -116,16 +220,24 @@ class FixtureApi {
     }
   }
 
+  /// Tells the user about a suggested slip, but only if notifications are on
+  /// and only once per distinct slip (not on every refresh).
   static void _processAutoSlipCheck(List<FixtureModel> fixtures) {
     try {
-      final generatedSlip = SlipGenerator.generateTargetSlip(fixtures);
+      if (!AppSettings.notificationsOn.value) return;
 
-      if (generatedSlip != null) {
-        NotificationService.showNow(
-          generatedSlip.title,
-          'Target odds reached (${generatedSlip.totalOdds}x)! Tap to view selections.',
-        );
-      }
+      final generatedSlip = SlipGenerator.generateTargetSlip(fixtures);
+      if (generatedSlip == null) return;
+
+      final signature =
+          generatedSlip.selections.map((s) => s['match'].toString()).join('|');
+      if (signature == _lastSlipSignature) return;
+      _lastSlipSignature = signature;
+
+      NotificationService.showNow(
+        generatedSlip.title,
+        'Suggested slip: ${generatedSlip.totalOdds}x (model odds). Open the app to view selections.',
+      );
     } catch (e) {
       debugPrint('Auto slip generation error: $e');
     }
