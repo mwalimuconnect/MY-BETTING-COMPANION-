@@ -1,62 +1,72 @@
-import 'package:flutter/material.dart';
+import 'fixture_model.dart';
 
 class GeneratedSlip {
   final String title;
   final double totalOdds;
-  final List> selections;
+  final List<Map<String, dynamic>> selections;
+
+  /// Reminder that these are not bookmaker odds.
+  final String note;
 
   GeneratedSlip({
     required this.title,
     required this.totalOdds,
     required this.selections,
+    this.note =
+        'Odds are model-implied (100 divided by win probability), not bookmaker odds.',
   });
 }
 
+class _Candidate {
+  final String match;
+  final String prediction;
+  final double odds; // model-implied "fair" odds
+  final num prob;
+
+  _Candidate(this.match, this.prediction, this.odds, this.prob);
+}
+
 class SlipGenerator {
-  /// Scans available fixtures/predictions and builds an accumulator slip
-  /// targeting cumulative odds between 5.00 and 10.00
+  /// Builds an accumulator from upcoming matches that have a model tip,
+  /// most confident first, aiming for combined odds between 5.00 and 10.00.
   static GeneratedSlip? generateTargetSlip(List<dynamic> availableFixtures) {
-    final List> selectedBets = [];
+    final List<_Candidate> candidates = [];
+
+    for (final fixture in availableFixtures) {
+      if (fixture is! FixtureModel) continue;
+      if (fixture.isFinished || fixture.isLive) continue;
+
+      final num? prob = fixture.tipProb;
+      if (fixture.topTip.isEmpty || prob == null || prob <= 0) continue;
+
+      final double odds = 100 / prob.toDouble();
+      candidates.add(_Candidate(
+        '${fixture.homeTeam} vs ${fixture.awayTeam}',
+        fixture.topTip,
+        odds,
+        prob,
+      ));
+    }
+
+    // Most confident tips first.
+    candidates.sort((a, b) => b.prob.compareTo(a.prob));
+
+    final List<Map<String, dynamic>> selectedBets = [];
     double cumulativeOdds = 1.0;
 
-    for (var fixture in availableFixtures) {
-      double odds = 1.5;
-      try {
-        if (fixture is Map && fixture['odds'] != null) {
-          odds = double.tryParse(fixture['odds'].toString()) ?? 1.5;
-        } else {
-          odds = (fixture as dynamic).odds ?? 1.5;
-        }
-      } catch (_) {}
+    for (final c in candidates) {
+      if (cumulativeOdds * c.odds > 12.0) continue;
 
-      if (cumulativeOdds * odds <= 12.0) {
-        String home = 'Home';
-        String away = 'Away';
-        String pred = 'Win';
-
-        if (fixture is Map) {
-          home = fixture['homeTeam']?.toString() ?? 'Home';
-          away = fixture['awayTeam']?.toString() ?? 'Away';
-          pred = fixture['prediction']?.toString() ?? 'Win';
-        } else {
-          try {
-            home = (fixture as dynamic).homeTeam ?? 'Home';
-            away = (fixture as dynamic).awayTeam ?? 'Away';
-            pred = (fixture as dynamic).prediction ?? 'Win';
-          } catch (_) {}
-        }
-
-        selectedBets.add({
-          'match': '$home vs $away',
-          'prediction': pred,
-          'odds': odds,
-        });
-        cumulativeOdds *= odds;
-      }
+      selectedBets.add({
+        'match': c.match,
+        'prediction': c.prediction,
+        'odds': double.parse(c.odds.toStringAsFixed(2)),
+      });
+      cumulativeOdds *= c.odds;
 
       if (cumulativeOdds >= 5.00 && cumulativeOdds <= 10.00) {
         return GeneratedSlip(
-          title: '🔥 Prolific Value Accumulator',
+          title: '馃敟 Prolific Value Accumulator',
           totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
           selections: selectedBets,
         );
@@ -65,7 +75,7 @@ class SlipGenerator {
 
     if (selectedBets.isNotEmpty && cumulativeOdds >= 3.0) {
       return GeneratedSlip(
-        title: '⚡ Custom Combo Slip',
+        title: '鈿� Custom Combo Slip',
         totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
         selections: selectedBets,
       );
