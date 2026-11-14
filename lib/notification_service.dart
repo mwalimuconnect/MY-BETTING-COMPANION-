@@ -107,13 +107,12 @@ class NotificationService {
     int selectionCount = 0;
 
     for (final f in fixtures) {
-      double odds = 1.5; // Fallback odds or pull from model property
+      double odds = 1.5; // Fallback odds
       try {
         if (f is Map && f['odds'] != null) {
           odds = double.tryParse(f['odds'].toString()) ?? 1.5;
         } else if (f is FixtureModel) {
-          // Adjust if your model exposes an odds field
-          odds = 1.6; 
+          odds = f.odds; // Pulls the exact odds property from your model
         }
       } catch (_) {}
 
