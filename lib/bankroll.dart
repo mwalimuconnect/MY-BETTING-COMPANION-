@@ -1,6 +1,103 @@
 import 'package:flutter/material.dart';
 import 'app_settings.dart';
 
+class UserProfileCard extends StatelessWidget {
+  final String name;
+  final String phoneNumber;
+  final VoidCallback? onEditPhoto;
+
+  const UserProfileCard({
+    super.key,
+    required this.name,
+    required this.phoneNumber,
+    this.onEditPhoto,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: cardBg(context),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          children: [
+            // Photo Box / Avatar
+            Stack(
+              children: [
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    size: 40,
+                    color: Color(0xFF008080), // Teal Green
+                  ),
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: InkWell(
+                    onTap: onEditPhoto,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF008080),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 16),
+            // User Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.isNotEmpty ? name : 'User Profile',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.phone, size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(
+                        phoneNumber.isNotEmpty ? phoneNumber : '+254712489816',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: mutedText(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class BankrollTab extends StatefulWidget {
   const BankrollTab({super.key});
 
@@ -147,6 +244,11 @@ class _BankrollTabState extends State<BankrollTab> {
           Expanded(
             child: ListView(
               children: [
+                const UserProfileCard(
+                  name: 'Samuel Moturi Oino',
+                  phoneNumber: '+254712489816',
+                ),
+                const SizedBox(height: 12),
                 _summaryCard(),
                 const SizedBox(height: 12),
                 if (_bets.isEmpty)
