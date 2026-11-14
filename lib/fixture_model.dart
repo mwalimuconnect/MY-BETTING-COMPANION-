@@ -15,6 +15,7 @@ class FixtureModel {
   final bool isFinished;
   final double odds;
   final String prediction;
+  final String league;
 
   const FixtureModel({
     required this.key,
@@ -25,6 +26,7 @@ class FixtureModel {
     required this.isFinished,
     required this.odds,
     required this.prediction,
+    required this.league,
   });
 
   factory FixtureModel.fromJson(Map<String, dynamic> j) {
@@ -44,6 +46,7 @@ class FixtureModel {
       isFinished: j['isFinished'] == true,
       odds: j['odds'] is num ? (j['odds'] as num).toDouble() : 1.65,
       prediction: j['prediction']?.toString() ?? '1X',
+      league: j['league']?.toString() ?? 'General',
     );
   }
 }
