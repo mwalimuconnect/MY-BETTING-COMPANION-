@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'fixture_model.dart';
 
+/// Base address of your Render server (shared by fixtures, tables and scorers).
+const String kApiBase = 'https://my-betting-companion.onrender.com';
+
 class ApiService {
-  static const String apiUrl =
-      'https://my-betting-companion.onrender.com/api/fixtures';
+  static const String apiUrl = '$kApiBase/api/fixtures';
 
   /// Fetches fixtures from the backend. Throws a readable Exception on failure
   /// so the dashboard can show the error and the Retry button.
