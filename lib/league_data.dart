@@ -132,7 +132,7 @@ class LeagueApi {
     return out;
   }
 
-  static Future> _get(String kind, String code) async {
+  static Future _get(String kind, String code) async {
     final cacheKey = '$kind:$code';
     final cached = _cache[cacheKey];
     if (cached != null && DateTime.now().difference(cached.at) < _ttl) {
