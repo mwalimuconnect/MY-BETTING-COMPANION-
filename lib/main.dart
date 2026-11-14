@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
 import 'api_service.dart';
 import 'fixture_model.dart';
@@ -6,8 +8,11 @@ import 'bankroll.dart';
 import 'league_data.dart';
 import 'notification_service.dart';
 import 'prediction_log.dart';
+import 'slip_generator.dart';
 import 'slip_store.dart';
 import 'tables_screen.dart';
+
+const Color kTealGreen = Color(0xFF008080);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +55,108 @@ class MyBettingCompanionApp extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Suggested slip (5-10 combined odds), built automatically from fixtures
+// ---------------------------------------------------------------------------
+class SuggestedSlip {
+  final String title;
+  final double totalOdds;
+  final List<Map<String, dynamic>> selections;
+
+  const SuggestedSlip({
+    required this.title,
+    required this.totalOdds,
+    required this.selections,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'totalOdds': totalOdds,
+        'selections': selections,
+      };
+
+  factory SuggestedSlip.fromJson(Map<String, dynamic> j) {
+    final sel = <Map<String, dynamic>>[];
+    final raw = j['selections'];
+    if (raw is List) {
+      for (final e in raw) {
+        if (e is Map) sel.add(Map<String, dynamic>.from(e));
+      }
+    }
+    return SuggestedSlip(
+      title: j['title']?.toString() ?? 'Suggested slip',
+      totalOdds: j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0,
+      selections: sel,
+    );
+  }
+}
+
+class SuggestedSlipStore {
+  static const String _slipKey = 'suggested_slip_v1';
+  static const String _notifiedDayKey = 'suggested_slip_notified_day';
+
+  static const String note =
+      'Odds are model-implied (100 divided by win probability), not bookmaker odds. '
+      'Real bookmaker odds will be lower. No slip is guaranteed to win.';
+
+  static Future<SuggestedSlip?> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_slipKey);
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return SuggestedSlip.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (e) {
+      debugPrint('Could not load suggested slip: $e');
+      return null;
+    }
+  }
+
+  /// Builds a slip from the latest fixtures and saves it. Sends one
+  /// notification per day when a slip is available.
+  static Future<void> refresh(List<FixtureModel> fixtures) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final generated = SlipGenerator.generateTargetSlip(fixtures);
+
+      if (generated == null) {
+        await prefs.remove(_slipKey);
+        return;
+      }
+
+      final slip = SuggestedSlip(
+        title: generated.title,
+        totalOdds: generated.totalOdds,
+        selections: generated.selections,
+      );
+      await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
+
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      if (prefs.getString(_notifiedDayKey) != today) {
+        await prefs.setString(_notifiedDayKey, today);
+        await NotificationService.showNow(
+          slip.title,
+          'New slip ready: ${slip.totalOdds.toStringAsFixed(2)}x. Open the Slips tab to view the picks.',
+        );
+      }
+    } catch (e) {
+      debugPrint('Suggested slip refresh failed: $e');
+    }
+  }
+}
+
+Future<void> _safely(Future<void> Function() action) async {
+  try {
+    await action();
+  } catch (e) {
+    debugPrint('Background task failed: $e');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Home screen
+// ---------------------------------------------------------------------------
 class MainHomeScreen extends StatefulWidget {
   const MainHomeScreen({super.key});
 
@@ -104,6 +211,9 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Fixtures tab
+// ---------------------------------------------------------------------------
 class FixturesTab extends StatefulWidget {
   const FixturesTab({super.key});
 
@@ -124,6 +234,7 @@ class _FixturesTabState extends State<FixturesTab> {
 
   Future<void> _loadSavedSlips() async {
     final legs = await SlipStore.load();
+    if (!mounted) return;
     setState(() {
       _savedKeys = legs.map((l) => l.key).toSet();
     });
@@ -132,13 +243,14 @@ class _FixturesTabState extends State<FixturesTab> {
   void _loadFixtures() {
     setState(() {
       _fixturesFuture = ApiService.fetchFixtures().then((fixtures) async {
-        await PredictionLog.update(fixtures);
-        await SlipStore.settle(fixtures);
-        await NotificationService.scheduleKickoffReminders(
-          fixtures,
-          _savedKeys,
-          AppSettings.favorites.value,
-        );
+        await _safely(() => PredictionLog.update(fixtures));
+        await _safely(() => SlipStore.settle(fixtures));
+        await SuggestedSlipStore.refresh(fixtures);
+        await _safely(() => NotificationService.scheduleKickoffReminders(
+              fixtures,
+              _savedKeys,
+              AppSettings.favorites.value,
+            ));
         return fixtures;
       });
     });
@@ -147,8 +259,10 @@ class _FixturesTabState extends State<FixturesTab> {
   Future<void> _toggleSave(FixtureModel fixture) async {
     await SlipStore.toggle(fixture);
     await _loadSavedSlips();
+    if (!mounted) return;
+    final nowSaved = _savedKeys.contains(fixture.key);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_savedKeys.contains(fixture.key) ? 'Removed from saved slips' : 'Saved to slips')),
+      SnackBar(content: Text(nowSaved ? 'Saved to slips' : 'Removed from saved slips')),
     );
   }
 
@@ -196,6 +310,8 @@ class _FixturesTabState extends State<FixturesTab> {
             itemBuilder: (context, index) {
               final fixture = fixtures[index];
               final isSaved = _savedKeys.contains(fixture.key);
+              final String whenText =
+                  fixture.isFinished ? 'FT ${fixture.actualScore}' : fixture.timeLabel;
 
               return Card(
                 color: cardBg(context),
@@ -210,8 +326,10 @@ class _FixturesTabState extends State<FixturesTab> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(fixture.league.toUpperCase(),
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mutedText(context))),
+                          Expanded(
+                            child: Text(fixture.league.toUpperCase(),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mutedText(context))),
+                          ),
                           IconButton(
                             icon: Icon(isSaved ? Icons.bookmark : Icons.bookmark_border, color: kPrimary),
                             onPressed: () => _toggleSave(fixture),
@@ -238,13 +356,22 @@ class _FixturesTabState extends State<FixturesTab> {
                           ),
                         ],
                       ),
+                      if (whenText.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(whenText, style: TextStyle(fontSize: 12, color: mutedText(context))),
+                        ),
                       const Divider(height: 20),
                       if (fixture.hasPrediction) ...[
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Top Tip: ${fixture.topTip}',
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary, fontSize: 13)),
+                            Expanded(
+                              child: Text(
+                                fixture.topTip.isEmpty ? 'No clear tip' : 'Top Tip: ${fixture.topTip}',
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary, fontSize: 13),
+                              ),
+                            ),
                             if (fixture.odds > 0)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -260,12 +387,12 @@ class _FixturesTabState extends State<FixturesTab> {
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            Expanded(child: Text('Home: ${fixture.homeWinProb}%', style: const TextStyle(fontSize: 12))),
-                            Expanded(child: Text('Draw: ${fixture.drawProb}%', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
-                            Expanded(child: Text('Away: ${fixture.awayWinProb}%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
+                            Expanded(child: Text('Home: ${fixture.homeWinProb.round()}%', style: const TextStyle(fontSize: 12))),
+                            Expanded(child: Text('Draw: ${fixture.drawProb.round()}%', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
+                            Expanded(child: Text('Away: ${fixture.awayWinProb.round()}%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
                           ],
                         ),
-                      ] else ...[
+                      ] else if (!fixture.isFinished) ...[
                         Text('Analysis pending or unavailable',
                             style: TextStyle(fontStyle: FontStyle.italic, color: mutedText(context), fontSize: 12)),
                       ],
@@ -280,6 +407,15 @@ class _FixturesTabState extends State<FixturesTab> {
     );
   }
 }
+// ---------------------------------------------------------------------------
+// Slips tab (MY PICKS)
+// ---------------------------------------------------------------------------
+class _SlipsData {
+  final List<SlipLeg> legs;
+  final SuggestedSlip? suggested;
+
+  const _SlipsData(this.legs, this.suggested);
+}
 
 class SavedSlipsTab extends StatefulWidget {
   const SavedSlipsTab({super.key});
@@ -289,7 +425,7 @@ class SavedSlipsTab extends StatefulWidget {
 }
 
 class _SavedSlipsTabState extends State<SavedSlipsTab> {
-  late Future<List<SlipLeg>> _slipsFuture;
+  late Future<_SlipsData> _slipsFuture;
 
   @override
   void initState() {
@@ -297,69 +433,186 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     _loadSlips();
   }
 
+  Future<_SlipsData> _fetch() async {
+    final legs = await SlipStore.load();
+    final suggested = await SuggestedSlipStore.load();
+    return _SlipsData(legs, suggested);
+  }
+
   void _loadSlips() {
     setState(() {
-      _slipsFuture = SlipStore.load();
+      _slipsFuture = _fetch();
     });
+  }
+
+  Widget _legStatusChip(String status) {
+    Color bg;
+    Color fg;
+    String text;
+    switch (status) {
+      case 'won':
+        bg = Colors.green.shade100;
+        fg = Colors.green.shade800;
+        text = 'WON';
+        break;
+      case 'lost':
+        bg = Colors.red.shade100;
+        fg = Colors.red.shade800;
+        text = 'LOST';
+        break;
+      case 'void':
+        bg = Colors.blueGrey.shade100;
+        fg = Colors.blueGrey.shade700;
+        text = 'VOID';
+        break;
+      case 'none':
+        bg = Colors.grey.shade200;
+        fg = Colors.grey.shade700;
+        text = 'NO TIP';
+        break;
+      default:
+        bg = Colors.grey.shade200;
+        fg = Colors.grey.shade700;
+        text = 'PENDING';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      child: Text(text, style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
+    final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
+
+    return Card(
+      color: cardBg(context),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: kTealGreen, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(slip.title,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+                Text('${slip.totalOdds.toStringAsFixed(2)}x',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16, color: kTealGreen)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (int i = 0; i < slip.selections.length; i++)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Text(
+                  '${i + 1}. ${slip.selections[i]['match']} - ${slip.selections[i]['prediction']} (${slip.selections[i]['odds']})',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Text(
+              'Chance that every leg wins: about ${chance.toStringAsFixed(0)}%',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            Text(SuggestedSlipStore.note,
+                style: TextStyle(fontSize: 11, color: mutedText(context))),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<SlipLeg>>(
+    return FutureBuilder<_SlipsData>(
       future: _slipsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(child: Text('No saved slips yet. Bookmark matches from the fixtures tab!'));
+          return Column(
+            children: [
+              buildMyPicksHeader(),
+              const Expanded(child: Center(child: CircularProgressIndicator())),
+            ],
+          );
         }
 
-        final legs = snapshot.data!;
+        final data = snapshot.data ?? const _SlipsData([], null);
+        final legs = data.legs;
         final summary = SlipStore.summary(legs);
 
-        return Column(
+        return ListView(
+          padding: const EdgeInsets.only(bottom: 24),
           children: [
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Card(
-                color: cardBg(context),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _statItem('Accumulator Status', summary.status),
-                      _statItem('Won', '${summary.won}'),
-                      _statItem('Lost', '${summary.lost}'),
-                      _statItem('Pending', '${summary.pending}'),
-                    ],
+            buildMyPicksHeader(),
+            if (data.suggested != null) _suggestedCard(context, data.suggested!),
+            if (legs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'No saved picks yet. Bookmark matches from the Fixtures tab to add them here.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: mutedText(context)),
+                ),
+              )
+            else ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Card(
+                  color: cardBg(context),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _statItem('Accumulator', summary.status),
+                        _statItem('Won', '${summary.won}'),
+                        _statItem('Lost', '${summary.lost}'),
+                        _statItem('Pending', '${summary.pending}'),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: legs.length,
-                itemBuilder: (context, index) {
-                  final leg = legs[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      title: Text('${leg.home} vs ${leg.away}'),
-                      subtitle: Text('Tip: ${leg.tip} | Score: ${leg.score.isEmpty ? 'Pending' : leg.score}'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () async {
-                          await SlipStore.remove(leg.key);
-                          _loadSlips();
-                        },
+              for (int i = 0; i < legs.length; i++)
+                Card(
+                  color: cardBg(context),
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: kTealGreen,
+                      child: Text(
+                        '${i + 1}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                       ),
                     ),
-                  );
-                },
-              ),
-            ),
+                    title: Text('${legs[i].home} vs ${legs[i].away}'),
+                    subtitle: Text(
+                        'Tip: ${legs[i].tip.isEmpty ? 'None' : legs[i].tip} | Score: ${legs[i].score.isEmpty ? 'Pending' : legs[i].score}'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _legStatusChip(legs[i].status),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () async {
+                            await SlipStore.remove(legs[i].key);
+                            _loadSlips();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ],
         );
       },
@@ -377,6 +630,9 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// History tab (PROLIFIC)
+// ---------------------------------------------------------------------------
 class PredictionLogTab extends StatefulWidget {
   const PredictionLogTab({super.key});
 
@@ -404,52 +660,62 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
     return FutureBuilder<List<LogEntry>>(
       future: _logFuture,
       builder: (context, snapshot) {
+        Widget body;
+
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          body = const Center(child: CircularProgressIndicator());
         } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(child: Text('No prediction history recorded yet.'));
-        }
+          body = const Center(child: Text('No prediction history recorded yet.'));
+        } else {
+          final entries = snapshot.data!;
+          final stats = PredictionLog.stats(entries);
 
-        final entries = snapshot.data!;
-        final stats = PredictionLog.stats(entries);
-
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Card(
-                color: cardBg(context),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _statItem('Total', '${stats.total}'),
-                      _statItem('Settled', '${stats.settled}'),
-                      _statItem('Wins', '${stats.wins}'),
-                      _statItem('Hit Rate', '${(stats.hitRate * 100).toStringAsFixed(1)}%'),
-                    ],
+          body = Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Card(
+                  color: cardBg(context),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _statItem('Total', '${stats.total}'),
+                        _statItem('Settled', '${stats.settled}'),
+                        _statItem('Wins', '${stats.wins}'),
+                        _statItem('Hit Rate', '${(stats.hitRate * 100).toStringAsFixed(1)}%'),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: entries.length,
-                itemBuilder: (context, index) {
-                  final entry = entries[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      title: Text('${entry.home} vs ${entry.away}'),
-                      subtitle: Text('Tip: ${entry.tip} | League: ${entry.league}'),
-                      trailing: _buildStatusBadge(entry),
-                    ),
-                  );
-                },
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
+                    return Card(
+                      color: cardBg(context),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text('${entry.home} vs ${entry.away}'),
+                        subtitle: Text('Tip: ${entry.tip} | League: ${entry.league}'),
+                        trailing: _buildStatusBadge(entry),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            buildProlificHeader(),
+            Expanded(child: body),
           ],
         );
       },
@@ -479,6 +745,9 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Standings and top scorers
+// ---------------------------------------------------------------------------
 class StandingsScorersTab extends StatefulWidget {
   const StandingsScorersTab({super.key});
 
@@ -490,12 +759,20 @@ class _StandingsScorersTabState extends State<StandingsScorersTab> with SingleTi
   late TabController _tabController;
   String _selectedLeague = 'PL';
 
+  // The 12 competitions available on the football-data.org free plan.
   final Map<String, String> _leagues = {
     'PL': 'Premier League',
-    'CL': 'Champions League',
+    'ELC': 'Championship',
     'PD': 'La Liga',
     'SA': 'Serie A',
     'BL1': 'Bundesliga',
+    'FL1': 'Ligue 1',
+    'DED': 'Eredivisie',
+    'PPL': 'Primeira Liga',
+    'BSA': 'Brasileirao Serie A',
+    'CL': 'Champions League',
+    'WC': 'World Cup',
+    'EC': 'European Championship',
   };
 
   @override
@@ -517,24 +794,27 @@ class _StandingsScorersTabState extends State<StandingsScorersTab> with SingleTi
         Padding(
           padding: const EdgeInsets.all(12.0),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Select League:', style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownButton<String>(
-                value: _selectedLeague,
-                items: _leagues.entries.map((entry) {
-                  return DropdownMenuItem(
-                    value: entry.key,
-                    child: Text(entry.value),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() {
-                      _selectedLeague = val;
-                    });
-                  }
-                },
+              const Text('League:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButton<String>(
+                  value: _selectedLeague,
+                  isExpanded: true,
+                  items: _leagues.entries.map((entry) {
+                    return DropdownMenuItem(
+                      value: entry.key,
+                      child: Text(entry.value),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedLeague = val;
+                      });
+                    }
+                  },
+                ),
               ),
             ],
           ),
@@ -581,9 +861,23 @@ class StandingsView extends StatelessWidget {
 
         final groups = snapshot.data!;
         return ListView.builder(
-          itemCount: groups.length,
+          itemCount: groups.length + 1,
           itemBuilder: (context, gIndex) {
+            // Last item: a short note about missing data.
+            if (gIndex == groups.length) {
+              return Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'P played, W won, D drawn, L lost, GF goals for, GA goals against, GD goal difference. '
+                  'Yellow and red cards are not available from the free data source.',
+                  style: TextStyle(fontSize: 11, color: mutedText(context)),
+                ),
+              );
+            }
+
             final group = groups[gIndex];
+            final bool showForm = group.rows.any((r) => r.form.isNotEmpty);
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -592,20 +886,51 @@ class StandingsView extends StatelessWidget {
                     padding: const EdgeInsets.all(12.0),
                     child: Text(group.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: group.rows.length,
-                  itemBuilder: (context, rIndex) {
-                    final row = group.rows[rIndex];
-                    return ListTile(
-                      leading: Text('${row.position}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      title: Text(row.team),
-                      subtitle: Text('P: ${row.played} | GD: ${row.goalDifference}'),
-                      trailing: Text('${row.points} pts', style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary)),
-                    );
-                  },
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columnSpacing: 14,
+                    headingRowHeight: 38,
+                    dataRowMinHeight: 36,
+                    dataRowMaxHeight: 44,
+                    headingRowColor: WidgetStateProperty.all(headBg(context)),
+                    columns: [
+                      const DataColumn(label: Text('#')),
+                      const DataColumn(label: Text('Team')),
+                      const DataColumn(label: Text('P'), numeric: true),
+                      const DataColumn(label: Text('W'), numeric: true),
+                      const DataColumn(label: Text('D'), numeric: true),
+                      const DataColumn(label: Text('L'), numeric: true),
+                      const DataColumn(label: Text('GF'), numeric: true),
+                      const DataColumn(label: Text('GA'), numeric: true),
+                      const DataColumn(label: Text('GD'), numeric: true),
+                      const DataColumn(label: Text('Pts'), numeric: true),
+                      if (showForm) const DataColumn(label: Text('Form')),
+                    ],
+                    rows: [
+                      for (final row in group.rows)
+                        DataRow(cells: [
+                          DataCell(Text('${row.position}',
+                              style: const TextStyle(fontWeight: FontWeight.bold))),
+                          DataCell(ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 140),
+                            child: Text(row.team, overflow: TextOverflow.ellipsis),
+                          )),
+                          DataCell(Text('${row.played}')),
+                          DataCell(Text('${row.won}')),
+                          DataCell(Text('${row.draw}')),
+                          DataCell(Text('${row.lost}')),
+                          DataCell(Text('${row.goalsFor}')),
+                          DataCell(Text('${row.goalsAgainst}')),
+                          DataCell(Text('${row.goalDifference}')),
+                          DataCell(Text('${row.points}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary))),
+                          if (showForm) DataCell(Text(row.form.replaceAll(',', ' '))),
+                        ]),
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 12),
               ],
             );
           },
@@ -640,7 +965,7 @@ class ScorersView extends StatelessWidget {
             return ListTile(
               leading: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
               title: Text(scorer.name),
-              subtitle: Text(scorer.team),
+              subtitle: Text('${scorer.team} | ${scorer.played} played | ${scorer.assists} assists'),
               trailing: Text('${scorer.goals} Goals', style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary)),
             );
           },
@@ -649,3 +974,4 @@ class ScorersView extends StatelessWidget {
     );
   }
 }
+                                                                             
