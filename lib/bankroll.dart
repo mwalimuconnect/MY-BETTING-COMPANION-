@@ -106,7 +106,11 @@ class BankrollTab extends StatefulWidget {
 }
 
 class _BankrollTabState extends State<BankrollTab> {
-  List<dynamic> _bets = []; // Replace 'dynamic' with your Bet model class if defined
+  bool _isUnlocked = false;
+  String _correctPin = '1234'; // Default PIN code
+  final TextEditingController _pinController = TextEditingController();
+  final TextEditingController _newPinController = TextEditingController();
+  List<dynamic> _bets = [];
 
   @override
   void initState() {
@@ -115,14 +119,77 @@ class _BankrollTabState extends State<BankrollTab> {
   }
 
   Future<void> _loadBets() async {
-    // TODO: Load bets from storage or service
     setState(() {
       _bets = [];
     });
   }
 
+  void _verifyPin() {
+    if (_pinController.text == _correctPin) {
+      setState(() {
+        _isUnlocked = true;
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Incorrect PIN. Try 1234')),
+      );
+    }
+  }
+
   void _editSettings() {
-    // TODO: Handle settings action
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bankroll Security Settings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter a new 4-digit PIN to protect your bankroll:'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _newPinController,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'New 4-Digit PIN',
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF008080),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              if (_newPinController.text.length == 4) {
+                setState(() {
+                  _correctPin = _newPinController.text;
+                });
+                _newPinController.clear();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('PIN updated successfully!')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('PIN must be exactly 4 digits')),
+                );
+              }
+            },
+            child: const Text('Save PIN'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _addBet() {
@@ -130,7 +197,7 @@ class _BankrollTabState extends State<BankrollTab> {
   }
 
   void _onMenu(dynamic b, String v) {
-    // TODO: Handle menu actions (won, lost, void, pending, delete)
+    // TODO: Handle menu actions
   }
 
   Widget _summaryCard() {
@@ -170,7 +237,6 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-  /// Renders the bets in a structured tabular format
   Widget _betsTable() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -212,6 +278,58 @@ class _BankrollTabState extends State<BankrollTab> {
 
   @override
   Widget build(BuildContext context) {
+    // If locked, render PIN entry screen
+    if (!_isUnlocked) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_outline, size: 64, color: Color(0xFF008080)),
+              const SizedBox(height: 16),
+              const Text(
+                'Bankroll Protected',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Enter your 4-digit PIN to view financial records (Hint: 1234)',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: 200,
+                child: TextField(
+                  controller: _pinController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  textAlign: TextAlign.center,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: 'PIN',
+                    counterText: '',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF008080),
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: _verifyPin,
+                child: const Text('Unlock Bankroll'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Unlocked Content View
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -222,13 +340,23 @@ class _BankrollTabState extends State<BankrollTab> {
             children: [
               const Text(
                 'Bankroll',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kPrimary),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF008080)),
               ),
               Row(
                 children: [
                   IconButton(
-                    tooltip: 'Settings',
-                    icon: const Icon(Icons.tune, color: kPrimary),
+                    tooltip: 'Lock Bankroll',
+                    icon: const Icon(Icons.lock, color: Color(0xFF008080)),
+                    onPressed: () {
+                      setState(() {
+                        _isUnlocked = false;
+                        _pinController.clear();
+                      });
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'Settings / Change PIN',
+                    icon: const Icon(Icons.tune, color: Color(0xFF008080)),
                     onPressed: _editSettings,
                   ),
                   ElevatedButton.icon(
