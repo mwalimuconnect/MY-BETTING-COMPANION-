@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'slip_generator.dart';
 class H2HEntry {
   final String date;
   final String home;
