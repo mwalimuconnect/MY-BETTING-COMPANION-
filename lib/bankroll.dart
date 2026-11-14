@@ -73,6 +73,46 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
+  /// Renders the bets in a structured tabular format
+  Widget _betsTable() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: const [
+          DataColumn(label: Text('#', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataColumn(label: Text('Description', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataColumn(label: Text('Stake', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataColumn(label: Text('Odds', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
+          DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
+        ],
+        rows: _bets.asMap().entries.map((entry) {
+          final int index = entry.key + 1;
+          final b = entry.value;
+          return DataRow(cells: [
+            DataCell(Text('$index')),
+            DataCell(Text(b.description?.toString() ?? '')),
+            DataCell(Text('${b.stake ?? 0}')),
+            DataCell(Text('${b.odds ?? 0}')),
+            DataCell(_statusChip(b)),
+            DataCell(
+              PopupMenuButton<String>(
+                onSelected: (v) => _onMenu(b, v),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'won', child: Text('Mark won')),
+                  PopupMenuItem(value: 'lost', child: Text('Mark lost')),
+                  PopupMenuItem(value: 'void', child: Text('Mark void')),
+                  PopupMenuItem(value: 'pending', child: Text('Mark pending')),
+                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                ],
+              ),
+            ),
+          ]);
+        }).toList(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -119,27 +159,7 @@ class _BankrollTabState extends State<BankrollTab> {
                     ),
                   )
                 else
-                  for (final b in _bets)
-                    Card(
-                      child: ListTile(
-                        title: Text(b.description),
-                        subtitle: Text(
-                          _betSubtitle(b),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        leading: _statusChip(b),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (v) => _onMenu(b, v),
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'won', child: Text('Mark won')),
-                            PopupMenuItem(value: 'lost', child: Text('Mark lost')),
-                            PopupMenuItem(value: 'void', child: Text('Mark void')),
-                            PopupMenuItem(value: 'pending', child: Text('Mark pending')),
-                            PopupMenuItem(value: 'delete', child: Text('Delete')),
-                          ],
-                        ),
-                      ),
-                    ),
+                  _betsTable(),
                 const SizedBox(height: 16),
                 Text(
                   'Only bet what you can afford to lose. Tips are model estimates, not guarantees.',
@@ -152,9 +172,5 @@ class _BankrollTabState extends State<BankrollTab> {
         ],
       ),
     );
-  }
-
-  String _betSubtitle(dynamic b) {
-    return 'Stake: ${b.stake} | Odds: ${b.odds}';
   }
 }
