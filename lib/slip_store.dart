@@ -189,7 +189,7 @@ class SlipStore {
       away: f.awayTeam,
       league: f.league,
       tip: f.topTip,
-      kickoff: f.time,
+      kickoff: f.timeLabel,
       utcDate: f.utcDate,
       savedAt: DateTime.now().millisecondsSinceEpoch,
       status: f.topTip.isEmpty ? 'none' : 'pending',
