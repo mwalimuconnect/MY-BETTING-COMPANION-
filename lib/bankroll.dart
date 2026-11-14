@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'app_settings.dart';
-import 'bankroll_model.dart'; // Ensure this matches your model import if separate
 
 class BankrollTab extends StatefulWidget {
   const BankrollTab({super.key});
