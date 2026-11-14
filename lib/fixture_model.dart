@@ -157,3 +157,120 @@ class FixtureModel {
     );
   }
 }
+
+/// Helper function to build the grouped, collapsible fixtures screen layout
+Widget buildFixturesList(BuildContext context, List<FixtureModel> fixtures) {
+  final Map<String, List<FixtureModel>> groupedFixtures = {};
+  for (var fixture in fixtures) {
+    final leagueKey = fixture.league.isNotEmpty ? fixture.league : 'Other Leagues';
+    groupedFixtures.putIfAbsent(leagueKey, () => []).add(fixture);
+  }
+
+  return ListView(
+    padding: const EdgeInsets.all(12),
+    children: groupedFixtures.entries.map((entry) {
+      final leagueName = entry.key;
+      final leagueFixtures = entry.value;
+
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: ExpansionTile(
+          initiallyExpanded: true,
+          title: Text(
+            leagueName.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+          children: leagueFixtures.map((fixture) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: Colors.grey.shade200),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${fixture.dateLabel} • ${fixture.kickoffTime.isNotEmpty ? fixture.kickoffTime : fixture.time}',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          fixture.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                          size: 20,
+                          color: fixture.isSaved ? Colors.blue : null,
+                        ),
+                        onPressed: () {
+                          fixture.isSaved = !fixture.isSaved;
+                        },
+                      ),
+                    ],
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          fixture.homeTeam,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Text('vs', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ),
+                      Expanded(
+                        child: Text(
+                          fixture.awayTeam,
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Top Tip: ${fixture.topTip.isNotEmpty ? fixture.topTip : "Analysis pending"}',
+                          style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600, fontSize: 12),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Home: ${fixture.homeWinProb}%', style: const TextStyle(fontSize: 11)),
+                            Text('Draw: ${fixture.drawProb}%', style: const TextStyle(fontSize: 11)),
+                            Text('Away: ${fixture.awayWinProb}%', style: const TextStyle(fontSize: 11)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      );
+    }).toList(),
+  );
+}
