@@ -16,6 +16,8 @@ class StandingRow {
   final int goalsFor;
   final int goalsAgainst;
   final int goalDifference;
+  final int yellowCards;
+  final int redCards;
   final int points;
   final String form;
 
@@ -29,6 +31,8 @@ class StandingRow {
     required this.goalsFor,
     required this.goalsAgainst,
     required this.goalDifference,
+    required this.yellowCards,
+    required this.redCards,
     required this.points,
     required this.form,
   });
@@ -44,6 +48,8 @@ class StandingRow {
       goalsFor: _i(j['goalsFor']),
       goalsAgainst: _i(j['goalsAgainst']),
       goalDifference: _i(j['goalDifference']),
+      yellowCards: _i(j['yellowCards']),
+      redCards: _i(j['redCards']),
       points: _i(j['points']),
       form: j['form']?.toString() ?? '',
     );
@@ -126,7 +132,7 @@ class LeagueApi {
     return out;
   }
 
-  static Future<Map<String, dynamic>> _get(String kind, String code) async {
+  static Future> _get(String kind, String code) async {
     final cacheKey = '$kind:$code';
     final cached = _cache[cacheKey];
     if (cached != null && DateTime.now().difference(cached.at) < _ttl) {
