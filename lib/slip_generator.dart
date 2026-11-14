@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class GeneratedSlip {
   final String title;
   final double totalOdds;
@@ -11,21 +13,25 @@ class GeneratedSlip {
 }
 
 class SlipGenerator {
-  /// Scans available fixtures/predictions and builds a accumulator slip
+  /// Scans available fixtures/predictions and builds an accumulator slip
   /// targeting cumulative odds between 5.00 and 10.00
   static GeneratedSlip? generateTargetSlip(List<dynamic> availableFixtures) {
     List> selectedBets = [];
     double cumulativeOdds = 1.0;
 
     for (var fixture in availableFixtures) {
-      // Example model prediction extraction
-      double odds = fixture['odds'] ?? 1.5; 
-      
-      // Stop adding if adding another selection pushes us way past 10.00
+      double odds = 1.5; // Default fallback odds
+      try {
+        if (fixture is Map && fixture['odds'] != null) {
+          odds = double.tryParse(fixture['odds'].toString()) ?? 1.5;
+        }
+      } catch (_) {}
+
+      // Stop adding if adding another selection pushes total odds past 12.0
       if (cumulativeOdds * odds <= 12.0) {
         selectedBets.add({
-          'match': '${fixture['homeTeam']} vs ${fixture['awayTeam']}',
-          'prediction': fixture['prediction'] ?? 'Home Win',
+          'match': fixture is Map ? '${fixture['homeTeam']} vs ${fixture['awayTeam']}' : 'Match Selection',
+          'prediction': fixture is Map ? (fixture['prediction'] ?? 'Win') : 'Win',
           'odds': odds,
         });
         cumulativeOdds *= odds;
