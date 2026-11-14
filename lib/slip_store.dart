@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fixture_model.dart';
 import 'prediction_log.dart';
@@ -78,6 +79,65 @@ class SlipSummary {
     required this.noTip,
     required this.status,
   });
+}
+
+/// Header widget rendering MY PICKS in bold Teal Green capital letters
+Widget buildMyPicksHeader() {
+  return const Padding(
+    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+    child: Text(
+      'MY PICKS',
+      style: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF008080), // Teal Green
+        letterSpacing: 1.2,
+      ),
+    ),
+  );
+}
+
+/// Helper builder to render numbered list items for your saved picks/slips
+Widget buildNumberedSlipList(List<SlipLeg> legs, Function(String key) onDelete) {
+  if (legs.isEmpty) {
+    return const Padding(
+      padding: EdgeInsets.all(24),
+      child: Text(
+        'No picks saved yet. Tap the bookmark icon on any fixture to add it here.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.grey),
+      ),
+    );
+  }
+
+  return ListView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: legs.length,
+    itemBuilder: (context, index) {
+      final leg = legs[index];
+      final itemNumber = index + 1; // Numbering starting from 1
+
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: const Color(0xFF008080), // Teal Green badge
+            child: Text(
+              '$itemNumber',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+          title: Text('${leg.home} vs ${leg.away}'),
+          subtitle: Text('Tip: ${leg.tip.isNotEmpty ? leg.tip : "None"} | Score: ${leg.score.isNotEmpty ? leg.score : "Pending"}'),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: () => onDelete(leg.key),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class SlipStore {
