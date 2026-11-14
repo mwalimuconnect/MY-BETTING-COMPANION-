@@ -17,12 +17,12 @@ bool? evaluateTip(String tip, String home, String away, String score) {
   return null;
 }
 
-/// Helper widget to render the PROLIFIC 🔥 header in bold Teal Green capital letters
+/// Helper widget to render the PROLIFIC 馃敟 header in bold Teal Green capital letters
 Widget buildProlificHeader() {
   return const Padding(
     padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
     child: Text(
-      'PROLIFIC 🔥',
+      'PROLIFIC 馃敟',
       style: TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.bold,
@@ -52,7 +52,7 @@ Widget buildPredictionLogList(List<LogEntry> entries) {
     itemCount: entries.length,
     itemBuilder: (context, index) {
       final entry = entries[index];
-      
+
       Color statusColor = Colors.orange;
       String statusText = 'Pending';
       if (entry.settled) {
@@ -240,8 +240,8 @@ class PredictionLog {
             away: f.awayTeam,
             league: f.league,
             tip: f.topTip,
-            tipProb: f.tipProb,
-            kickoff: f.time,
+            tipProb: f.tipProbInt,
+            kickoff: f.timeLabel,
             utcDate: f.utcDate,
           );
           entries.add(entry);
