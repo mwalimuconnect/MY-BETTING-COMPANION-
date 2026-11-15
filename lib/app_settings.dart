@@ -9,7 +9,7 @@ const Color kPrimary = Color(0xFF0D6EFD);
 bool isDarkMode(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
 
 Color cardBg(BuildContext c) =>
-    isDarkMode(c) ? const Color(0xFF1E2228) : Colors.white;
+    isDarkMode(c) ? const Color(0xFF1E2228) : const Color(0xFFE8F5E9);
 
 Color headBg(BuildContext c) =>
     isDarkMode(c) ? const Color(0xFF243447) : const Color(0xFFE8F1FF);
