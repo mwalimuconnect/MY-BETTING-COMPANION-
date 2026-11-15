@@ -53,13 +53,7 @@ class MyBettingCompanionApp extends StatelessWidget {
     );
   }
 }
-Future<void> _safely(Future<void> Function() action) async {
-  try {
-    await action();
-  } catch (e) {
-    debugPrint('Background task failed: $e');
-  }
-}
+
 // ---------------------------------------------------------------------------
 // Suggested slip (5-10 combined odds), built automatically from fixtures daily
 // ---------------------------------------------------------------------------
@@ -78,7 +72,7 @@ class SuggestedSlip {
     this.stake = 200.0,
     double? potentialPayout,
     required this.date,
-  }) : potentialPayout = potentialPayout ?? (totalOdds * 200.0);
+  }) : potentialPayout = potentialPayout ?? (totalOdds * stake);
 
   Map<String, dynamic> toJson() => {
         'title': title,
@@ -101,8 +95,8 @@ class SuggestedSlip {
     }
     final double odds = j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0;
     final double parsedStake = j['stake'] is num ? (j['stake'] as num).toDouble() : 200.0;
-    final double parsedPayout = j['potentialPayout'] is num 
-        ? (j['potentialPayout'] as num).toDouble() 
+    final double parsedPayout = j['potentialPayout'] is num
+        ? (j['potentialPayout'] as num).toDouble()
         : (odds * parsedStake);
 
     return SuggestedSlip(
@@ -111,7 +105,7 @@ class SuggestedSlip {
       selections: sel,
       stake: parsedStake,
       potentialPayout: parsedPayout,
-      date: j['date']?.toString() ?? '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}',
+      date: j['date']?.toString() ?? SuggestedSlipStore.todayString(),
     );
   }
 }
@@ -123,6 +117,12 @@ class SuggestedSlipStore {
   static const String note =
       'Odds are model-implied (100 divided by win probability), not bookmaker odds. '
       'Real bookmaker odds will be lower. No slip is guaranteed to win.';
+
+  /// Today's date as YYYY-MM-DD (phone time).
+  static String todayString() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
 
   static Future<SuggestedSlip?> load() async {
     try {
@@ -138,42 +138,38 @@ class SuggestedSlipStore {
     }
   }
 
-  /// Builds a slip from fixtures daily before 10 AM.
+  /// Builds one slip per day from the latest fixtures and sends one
+  /// notification for it.
   static Future<void> refresh(List<FixtureModel> fixtures) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final now = DateTime.now();
-      final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-      
+      final todayStr = todayString();
       final existing = await load();
-      
-      if (existing != null && existing.date == todayStr) {
-        return;
-      }
 
-      if (now.hour >= 10 && existing != null) {
-        return; 
-      }
+      // Today's slip already exists: keep it.
+      if (existing != null && existing.date == todayStr) return;
 
       final generated = SlipGenerator.generateTargetSlip(fixtures);
-      if (generated == null) return;
+      if (generated == null) {
+        // Do not keep showing an old day's slip as if it were current.
+        if (existing != null) await prefs.remove(_slipKey);
+        return;
+      }
 
       final slip = SuggestedSlip(
         title: generated.title,
         totalOdds: generated.totalOdds,
         selections: generated.selections,
-        stake: generated.stake,
-        potentialPayout: generated.potentialPayout,
         date: todayStr,
       );
-      
+
       await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
 
       if (prefs.getString(_notifiedDayKey) != todayStr) {
         await prefs.setString(_notifiedDayKey, todayStr);
         await NotificationService.showNow(
           slip.title,
-          'New daily slip ready: ${slip.totalOdds.toStringAsFixed(2)}x. Open the Slips tab to view today\'s picks.',
+          'New daily slip ready: ${slip.totalOdds.toStringAsFixed(2)}x. Open the Slips tab to view the picks.',
         );
       }
     } catch (e) {
@@ -181,7 +177,15 @@ class SuggestedSlipStore {
     }
   }
 }
-                  
+
+Future<void> _safely(Future<void> Function() action) async {
+  try {
+    await action();
+  } catch (e) {
+    debugPrint('Background task failed: $e');
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Home screen
 // ---------------------------------------------------------------------------
@@ -437,7 +441,7 @@ class _FixturesTabState extends State<FixturesTab> {
 }
 
 // ---------------------------------------------------------------------------
-// Slips tab (MY PICKS) - Fully corrected scoping & method names
+// Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
 class _SlipsData {
   final List<SlipLeg> legs;
@@ -474,6 +478,14 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     });
   }
 
+  /// The day a saved pick belongs to, as YYYY-MM-DD (match day, or the day it
+  /// was saved if the match time is unknown).
+  String _dayKeyOf(SlipLeg leg) {
+    final DateTime dt = DateTime.tryParse(leg.utcDate)?.toLocal() ??
+        DateTime.fromMillisecondsSinceEpoch(leg.savedAt);
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  }
+
   /// Safaricom Green day and date header helper
   Widget _buildDayHeader(String dateStr) {
     final dt = DateTime.tryParse(dateStr);
@@ -497,7 +509,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ),
     );
   }
-
+  
+  /// Suggested slip card in a professional ticket style
   Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
     final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
 
@@ -513,6 +526,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header: title and overall odds
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -533,6 +547,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               ],
             ),
             const Divider(height: 16),
+            // Selections styled like match rows with odds on the right
             for (int i = 0; i < slip.selections.length; i++) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
@@ -576,6 +591,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
+            // Stake and possible win box
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -631,7 +647,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 
     final Map<String, List<SlipLeg>> grouped = {};
     for (final leg in legs) {
-      grouped.putIfAbsent(leg.dayKey, () => []).add(leg);
+      grouped.putIfAbsent(_dayKeyOf(leg), () => []).add(leg);
     }
 
     final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
@@ -642,7 +658,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 20, 16, 4),
           child: Text(
-            '📌 MY SAVED PICKS',
+            '\u26A1 MY SAVED PICKS',
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.bold,
@@ -713,13 +729,13 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
           padding: const EdgeInsets.only(bottom: 24),
           children: [
             buildMyPicksHeader(),
-            
-            // Section 1: System-Generated Daily Accumulator
+
+            // Section 1: system-generated daily accumulator
             if (data.suggested != null) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
                 child: Text(
-                  '🧠 DAILY VALUE ACCUMULATOR',
+                  '\u{1F525} DAILY VALUE ACCUMULATOR',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
@@ -732,8 +748,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               _suggestedCard(context, data.suggested!),
             ],
 
-            // Summary Card for Manual Saved Picks (if any exist)
-            if (legs.isNotEmpty) ...[
+            // Summary card for manually saved picks (if any exist)
+            if (legs.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                 child: Card(
@@ -752,9 +768,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                   ),
                 ),
               ),
-            ],
 
-            // Section 2: Manually Saved Bookmarks Grouped by Day
+            // Section 2: manually saved bookmarks grouped by day
             if (legs.isEmpty && data.suggested == null)
               Padding(
                 padding: const EdgeInsets.all(24),
@@ -781,217 +796,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ],
     );
   }
- 
-// ---------------------------------------------------------------------------
-// Updated layout for the Suggested Slip card to match the professional ticket style
-// ---------------------------------------------------------------------------
-Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
-  final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
-
-  return Card(
-    color: cardBg(context),
-    margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-      side: const BorderSide(color: kTealGreen, width: 1),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Title and Overall Odds
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  slip.title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                ),
-              ),
-              Text(
-                '${slip.totalOdds.toStringAsFixed(2)}x',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: kTealGreen,
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 16),
-          // Selections list styled like individual match rows with odds on the right
-          for (int i = 0; i < slip.selections.length; i++) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${i + 1}. ${slip.selections[i]['match']}',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Prediction: ${slip.selections[i]['prediction']}',
-                          style: TextStyle(fontSize: 12, color: mutedText(context)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${slip.selections[i]['odds']}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: kTealGreen,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (i < slip.selections.length - 1)
-              const Divider(height: 8, color: Colors.black12),
-          ],
-          const Divider(height: 16),
-          // Probability note
-          Text(
-            'Chance that every leg wins: about ${chance.toStringAsFixed(0)}%',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          // Clean Stake & Payout Box matching professional bet slips
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.03),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: kTealGreen.withOpacity(0.3)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Stake', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Ksh ${slip.stake.toStringAsFixed(0)}',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text('Possible Win', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Ksh ${slip.potentialPayout.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: kTealGreen,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            SuggestedSlipStore.note,
-            style: TextStyle(fontSize: 10, color: mutedText(context)),
-          ),
-        ],
-      ),
-    ),
-  );
 }
-  
- @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<_SlipsData>(
-      future: _slipsFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Column(
-            children: [
-              buildMyPicksHeader(),
-              const Expanded(child: Center(child: CircularProgressIndicator())),
-            ],
-          );
-        }
 
-        final data = snapshot.data ?? const _SlipsData([], null);
-        final legs = data.legs;
-        final summary = SlipStore.summary(legs);
-
-        return ListView(
-          padding: const EdgeInsets.only(bottom: 24),
-          children: [
-            buildMyPicksHeader(),
-            if (data.suggested != null) ...[
-              _buildDayHeader(data.suggested!.date),
-              _suggestedCard(context, data.suggested!),
-            ],
-            if (legs.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'No saved picks yet. Bookmark matches from the Fixtures tab to add them here.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: mutedText(context)),
-                ),
-              )
-            else ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                child: Card(
-                  color: cardBg(context),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _statItem('Accumulator', summary.status),
-                        _statItem('Won', '${summary.won}'),
-                        _statItem('Lost', '${summary.lost}'),
-                        _statItem('Pending', '${summary.pending}'),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              buildGroupedSlipList(legs, (key) async {
-                await SlipStore.remove(key);
-                _loadSlips();
-              }),
-            ],
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _statItem(String label, String value) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-                               
 // ---------------------------------------------------------------------------
 // History tab (PROLIFIC)
 // ---------------------------------------------------------------------------
