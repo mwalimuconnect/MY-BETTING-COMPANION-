@@ -256,6 +256,7 @@ class FixturesTab extends StatefulWidget {
 class _FixturesTabState extends State<FixturesTab> {
   late Future<List<FixtureModel>> _fixturesFuture;
   Set<String> _savedKeys = {};
+  String _selectedFilter = 'all'; // Active filter state
 
   @override
   void initState() {
@@ -298,6 +299,38 @@ class _FixturesTabState extends State<FixturesTab> {
     );
   }
 
+  Widget _buildFilterChips() {
+    const filters = ['All', 'Upcoming', 'Live', 'Finished'];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: filters.map((filter) {
+            final key = filter.toLowerCase();
+            final isSelected = _selectedFilter == key;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(filter),
+                selected: isSelected,
+                selectedColor: kTealGreen,
+                backgroundColor: cardBg(context),
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : mutedText(context),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                onSelected: (_) => setState(() => _selectedFilter = key),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<FixtureModel>>(
@@ -333,113 +366,130 @@ class _FixturesTabState extends State<FixturesTab> {
           return const Center(child: Text('No fixtures available right now.'));
         }
 
-        final fixtures = snapshot.data!;
-        return RefreshIndicator(
-          onRefresh: () async => _loadFixtures(),
-          child: ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: fixtures.length,
-            itemBuilder: (context, index) {
-              final fixture = fixtures[index];
-              final isSaved = _savedKeys.contains(fixture.key);
-              final String whenText =
-                  fixture.isFinished ? 'FT ${fixture.actualScore}' : fixture.timeLabel;
+        // Apply the static filter helper from FixtureModel
+        final allFixtures = snapshot.data!;
+        final fixtures = FixtureModel.filterFixtures(allFixtures, _selectedFilter);
 
-              return Card(
-                color: cardBg(context),
-                margin: const EdgeInsets.only(bottom: 12),
-                elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(fixture.league.toUpperCase(),
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mutedText(context))),
-                          ),
-                          IconButton(
-                            icon: Icon(isSaved ? Icons.bookmark : Icons.bookmark_border, color: kPrimary),
-                            onPressed: () => _toggleSave(fixture),
-                            tooltip: 'Save to Slip',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(fixture.homeTeam,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8.0),
-                            child: Text('vs', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                          ),
-                          Expanded(
-                            child: Text(fixture.awayTeam,
-                                textAlign: TextAlign.right,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          ),
-                        ],
-                      ),
-                      if (whenText.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(whenText, style: TextStyle(fontSize: 12, color: mutedText(context))),
+        return Column(
+          children: [
+            _buildFilterChips(),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async => _loadFixtures(),
+                child: fixtures.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No matches found for "$_selectedFilter"',
+                          style: TextStyle(color: mutedText(context)),
                         ),
-                      const Divider(height: 20),
-                      if (fixture.hasPrediction) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                fixture.topTip.isEmpty ? 'No clear tip' : 'Top Tip: ${fixture.topTip}',
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary, fontSize: 13),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        itemCount: fixtures.length,
+                        itemBuilder: (context, index) {
+                          final fixture = fixtures[index];
+                          final isSaved = _savedKeys.contains(fixture.key);
+                          final String whenText =
+                              fixture.isFinished ? 'FT ${fixture.actualScore}' : fixture.timeLabel;
+
+                          return Card(
+                            color: cardBg(context),
+                            margin: const EdgeInsets.only(bottom: 12),
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(fixture.league.toUpperCase(),
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mutedText(context))),
+                                      ),
+                                      IconButton(
+                                        icon: Icon(isSaved ? Icons.bookmark : Icons.bookmark_border, color: kPrimary),
+                                        onPressed: () => _toggleSave(fixture),
+                                        tooltip: 'Save to Slip',
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(fixture.homeTeam,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                      ),
+                                      const Padding(
+                                        padding: EdgeInsets.symmetric(horizontal: 8.0),
+                                        child: Text('vs', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                      ),
+                                      Expanded(
+                                        child: Text(fixture.awayTeam,
+                                            textAlign: TextAlign.right,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                      ),
+                                    ],
+                                  ),
+                                  if (whenText.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(whenText, style: TextStyle(fontSize: 12, color: mutedText(context))),
+                                    ),
+                                  const Divider(height: 20),
+                                  if (fixture.hasPrediction) ...[
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            fixture.topTip.isEmpty ? 'No clear tip' : 'Top Tip: ${fixture.topTip}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary, fontSize: 13),
+                                          ),
+                                        ),
+                                        if (fixture.odds > 0)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: kPrimary.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text('Odds: ${fixture.odds.toStringAsFixed(2)}',
+                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: kPrimary)),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Expanded(child: Text('Home: ${fixture.homeWinProb.round()}%', style: const TextStyle(fontSize: 12))),
+                                        Expanded(child: Text('Draw: ${fixture.drawProb.round()}%', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
+                                        Expanded(child: Text('Away: ${fixture.awayWinProb.round()}%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
+                                      ],
+                                    ),
+                                  ] else if (!fixture.isFinished) ...[
+                                    Text('Analysis pending or unavailable',
+                                        style: TextStyle(fontStyle: FontStyle.italic, color: mutedText(context), fontSize: 12)),
+                                  ],
+                                ],
                               ),
                             ),
-                            if (fixture.odds > 0)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: kPrimary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text('Odds: ${fixture.odds.toStringAsFixed(2)}',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: kPrimary)),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(child: Text('Home: ${fixture.homeWinProb.round()}%', style: const TextStyle(fontSize: 12))),
-                            Expanded(child: Text('Draw: ${fixture.drawProb.round()}%', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
-                            Expanded(child: Text('Away: ${fixture.awayWinProb.round()}%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
-                          ],
-                        ),
-                      ] else if (!fixture.isFinished) ...[
-                        Text('Analysis pending or unavailable',
-                            style: TextStyle(fontStyle: FontStyle.italic, color: mutedText(context), fontSize: 12)),
-                      ],
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 }
-
+                                  
 // ---------------------------------------------------------------------------
 // Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
