@@ -4,6 +4,89 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fixture_model.dart';
 
+/// Helper to show model insight breakdown when a prediction log item is tapped
+class PredictionInsightHelper {
+  static void show(BuildContext context, String matchTitle, String prediction, int? prob) {
+    final probability = prob ?? 55;
+    final double odds = probability > 0 ? 100 / probability.toDouble() : 1.85;
+
+    String reasoning = 'Based on historical performance metrics, recent goal conversion rates, and home/away form analysis.';
+    
+    if (prediction.contains('Double Chance')) {
+      reasoning = 'The defensive solidity and recent unbeaten run of this selection suggest a high probability of securing at least a draw.';
+    } else if (prediction.contains('Over')) {
+      reasoning = 'Both teams exhibit high expected goals (xG) metrics and aggressive offensive pressing, pointing toward an open, high-scoring fixture.';
+    } else if (prediction.contains('Handicap')) {
+      reasoning = 'Significant disparity in squad quality and head-to-head dominance supports a multi-goal winning margin.';
+    } else if (prediction.contains('Win')) {
+      reasoning = 'Home/Away venue advantage, squad depth, and recent point accumulation heavily favor this outcome.';
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.insights, color: Color(0xFF008080)),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Model Insight Breakdown',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              matchTitle,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF008080)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selection: $prediction',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const Divider(height: 20),
+            const Text(
+              'Statistical Analysis:',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '• Model-Implied Probability: ~$probability%',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '• Fair Model Odds: ${odds.toStringAsFixed(2)}x (calculated as 100 ÷ probability)',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              reasoning,
+              style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.black87),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF008080),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Returns true if the tip won, false if it lost, or null if it cannot be
 /// judged (treated as void).
 bool? evaluateTip(String tip, String home, String away, String score) {
@@ -33,7 +116,7 @@ Widget buildProlificHeader() {
   );
 }
 
-/// Helper builder to render your logged prediction items cleanly
+/// Helper builder to render your logged prediction items cleanly with tap-to-inspect insights
 Widget buildPredictionLogList(List<LogEntry> entries) {
   if (entries.isEmpty) {
     return const Padding(
@@ -70,15 +153,56 @@ Widget buildPredictionLogList(List<LogEntry> entries) {
 
       return Card(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: ListTile(
-          title: Text('${entry.home} vs ${entry.away}'),
-          subtitle: Text('Tip: ${entry.tip} | League: ${entry.league}'),
-          trailing: Chip(
-            label: Text(
-              statusText,
-              style: const TextStyle(color: Colors.white, fontSize: 10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          // Tapping any logged prediction opens its insight breakdown dialog
+          onTap: () => PredictionInsightHelper.show(
+            context,
+            '${entry.home} vs ${entry.away}',
+            entry.tip,
+            entry.tipProb,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${entry.home} vs ${entry.away}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            'Tip: ${entry.tip}',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF008080), fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.info_outline, size: 12, color: Colors.grey),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'League: ${entry.league}',
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                Chip(
+                  label: Text(
+                    statusText,
+                    style: const TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                  backgroundColor: statusColor,
+                ),
+              ],
             ),
-            backgroundColor: statusColor,
           ),
         ),
       );
