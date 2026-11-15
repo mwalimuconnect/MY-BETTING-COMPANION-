@@ -53,7 +53,13 @@ class MyBettingCompanionApp extends StatelessWidget {
     );
   }
 }
-
+Future<void> _safely(Future<void> Function() action) async {
+  try {
+    await action();
+  } catch (e) {
+    debugPrint('Background task failed: $e');
+  }
+}
 // ---------------------------------------------------------------------------
 // Suggested slip (5-10 combined odds), built automatically from fixtures daily
 // ---------------------------------------------------------------------------
