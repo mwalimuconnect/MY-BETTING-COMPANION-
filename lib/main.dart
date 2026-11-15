@@ -437,7 +437,7 @@ class _FixturesTabState extends State<FixturesTab> {
 }
 
 // ---------------------------------------------------------------------------
-// Slips tab (MY PICKS) with distinct sections for System and Manual slips
+// Slips tab (MY PICKS) - Fully corrected scoping & method names
 // ---------------------------------------------------------------------------
 class _SlipsData {
   final List<SlipLeg> legs;
@@ -475,7 +475,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   }
 
   /// Safaricom Green day and date header helper
-  Widget _buildSafaricomDayHeader(String dateStr) {
+  Widget _buildDayHeader(String dateStr) {
     final dt = DateTime.tryParse(dateStr);
     String formatted = dateStr;
     if (dt != null) {
@@ -652,7 +652,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
           ),
         ),
         for (final day in sortedDays) ...[
-          _buildSafaricomDayHeader(day),
+          _buildDayHeader(day),
           for (int i = 0; i < grouped[day]!.length; i++)
             Card(
               color: cardBg(context),
@@ -728,7 +728,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                   ),
                 ),
               ),
-              _buildSafaricomDayHeader(data.suggested!.date),
+              _buildDayHeader(data.suggested!.date),
               _suggestedCard(context, data.suggested!),
             ],
 
@@ -782,7 +782,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 }
-  
+ 
 // ---------------------------------------------------------------------------
 // Updated layout for the Suggested Slip card to match the professional ticket style
 // ---------------------------------------------------------------------------
