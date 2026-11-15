@@ -104,6 +104,11 @@ class FixtureModel {
   /// Tip confidence as a whole number, or null when there is no tip.
   int? get tipProbInt => tipProb > 0 ? tipProb.round() : null;
 
+  // Convenience filters for UI
+  bool get isUpcoming => !isLive && !isFinished;
+  bool get isLiveMatch => isLive;
+  bool get isFinishedMatch => isFinished;
+
   static double _d(dynamic v, double fallback) {
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v) ?? fallback;
@@ -130,7 +135,6 @@ class FixtureModel {
     DateTime? parsedTime = DateTime.tryParse(utc);
     parsedTime ??= j['kickoff'] != null ? DateTime.tryParse(j['kickoff'].toString()) : null;
 
-    // No invented predictions: if the server has no tip, these stay empty/zero.
     final String tip = j['topTip']?.toString() ?? j['prediction']?.toString() ?? '';
     final double home = _d(j['homeWinProb'], 0);
     final double draw = _d(j['drawProb'], 0);
@@ -170,5 +174,16 @@ class FixtureModel {
       predictionCorrect:
           j['predictionCorrect'] is bool ? j['predictionCorrect'] as bool : null,
     );
+  }
+
+  /// Global filter helper method for lists of fixtures
+  static List<FixtureModel> filterFixtures(List<FixtureModel> fixtures, String filter) {
+    final query = filter.toLowerCase();
+    return fixtures.where((f) {
+      if (query == 'upcoming') return f.isUpcoming;
+      if (query == 'live') return f.isLiveMatch;
+      if (query == 'finished') return f.isFinishedMatch;
+      return true; // 'all'
+    }).toList();
   }
 }
