@@ -60,10 +60,10 @@ class MyBettingCompanionApp extends StatelessWidget {
 class SuggestedSlip {
   final String title;
   final double totalOdds;
-  final List> selections;
+  final List<Map<String, dynamic>> selections;
   final double stake;
   final double potentialPayout;
-  final String date; // e.g. '2026-11-15'
+  final String date;
 
   const SuggestedSlip({
     required this.title,
@@ -84,11 +84,13 @@ class SuggestedSlip {
       };
 
   factory SuggestedSlip.fromJson(Map<String, dynamic> j) {
-    final sel = >[];
+    final List<Map<String, dynamic>> sel = [];
     final raw = j['selections'];
     if (raw is List) {
       for (final e in raw) {
-        if (e is Map) sel.add(Map<String, dynamic>.from(e));
+        if (e is Map) {
+          sel.add(Map<String, dynamic>.from(e));
+        }
       }
     }
     final double odds = j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0;
@@ -173,15 +175,7 @@ class SuggestedSlipStore {
     }
   }
 }
-
-Future<void> _safely(Future<void> Function() action) async {
-  try {
-    await action();
-  } catch (e) {
-    debugPrint('Background task failed: $e');
-  }
-}
-              
+                  
 // ---------------------------------------------------------------------------
 // Home screen
 // ---------------------------------------------------------------------------
