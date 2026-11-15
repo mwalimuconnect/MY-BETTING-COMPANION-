@@ -621,12 +621,12 @@ class _BankrollTabState extends State<BankrollTab> {
                   backgroundColor: lineColor(context),
                 ),
               ),
-              if (capUsed >= 1)
+                if (capUsed >= 1)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
                     'You have reached your monthly cap. Consider stopping for this month.',
-                      style: TextStyle(
+                    style: TextStyle(
                         color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 )
@@ -888,5 +888,3 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 }
-
-        
