@@ -35,7 +35,7 @@ class _Candidate {
 }
 
 class SlipGenerator {
-  /// Builds an accumulator from upcoming matches, varying the prediction markets
+  /// Builds an accumulator from upcoming matches, varying prediction markets
   /// across 1X2, Double Chance, Over/Under Goals, and Handicaps,
   /// aiming for combined odds between 5.00 and 10.00.
   static GeneratedSlip? generateTargetSlip(List<dynamic> availableFixtures) {
