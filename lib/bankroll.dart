@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
+import 'main.dart'; // Ensure this matches where SuggestedSlipStore is defined
 
 const Color _teal = Color(0xFF008080); // Teal Green
 
@@ -174,6 +175,7 @@ class _BankrollTabState extends State<BankrollTab> {
   double _starting = 0;
   double _cap = 0; // monthly cap on total stakes, 0 = not set
   List<Bet> _bets = [];
+  SuggestedSlip? _todaySuggestedSlip; // Automatically fetched daily slip
 
   // Profile details live only on this phone (never in the code).
   String _profileName = '';
@@ -199,6 +201,9 @@ class _BankrollTabState extends State<BankrollTab> {
       _storedPin = prefs.getString(_pinKey);
       _profileName = prefs.getString(_nameKey) ?? '';
       _profilePhone = prefs.getString(_phoneKey) ?? '';
+
+      // Fetch today's generated daily accumulator slip automatically
+      _todaySuggestedSlip = await SuggestedSlipStore.load();
 
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
@@ -362,13 +367,25 @@ class _BankrollTabState extends State<BankrollTab> {
 
   double get _settledProfit => _bets.fold(0.0, (sum, b) => sum + b.profit);
   double get _balance => _starting + _settledProfit;
-  double get _pendingStake => _bets
-      .where((b) => b.status == 'pending')
-      .fold(0.0, (sum, b) => sum + b.stake);
+  
+  // Includes manual pending bets + today's automated suggested slip stake if present
+  double get _pendingStake {
+    double manualPending = _bets
+        .where((b) => b.status == 'pending')
+        .fold(0.0, (sum, b) => sum + b.stake);
+    
+    // Add today's suggested slip stake if available and not explicitly marked settled/manually overridden
+    if (_todaySuggestedSlip != null) {
+      manualPending += _todaySuggestedSlip!.stake;
+    }
+    return manualPending;
+  }
 
   double get _spentThisMonth {
     final now = DateTime.now();
     var total = 0.0;
+    
+    // Sum manual bets
     for (final b in _bets) {
       if (b.status == 'void') continue;
       final d = DateTime.tryParse(b.date);
@@ -376,6 +393,15 @@ class _BankrollTabState extends State<BankrollTab> {
         total += b.stake;
       }
     }
+
+    // Include today's automatic suggested slip stake into monthly spending
+    if (_todaySuggestedSlip != null) {
+      final d = DateTime.tryParse(_todaySuggestedSlip!.date);
+      if (d != null && d.year == now.year && d.month == now.month) {
+        total += _todaySuggestedSlip!.stake;
+      }
+    }
+
     return total;
   }
 
@@ -627,7 +653,7 @@ class _BankrollTabState extends State<BankrollTab> {
                   child: Text(
                     'You have reached your monthly cap. Consider stopping for this month.',
                     style: TextStyle(
-                        color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+      color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 )
               else if (capUsed >= 0.8)
@@ -644,6 +670,55 @@ class _BankrollTabState extends State<BankrollTab> {
                 child: Text('Tip: set a monthly cap in settings.',
                     style: TextStyle(color: mutedText(context), fontSize: 11)),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Widget to display today's automated daily accumulator inside the bankroll overview
+  Widget _automatedSlipCard() {
+    if (_todaySuggestedSlip == null) return const SizedBox.shrink();
+
+    return Card(
+      color: cardBg(context),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: _teal, width: 0.8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '🔥 Today\'s Automated Slip',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _teal),
+                ),
+                Text(
+                  '${_todaySuggestedSlip!.totalOdds.toStringAsFixed(2)}x',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _todaySuggestedSlip!.title,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Stake: ${_ksh(_todaySuggestedSlip!.stake)}', style: const TextStyle(fontSize: 12)),
+                Text('Potential Win: ${_ksh(_todaySuggestedSlip!.potentialPayout)}', 
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+              ],
+            ),
           ],
         ),
       ),
@@ -863,11 +938,13 @@ class _BankrollTabState extends State<BankrollTab> {
                 const SizedBox(height: 12),
                 _summaryCard(),
                 const SizedBox(height: 12),
-                if (_bets.isEmpty)
+                _automatedSlipCard(), // Displays today's suggested daily accumulator preview
+                const SizedBox(height: 12),
+                if (_bets.isEmpty && _todaySuggestedSlip == null)
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      'No bets logged yet. Tap "Add Bet" to record a stake and its odds, then mark it won or lost when finished.',
+                      'No bets logged yet. Tap "Add Bet" to record a stake and its odds, or view automated daily slips from the Slips tab.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: mutedText(context)),
                     ),
@@ -888,4 +965,3 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 }
-
