@@ -406,6 +406,7 @@ class _FixturesTabState extends State<FixturesTab> {
     );
   }
 }
+
 // ---------------------------------------------------------------------------
 // Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
@@ -483,6 +484,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 
   Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
     final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
+    const double stake = 200.0;
+    final double possibleWin = slip.totalOdds * stake;
 
     return Card(
       color: cardBg(context),
@@ -521,7 +524,25 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               'Chance that every leg wins: about ${chance.toStringAsFixed(0)}%',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Stake: Ksh ${stake.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  'Possible Win: Ksh ${possibleWin.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: kTealGreen,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
             Text(SuggestedSlipStore.note,
                 style: TextStyle(fontSize: 11, color: mutedText(context))),
           ],
@@ -628,7 +649,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 }
-
+                                
 // ---------------------------------------------------------------------------
 // History tab (PROLIFIC)
 // ---------------------------------------------------------------------------
