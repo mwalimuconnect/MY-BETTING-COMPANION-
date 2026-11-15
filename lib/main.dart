@@ -564,6 +564,9 @@ class _FixturesTabState extends State<FixturesTab> {
 // ---------------------------------------------------------------------------
 // Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Slips tab (MY PICKS)
+// ---------------------------------------------------------------------------
 class _SlipsData {
   final List<SlipLeg> legs;
   final SuggestedSlip? suggested;
@@ -581,9 +584,15 @@ class SavedSlipsTab extends StatefulWidget {
 class _SavedSlipsTabState extends State<SavedSlipsTab> {
   late Future<_SlipsData> _slipsFuture;
   
-  // Controller to handle editable stake for the suggested slip
-  final TextEditingController _stakeController = TextEditingController();
-  double? _customStake;
+  // Controllers and edit modes for suggested slip & daily manual slips
+  final TextEditingController _suggestedStakeController = TextEditingController();
+  double? _customSuggestedStake;
+  bool _isEditingSuggested = false;
+  
+  // Maps to hold controllers and edit states for each day's saved manual slip
+  final Map<String, TextEditingController> _manualStakeControllers = {};
+  final Map<String, double> _customManualStakes = {};
+  final Map<String, bool> _isEditingManual = {};
 
   @override
   void initState() {
@@ -593,16 +602,19 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 
   @override
   void dispose() {
-    _stakeController.dispose();
+    _suggestedStakeController.dispose();
+    for (var c in _manualStakeControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
   Future<_SlipsData> _fetch() async {
     final legs = await SlipStore.load();
     final suggested = await SuggestedSlipStore.load();
-    if (suggested != null && _customStake == null) {
-      _customStake = suggested.stake;
-      _stakeController.text = suggested.stake.toStringAsFixed(0);
+    if (suggested != null && _customSuggestedStake == null) {
+      _customSuggestedStake = suggested.stake;
+      _suggestedStakeController.text = suggested.stake.toStringAsFixed(0);
     }
     return _SlipsData(legs, suggested);
   }
@@ -644,9 +656,9 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 
-  /// Suggested slip card with an editable stake field
+  /// Suggested slip card with edit and save stake buttons
   Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
-    final double currentStake = _customStake ?? slip.stake;
+    final double currentStake = _customSuggestedStake ?? slip.stake;
     final double potentialPayout = slip.totalOdds * currentStake;
     final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
 
@@ -725,7 +737,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
-            // Editable Stake and Possible Win Box
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -739,27 +750,58 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Stake (Ksh)', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                        const SizedBox(height: 2),
-                        TextField(
-                          controller: _stakeController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (val) async {
-                            final parsed = double.tryParse(val.trim());
-                            if (parsed != null && parsed >= 0) {
-                              setState(() {
-                                _customStake = parsed;
-                              });
-                              await SuggestedSlipStore.updateStake(parsed);
-                            }
-                          },
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Stake (Ksh)', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(50, 20),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () async {
+                                if (_isEditingSuggested) {
+                                  // Save action
+                                  final parsed = double.tryParse(_suggestedStakeController.text.trim());
+                                  if (parsed != null && parsed >= 0) {
+                                    setState(() {
+                                      _customSuggestedStake = parsed;
+                                      _isEditingSuggested = false;
+                                    });
+                                    await SuggestedSlipStore.updateStake(parsed);
+                                  }
+                                } else {
+                                  // Edit action
+                                  setState(() {
+                                    _isEditingSuggested = true;
+                                  });
+                                }
+                              },
+                              icon: Icon(_isEditingSuggested ? Icons.save : Icons.edit, size: 14, color: kTealGreen),
+                              label: Text(
+                                _isEditingSuggested ? 'Save' : 'Edit',
+                                style: const TextStyle(fontSize: 11, color: kTealGreen, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: 2),
+                        _isEditingSuggested
+                            ? TextField(
+                                controller: _suggestedStakeController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                                  border: OutlineInputBorder(),
+                                ),
+                              )
+                            : Text(
+                                'Ksh ${currentStake.toStringAsFixed(0)}',
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                              ),
                       ],
                     ),
                   ),
@@ -795,6 +837,180 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 
+  /// Manual Saved Picks Ticket per day with edit & save stake buttons
+  Widget _buildManualSlipCard(String day, List<SlipLeg> dayLegs) {
+    double totalOdds = 1.0;
+    for (var leg in dayLegs) {
+      totalOdds *= (leg.odds > 1 ? leg.odds : 1.85);
+    }
+
+    _manualStakeControllers.putIfAbsent(day, () => TextEditingController(text: (_customManualStakes[day] ?? 200.0).toStringAsFixed(0)));
+    final double currentStake = _customManualStakes[day] ?? 200.0;
+    final double potentialPayout = totalOdds * currentStake;
+    final bool isEditing = _isEditingManual[day] ?? false;
+
+    return Card(
+      color: cardBg(context),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: kTealGreen, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Saved Accumulator Ticket',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                Text(
+                  '${totalOdds.toStringAsFixed(2)}x',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: kTealGreen,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 16),
+            for (int i = 0; i < dayLegs.length; i++) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${i + 1}. ${dayLegs[i].home} vs ${dayLegs[i].away}',
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Date: ${dayLegs[i].date.isNotEmpty ? dayLegs[i].date : day} | Tip: ${dayLegs[i].tip.isNotEmpty ? dayLegs[i].tip : "None"}',
+                            style: TextStyle(fontSize: 11, color: mutedText(context)),
+                          ),
+                          Text(
+                            'Score: ${dayLegs[i].score.isNotEmpty ? dayLegs[i].score : "Pending"}',
+                            style: TextStyle(fontSize: 11, color: mutedText(context)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                      onPressed: () async {
+                        await SlipStore.remove(dayLegs[i].key);
+                        _loadSlips();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              if (i < dayLegs.length - 1)
+                const Divider(height: 8, color: Colors.black12),
+            ],
+            const Divider(height: 16),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: kTealGreen.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Stake (Ksh)', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(50, 20),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () {
+                                if (isEditing) {
+                                  final parsed = double.tryParse(_manualStakeControllers[day]?.text.trim() ?? '');
+                                  if (parsed != null && parsed >= 0) {
+                                    setState(() {
+                                      _customManualStakes[day] = parsed;
+                                      _isEditingManual[day] = false;
+                                    });
+                                  }
+                                } else {
+                                  setState(() {
+                                    _isEditingManual[day] = true;
+                                  });
+                                }
+                              },
+                              icon: Icon(isEditing ? Icons.save : Icons.edit, size: 14, color: kTealGreen),
+                              label: Text(
+                                isEditing ? 'Save' : 'Edit',
+                                style: const TextStyle(fontSize: 11, color: kTealGreen, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        isEditing
+                            ? TextField(
+                                controller: _manualStakeControllers[day],
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                                  border: OutlineInputBorder(),
+                                ),
+                              )
+                            : Text(
+                                'Ksh ${currentStake.toStringAsFixed(0)}',
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                              ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text('Possible Win', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Ksh ${potentialPayout.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: kTealGreen,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildGroupedManualList(List<SlipLeg> legs) {
     if (legs.isEmpty) return const SizedBox.shrink();
 
@@ -822,44 +1038,11 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
         ),
         for (final day in sortedDays) ...[
           _buildDayHeader(day),
-          for (int i = 0; i < grouped[day]!.length; i++)
-            Card(
-              color: cardBg(context),
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: kTealGreen,
-                  child: Text(
-                    '${i + 1}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                title: Text(
-                  '${grouped[day]![i].home} vs ${grouped[day]![i].away}',
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    'Tip: ${grouped[day]![i].tip.isNotEmpty ? grouped[day]![i].tip : "None"} | Score: ${grouped[day]![i].score.isNotEmpty ? grouped[day]![i].score : "Pending"}',
-                    style: TextStyle(fontSize: 12, color: mutedText(context)),
-                  ),
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: () async {
-                    await SlipStore.remove(grouped[day]![i].key);
-                    _loadSlips();
-                  },
-                ),
-              ),
-            ),
+          _buildManualSlipCard(day, grouped[day]!),
         ],
       ],
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_SlipsData>(
