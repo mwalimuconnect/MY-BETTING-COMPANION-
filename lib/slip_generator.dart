@@ -1,4 +1,5 @@
 import 'fixture_model.dart';
+import 'package:flutter/material.dart';
 
 class GeneratedSlip {
   final String title;
@@ -6,6 +7,7 @@ class GeneratedSlip {
   final List> selections;
   final double stake;
   final double potentialPayout;
+  final Color payoutColor;
 
   /// Reminder that these are not bookmaker odds.
   final String note;
@@ -16,6 +18,7 @@ class GeneratedSlip {
     required this.selections,
     this.stake = 200.0,
     double? potentialPayout,
+    this.payoutColor = const Color(0xFF008080), // Teal Green
     this.note =
         'Odds are model-implied (100 divided by win probability), not bookmaker odds.',
   }) : potentialPayout = potentialPayout ?? double.parse((totalOdds * 200.0).toStringAsFixed(2));
