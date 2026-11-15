@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class GeneratedSlip {
   final String title;
   final double totalOdds;
-  final List> selections;
+  final List<Map<String, dynamic>> selections;
   final double stake;
   final double potentialPayout;
   final Color payoutColor;
@@ -21,7 +21,8 @@ class GeneratedSlip {
     this.payoutColor = const Color(0xFF008080), // Teal Green
     this.note =
         'Odds are model-implied (100 divided by win probability), not bookmaker odds.',
-  }) : potentialPayout = potentialPayout ?? double.parse((totalOdds * 200.0).toStringAsFixed(2));
+  }) : potentialPayout =
+            potentialPayout ?? double.parse((totalOdds * 200.0).toStringAsFixed(2));
 }
 
 class _Candidate {
@@ -30,7 +31,7 @@ class _Candidate {
   final double odds; // model-implied "fair" odds
   final num prob;
 
-  _Candidate(this.match, this.prediction, this.odds, this.prob);
+  const _Candidate(this.match, this.prediction, this.odds, this.prob);
 }
 
 class SlipGenerator {
@@ -58,7 +59,7 @@ class SlipGenerator {
     // Most confident tips first.
     candidates.sort((a, b) => b.prob.compareTo(a.prob));
 
-    final List> selectedBets = [];
+    final List<Map<String, dynamic>> selectedBets = [];
     double cumulativeOdds = 1.0;
 
     for (final c in candidates) {
