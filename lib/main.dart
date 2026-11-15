@@ -781,7 +781,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ],
     );
   }
-}
  
 // ---------------------------------------------------------------------------
 // Updated layout for the Suggested Slip card to match the professional ticket style
@@ -992,8 +991,7 @@ Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
       ],
     );
   }
-}     
-                          
+                               
 // ---------------------------------------------------------------------------
 // History tab (PROLIFIC)
 // ---------------------------------------------------------------------------
