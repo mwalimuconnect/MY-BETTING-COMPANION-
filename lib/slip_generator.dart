@@ -3,7 +3,9 @@ import 'fixture_model.dart';
 class GeneratedSlip {
   final String title;
   final double totalOdds;
-  final List<Map<String, dynamic>> selections;
+  final List> selections;
+  final double stake;
+  final double potentialPayout;
 
   /// Reminder that these are not bookmaker odds.
   final String note;
@@ -12,9 +14,11 @@ class GeneratedSlip {
     required this.title,
     required this.totalOdds,
     required this.selections,
+    this.stake = 200.0,
+    double? potentialPayout,
     this.note =
         'Odds are model-implied (100 divided by win probability), not bookmaker odds.',
-  });
+  }) : potentialPayout = potentialPayout ?? double.parse((totalOdds * 200.0).toStringAsFixed(2));
 }
 
 class _Candidate {
@@ -51,7 +55,7 @@ class SlipGenerator {
     // Most confident tips first.
     candidates.sort((a, b) => b.prob.compareTo(a.prob));
 
-    final List<Map<String, dynamic>> selectedBets = [];
+    final List> selectedBets = [];
     double cumulativeOdds = 1.0;
 
     for (final c in candidates) {
@@ -66,7 +70,7 @@ class SlipGenerator {
 
       if (cumulativeOdds >= 5.00 && cumulativeOdds <= 10.00) {
         return GeneratedSlip(
-          title: '馃敟 Prolific Value Accumulator',
+          title: '🔥 Prolific Value Accumulator',
           totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
           selections: selectedBets,
         );
@@ -75,7 +79,7 @@ class SlipGenerator {
 
     if (selectedBets.isNotEmpty && cumulativeOdds >= 3.0) {
       return GeneratedSlip(
-        title: '鈿� Custom Combo Slip',
+        title: '⚡ Custom Combo Slip',
         totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
         selections: selectedBets,
       );
