@@ -256,13 +256,21 @@ class FixturesTab extends StatefulWidget {
 class _FixturesTabState extends State<FixturesTab> {
   late Future<List<FixtureModel>> _fixturesFuture;
   Set<String> _savedKeys = {};
-  String _selectedFilter = 'all'; // Active filter state
+  String _selectedFilter = 'all';
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadSavedSlips();
     _loadFixtures();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSavedSlips() async {
@@ -299,34 +307,70 @@ class _FixturesTabState extends State<FixturesTab> {
     );
   }
 
-  Widget _buildFilterChips() {
+  Widget _buildSearchAndFilters() {
     const filters = ['All', 'Upcoming', 'Live', 'Finished'];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: filters.map((filter) {
-            final key = filter.toLowerCase();
-            final isSelected = _selectedFilter == key;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(filter),
-                selected: isSelected,
-                selectedColor: kTealGreen,
-                backgroundColor: cardBg(context),
-                labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : mutedText(context),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                onSelected: (_) => setState(() => _selectedFilter = key),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Column(
+        children: [
+          // Search Bar for Teams
+          TextField(
+            controller: _searchController,
+            onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+            decoration: InputDecoration(
+              hintText: 'Search team (e.g., Santos, Flamengo)...',
+              hintStyle: TextStyle(fontSize: 13, color: mutedText(context)),
+              prefixIcon: const Icon(Icons.search, color: kTealGreen, size: 20),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: cardBg(context),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: kTealGreen.withOpacity(0.3)),
               ),
-            );
-          }).toList(),
-        ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: kTealGreen.withOpacity(0.2)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Filter Chips Row
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: filters.map((filter) {
+                final key = filter.toLowerCase();
+                final isSelected = _selectedFilter == key;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(filter),
+                    selected: isSelected,
+                    selectedColor: kTealGreen,
+                    backgroundColor: cardBg(context),
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : mutedText(context),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                    onSelected: (_) => setState(() => _selectedFilter = key),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -366,31 +410,40 @@ class _FixturesTabState extends State<FixturesTab> {
           return const Center(child: Text('No fixtures available right now.'));
         }
 
-        // Apply the static filter helper from FixtureModel
-        final allFixtures = snapshot.data!;
-        final fixtures = FixtureModel.filterFixtures(allFixtures, _selectedFilter);
+        // 1. Filter by status (All, Upcoming, Live, Finished)
+        List<FixtureModel> fixtures = FixtureModel.filterFixtures(snapshot.data!, _selectedFilter);
+
+        // 2. Filter by search query (team names)
+        if (_searchQuery.isNotEmpty) {
+          fixtures = fixtures.where((f) =>
+              f.homeTeam.toLowerCase().contains(_searchQuery) ||
+              f.awayTeam.toLowerCase().contains(_searchQuery)).toList();
+        }
 
         return Column(
           children: [
-            _buildFilterChips(),
+            _buildSearchAndFilters(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async => _loadFixtures(),
                 child: fixtures.isEmpty
                     ? Center(
                         child: Text(
-                          'No matches found for "$_selectedFilter"',
+                          'No matches found',
                           style: TextStyle(color: mutedText(context)),
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                         itemCount: fixtures.length,
                         itemBuilder: (context, index) {
                           final fixture = fixtures[index];
                           final isSaved = _savedKeys.contains(fixture.key);
-                          final String whenText =
-                              fixture.isFinished ? 'FT ${fixture.actualScore}' : fixture.timeLabel;
+                          
+                          // Include both schedule date/time and FT score for finished matches
+                          final String whenText = fixture.isFinished
+                              ? '${fixture.timeLabel.isNotEmpty ? "${fixture.timeLabel} • " : ""}FT ${fixture.actualScore}'
+                              : fixture.timeLabel;
 
                           return Card(
                             color: cardBg(context),
