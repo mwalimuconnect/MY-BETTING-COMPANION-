@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fixture_model.dart';
 import 'prediction_log.dart';
@@ -30,6 +31,13 @@ class SlipLeg {
     this.status = 'pending',
     this.score = '',
   });
+
+  /// Helper to get the date string (YYYY-MM-DD) for grouping by day
+  String get dayKey {
+    final dt = DateTime.tryParse(utcDate)?.toLocal() ??
+        DateTime.fromMillisecondsSinceEpoch(savedAt).toLocal();
+    return DateFormat('yyyy-MM-dd').format(dt);
+  }
 
   Map<String, dynamic> toJson() => {
         'key': key,
@@ -97,8 +105,29 @@ Widget buildMyPicksHeader() {
   );
 }
 
-/// Helper builder to render numbered list items for your saved picks/slips
-Widget buildNumberedSlipList(List<SlipLeg> legs, Function(String key) onDelete) {
+/// Bright day and date header (e.g. SUNDAY, 15 NOV 2026)
+Widget buildBrightDayHeader(String dateStr) {
+  final dt = DateTime.tryParse(dateStr);
+  final formatted = dt != null
+      ? DateFormat('EEEE, d MMM yyyy').format(dt).toUpperCase()
+      : dateStr.toUpperCase();
+
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+    child: Text(
+      formatted,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF00E5FF), // Bright Cyan highlight
+        letterSpacing: 1.2,
+      ),
+    ),
+  );
+}
+
+/// Helper builder to render saved picks grouped per day with bright day/date headers
+Widget buildGroupedSlipList(List<SlipLeg> legs, Function(String key) onDelete) {
   if (legs.isEmpty) {
     return const Padding(
       padding: EdgeInsets.all(24),
@@ -110,31 +139,49 @@ Widget buildNumberedSlipList(List<SlipLeg> legs, Function(String key) onDelete) 
     );
   }
 
+  // Group legs by dayKey (YYYY-MM-DD)
+  final Map<String, List<SlipLeg>> grouped = {};
+  for (final leg in legs) {
+    grouped.putIfAbsent(leg.dayKey, () => []).add(leg);
+  }
+
+  // Sort dates descending (newest/upcoming first)
+  final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+
   return ListView.builder(
     shrinkWrap: true,
     physics: const NeverScrollableScrollPhysics(),
-    itemCount: legs.length,
-    itemBuilder: (context, index) {
-      final leg = legs[index];
-      final itemNumber = index + 1; // Numbering starting from 1
+    itemCount: sortedDays.length,
+    itemBuilder: (context, dayIndex) {
+      final day = sortedDays[dayIndex];
+      final dayLegs = grouped[day]!;
 
-      return Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: const Color(0xFF008080), // Teal Green badge
-            child: Text(
-              '$itemNumber',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          buildBrightDayHeader(day),
+          for (int i = 0; i < dayLegs.length; i++)
+            Card(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: const Color(0xFF008080), // Teal Green badge
+                  child: Text(
+                    '${i + 1}',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                title: Text('${dayLegs[i].home} vs ${dayLegs[i].away}'),
+                subtitle: Text(
+                    'Tip: ${dayLegs[i].tip.isNotEmpty ? dayLegs[i].tip : "None"} | Score: ${dayLegs[i].score.isNotEmpty ? dayLegs[i].score : "Pending"}'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: () => onDelete(dayLegs[i].key),
+                ),
+              ),
             ),
-          ),
-          title: Text('${leg.home} vs ${leg.away}'),
-          subtitle: Text('Tip: ${leg.tip.isNotEmpty ? leg.tip : "None"} | Score: ${leg.score.isNotEmpty ? leg.score : "Pending"}'),
-          trailing: IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: () => onDelete(leg.key),
-          ),
-        ),
+        ],
       );
     },
   );
