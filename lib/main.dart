@@ -580,6 +580,10 @@ class SavedSlipsTab extends StatefulWidget {
 
 class _SavedSlipsTabState extends State<SavedSlipsTab> {
   late Future<_SlipsData> _slipsFuture;
+  
+  // Controller to handle editable stake for the suggested slip
+  final TextEditingController _stakeController = TextEditingController();
+  double? _customStake;
 
   @override
   void initState() {
@@ -587,9 +591,19 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     _loadSlips();
   }
 
+  @override
+  void dispose() {
+    _stakeController.dispose();
+    super.dispose();
+  }
+
   Future<_SlipsData> _fetch() async {
     final legs = await SlipStore.load();
     final suggested = await SuggestedSlipStore.load();
+    if (suggested != null && _customStake == null) {
+      _customStake = suggested.stake;
+      _stakeController.text = suggested.stake.toStringAsFixed(0);
+    }
     return _SlipsData(legs, suggested);
   }
 
@@ -599,15 +613,14 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     });
   }
 
-  /// The day a saved pick belongs to, as YYYY-MM-DD (match day, or the day it
-  /// was saved if the match time is unknown).
+  /// The day a saved pick belongs to, as YYYY-MM-DD
   String _dayKeyOf(SlipLeg leg) {
     final DateTime dt = DateTime.tryParse(leg.utcDate)?.toLocal() ??
         DateTime.fromMillisecondsSinceEpoch(leg.savedAt);
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
-  /// Safaricom Green day and date header helper
+  /// Day and date header helper
   Widget _buildDayHeader(String dateStr) {
     final dt = DateTime.tryParse(dateStr);
     String formatted = dateStr;
@@ -624,15 +637,17 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
         style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
-          color: Color(0xFF00C853), // Safaricom Green highlight
+          color: Color(0xFF00C853),
           letterSpacing: 1.2,
         ),
       ),
     );
   }
-  
-  /// Suggested slip card in a professional ticket style
+
+  /// Suggested slip card with an editable stake field
   Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
+    final double currentStake = _customStake ?? slip.stake;
+    final double potentialPayout = slip.totalOdds * currentStake;
     final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
 
     return Card(
@@ -647,7 +662,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header: title and overall odds
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -668,7 +682,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               ],
             ),
             const Divider(height: 16),
-            // Selections styled like match rows with odds on the right
             for (int i = 0; i < slip.selections.length; i++) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
@@ -712,7 +725,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
-            // Stake and possible win box
+            // Editable Stake and Possible Win Box
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -721,33 +734,52 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                 border: Border.all(color: kTealGreen.withOpacity(0.3)),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Stake', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Ksh ${slip.stake.toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      const Text('Possible Win', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Ksh ${slip.potentialPayout.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: kTealGreen,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Stake (Ksh)', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        const SizedBox(height: 2),
+                        TextField(
+                          controller: _stakeController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (val) async {
+                            final parsed = double.tryParse(val.trim());
+                            if (parsed != null && parsed >= 0) {
+                              setState(() {
+                                _customStake = parsed;
+                              });
+                              await SuggestedSlipStore.updateStake(parsed);
+                            }
+                          },
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text('Possible Win', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Ksh ${potentialPayout.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: kTealGreen,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -851,7 +883,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
           children: [
             buildMyPicksHeader(),
 
-            // Section 1: system-generated daily accumulator
             if (data.suggested != null) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -869,7 +900,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               _suggestedCard(context, data.suggested!),
             ],
 
-            // Summary card for manually saved picks (if any exist)
             if (legs.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -890,7 +920,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                 ),
               ),
 
-            // Section 2: manually saved bookmarks grouped by day
             if (legs.isEmpty && data.suggested == null)
               Padding(
                 padding: const EdgeInsets.all(24),
