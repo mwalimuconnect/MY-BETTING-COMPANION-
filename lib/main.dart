@@ -61,17 +61,23 @@ class SuggestedSlip {
   final String title;
   final double totalOdds;
   final List<Map<String, dynamic>> selections;
+  final double stake;
+  final double potentialPayout;
 
   const SuggestedSlip({
     required this.title,
     required this.totalOdds,
     required this.selections,
-  });
+    this.stake = 200.0,
+    double? potentialPayout,
+  }) : potentialPayout = potentialPayout ?? (totalOdds * 200.0);
 
   Map<String, dynamic> toJson() => {
         'title': title,
         'totalOdds': totalOdds,
         'selections': selections,
+        'stake': stake,
+        'potentialPayout': potentialPayout,
       };
 
   factory SuggestedSlip.fromJson(Map<String, dynamic> j) {
@@ -82,10 +88,18 @@ class SuggestedSlip {
         if (e is Map) sel.add(Map<String, dynamic>.from(e));
       }
     }
+    final double odds = j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0;
+    final double parsedStake = j['stake'] is num ? (j['stake'] as num).toDouble() : 200.0;
+    final double parsedPayout = j['potentialPayout'] is num 
+        ? (j['potentialPayout'] as num).toDouble() 
+        : (odds * parsedStake);
+
     return SuggestedSlip(
       title: j['title']?.toString() ?? 'Suggested slip',
-      totalOdds: j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0,
+      totalOdds: odds,
       selections: sel,
+      stake: parsedStake,
+      potentialPayout: parsedPayout,
     );
   }
 }
@@ -128,6 +142,8 @@ class SuggestedSlipStore {
         title: generated.title,
         totalOdds: generated.totalOdds,
         selections: generated.selections,
+        stake: generated.stake,
+        potentialPayout: generated.potentialPayout,
       );
       await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
 
@@ -152,7 +168,7 @@ Future<void> _safely(Future<void> Function() action) async {
     debugPrint('Background task failed: $e');
   }
 }
-
+    
 // ---------------------------------------------------------------------------
 // Home screen
 // ---------------------------------------------------------------------------
