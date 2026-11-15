@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fixture_model.dart';
 import 'prediction_log.dart';
@@ -36,7 +35,7 @@ class SlipLeg {
   String get dayKey {
     final dt = DateTime.tryParse(utcDate)?.toLocal() ??
         DateTime.fromMillisecondsSinceEpoch(savedAt).toLocal();
-    return DateFormat('yyyy-MM-dd').format(dt);
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
   Map<String, dynamic> toJson() => {
@@ -105,17 +104,22 @@ Widget buildMyPicksHeader() {
   );
 }
 
-/// Bright day and date header (e.g. SUNDAY, 15 NOV 2026)
+/// Bright day and date header formatted purely in standard Dart
 Widget buildBrightDayHeader(String dateStr) {
   final dt = DateTime.tryParse(dateStr);
-  final formatted = dt != null
-      ? DateFormat('EEEE, d MMM yyyy').format(dt).toUpperCase()
-      : dateStr.toUpperCase();
+  String formatted = dateStr;
+  if (dt != null) {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+    final dayName = days[dt.weekday - 1];
+    final monthName = months[dt.month - 1];
+    formatted = '$dayName, ${dt.day} $monthName ${dt.year}';
+  }
 
   return Padding(
     padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
     child: Text(
-      formatted,
+      formatted.toUpperCase(),
       style: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.bold,
