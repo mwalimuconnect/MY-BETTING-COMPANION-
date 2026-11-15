@@ -1,13 +1,3 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'api_service.dart';
-import 'app_settings.dart';
-import 'notification_service.dart';
-import 'slip_generator.dart';
-
 class H2HEntry {
   final String date;
   final String home;
@@ -180,66 +170,5 @@ class FixtureModel {
       predictionCorrect:
           j['predictionCorrect'] is bool ? j['predictionCorrect'] as bool : null,
     );
-  }
-}
-
-class FixtureApi {
-  static String _lastSlipSignature = '';
-
-  static Future<List<FixtureModel>> fetchFixtures() async {
-    try {
-      final res = await http
-          .get(Uri.parse('$kApiBase/api/fixtures'))
-          .timeout(const Duration(seconds: 45));
-
-      if (res.statusCode != 200) {
-        throw Exception('Failed to load fixtures: ${res.statusCode}');
-      }
-
-      final decoded = jsonDecode(res.body);
-      List list = [];
-      if (decoded is List) {
-        list = decoded;
-      } else if (decoded is Map && decoded['fixtures'] is List) {
-        list = decoded['fixtures'];
-      }
-
-      final fixtures = list
-          .map((e) => FixtureModel.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-
-      _processAutoSlipCheck(fixtures);
-
-      return fixtures;
-    } on SocketException {
-      throw Exception('No internet connection.');
-    } on TimeoutException {
-      throw Exception('Request timed out.');
-    } catch (e) {
-      throw Exception('Error loading fixtures: $e');
-    }
-  }
-
-  /// Tells the user about a suggested slip, but only if notifications are on
-  /// and only once per distinct slip (not on every refresh).
-  static void _processAutoSlipCheck(List<FixtureModel> fixtures) {
-    try {
-      if (!AppSettings.notificationsOn.value) return;
-
-      final generatedSlip = SlipGenerator.generateTargetSlip(fixtures);
-      if (generatedSlip == null) return;
-
-      final signature =
-          generatedSlip.selections.map((s) => s['match'].toString()).join('|');
-      if (signature == _lastSlipSignature) return;
-      _lastSlipSignature = signature;
-
-      NotificationService.showNow(
-        generatedSlip.title,
-        'Suggested slip: ${generatedSlip.totalOdds}x (model odds). Open the app to view selections.',
-      );
-    } catch (e) {
-      debugPrint('Auto slip generation error: $e');
-    }
   }
 }
