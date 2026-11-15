@@ -511,10 +511,32 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 
+  /// Bright day and date header for the suggested daily slip card
+  Widget _buildDayHeader(String dateStr) {
+    final dt = DateTime.tryParse(dateStr);
+    String formatted = dateStr;
+    if (dt != null) {
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+      formatted = '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+      child: Text(
+        formatted.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF00E5FF), // Bright Cyan highlight
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
   Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
     final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
-    const double stake = 200.0;
-    final double possibleWin = slip.totalOdds * stake;
 
     return Card(
       color: cardBg(context),
@@ -558,11 +580,11 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Stake: Ksh ${stake.toStringAsFixed(0)}',
+                  'Stake: Ksh ${slip.stake.toStringAsFixed(0)}',
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  'Possible Win: Ksh ${possibleWin.toStringAsFixed(2)}',
+                  'Possible Win: Ksh ${slip.potentialPayout.toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -602,7 +624,10 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
           padding: const EdgeInsets.only(bottom: 24),
           children: [
             buildMyPicksHeader(),
-            if (data.suggested != null) _suggestedCard(context, data.suggested!),
+            if (data.suggested != null) ...[
+              _buildDayHeader(data.suggested!.date),
+              _suggestedCard(context, data.suggested!),
+            ],
             if (legs.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(24),
@@ -631,36 +656,10 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                   ),
                 ),
               ),
-              for (int i = 0; i < legs.length; i++)
-                Card(
-                  color: cardBg(context),
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: kTealGreen,
-                      child: Text(
-                        '${i + 1}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    title: Text('${legs[i].home} vs ${legs[i].away}'),
-                    subtitle: Text(
-                        'Tip: ${legs[i].tip.isEmpty ? 'None' : legs[i].tip} | Score: ${legs[i].score.isEmpty ? 'Pending' : legs[i].score}'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _legStatusChip(legs[i].status),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () async {
-                            await SlipStore.remove(legs[i].key);
-                            _loadSlips();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              buildGroupedSlipList(legs, (key) async {
+                await SlipStore.remove(key);
+                _loadSlips();
+              }),
             ],
           ],
         );
@@ -677,8 +676,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ],
     );
   }
-}
-                                
+}     
+                          
 // ---------------------------------------------------------------------------
 // History tab (PROLIFIC)
 // ---------------------------------------------------------------------------
