@@ -55,14 +55,15 @@ class MyBettingCompanionApp extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Suggested slip (5-10 combined odds), built automatically from fixtures
+// Suggested slip (5-10 combined odds), built automatically from fixtures daily
 // ---------------------------------------------------------------------------
 class SuggestedSlip {
   final String title;
   final double totalOdds;
-  final List<Map<String, dynamic>> selections;
+  final List> selections;
   final double stake;
   final double potentialPayout;
+  final String date; // e.g. '2026-11-15'
 
   const SuggestedSlip({
     required this.title,
@@ -70,6 +71,7 @@ class SuggestedSlip {
     required this.selections,
     this.stake = 200.0,
     double? potentialPayout,
+    required this.date,
   }) : potentialPayout = potentialPayout ?? (totalOdds * 200.0);
 
   Map<String, dynamic> toJson() => {
@@ -78,10 +80,11 @@ class SuggestedSlip {
         'selections': selections,
         'stake': stake,
         'potentialPayout': potentialPayout,
+        'date': date,
       };
 
   factory SuggestedSlip.fromJson(Map<String, dynamic> j) {
-    final sel = <Map<String, dynamic>>[];
+    final sel = >[];
     final raw = j['selections'];
     if (raw is List) {
       for (final e in raw) {
@@ -100,12 +103,13 @@ class SuggestedSlip {
       selections: sel,
       stake: parsedStake,
       potentialPayout: parsedPayout,
+      date: j['date']?.toString() ?? '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}',
     );
   }
 }
 
 class SuggestedSlipStore {
-  static const String _slipKey = 'suggested_slip_v1';
+  static const String _slipKey = 'suggested_slip_v2';
   static const String _notifiedDayKey = 'suggested_slip_notified_day';
 
   static const String note =
@@ -126,17 +130,25 @@ class SuggestedSlipStore {
     }
   }
 
-  /// Builds a slip from the latest fixtures and saves it. Sends one
-  /// notification per day when a slip is available.
+  /// Builds a slip from fixtures daily before 10 AM.
   static Future<void> refresh(List<FixtureModel> fixtures) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final generated = SlipGenerator.generateTargetSlip(fixtures);
-
-      if (generated == null) {
-        await prefs.remove(_slipKey);
+      final now = DateTime.now();
+      final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      
+      final existing = await load();
+      
+      if (existing != null && existing.date == todayStr) {
         return;
       }
+
+      if (now.hour >= 10 && existing != null) {
+        return; 
+      }
+
+      final generated = SlipGenerator.generateTargetSlip(fixtures);
+      if (generated == null) return;
 
       final slip = SuggestedSlip(
         title: generated.title,
@@ -144,15 +156,16 @@ class SuggestedSlipStore {
         selections: generated.selections,
         stake: generated.stake,
         potentialPayout: generated.potentialPayout,
+        date: todayStr,
       );
+      
       await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
 
-      final today = DateTime.now().toIso8601String().substring(0, 10);
-      if (prefs.getString(_notifiedDayKey) != today) {
-        await prefs.setString(_notifiedDayKey, today);
+      if (prefs.getString(_notifiedDayKey) != todayStr) {
+        await prefs.setString(_notifiedDayKey, todayStr);
         await NotificationService.showNow(
           slip.title,
-          'New slip ready: ${slip.totalOdds.toStringAsFixed(2)}x. Open the Slips tab to view the picks.',
+          'New daily slip ready: ${slip.totalOdds.toStringAsFixed(2)}x. Open the Slips tab to view today\'s picks.',
         );
       }
     } catch (e) {
@@ -168,7 +181,7 @@ Future<void> _safely(Future<void> Function() action) async {
     debugPrint('Background task failed: $e');
   }
 }
-    
+              
 // ---------------------------------------------------------------------------
 // Home screen
 // ---------------------------------------------------------------------------
