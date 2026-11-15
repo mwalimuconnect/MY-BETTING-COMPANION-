@@ -534,75 +534,142 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ),
     );
   }
+// ---------------------------------------------------------------------------
+// Updated layout for the Suggested Slip card to match the professional ticket style
+// ---------------------------------------------------------------------------
+Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
+  final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
 
-  Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
-    final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
-
-    return Card(
-      color: cardBg(context),
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: kTealGreen, width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(slip.title,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                ),
-                Text('${slip.totalOdds.toStringAsFixed(2)}x',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 16, color: kTealGreen)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            for (int i = 0; i < slip.selections.length; i++)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
+  return Card(
+    color: cardBg(context),
+    margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: const BorderSide(color: kTealGreen, width: 1),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Title and Overall Odds
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
                 child: Text(
-                  '${i + 1}. ${slip.selections[i]['match']} - ${slip.selections[i]['prediction']} (${slip.selections[i]['odds']})',
-                  style: const TextStyle(fontSize: 13),
+                  slip.title,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),
-            const SizedBox(height: 8),
-            Text(
-              'Chance that every leg wins: about ${chance.toStringAsFixed(0)}%',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              Text(
+                '${slip.totalOdds.toStringAsFixed(2)}x',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: kTealGreen,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 16),
+          // Selections list styled like individual match rows with odds on the right
+          for (int i = 0; i < slip.selections.length; i++) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${i + 1}. ${slip.selections[i]['match']}',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Prediction: ${slip.selections[i]['prediction']}',
+                          style: TextStyle(fontSize: 12, color: mutedText(context)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${slip.selections[i]['odds']}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: kTealGreen,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Row(
+            if (i < slip.selections.length - 1)
+              const Divider(height: 8, color: Colors.black12),
+          ],
+          const Divider(height: 16),
+          // Probability note
+          Text(
+            'Chance that every leg wins: about ${chance.toStringAsFixed(0)}%',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          // Clean Stake & Payout Box matching professional bet slips
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: kTealGreen.withOpacity(0.3)),
+            ),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Stake: Ksh ${slip.stake.toStringAsFixed(0)}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Stake', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Ksh ${slip.stake.toStringAsFixed(0)}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
-                Text(
-                  'Possible Win: Ksh ${slip.potentialPayout.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: kTealGreen,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text('Possible Win', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Ksh ${slip.potentialPayout.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: kTealGreen,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(SuggestedSlipStore.note,
-                style: TextStyle(fontSize: 11, color: mutedText(context))),
-          ],
-        ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            SuggestedSlipStore.note,
+            style: TextStyle(fontSize: 10, color: mutedText(context)),
+          ),
+        ],
       ),
-    );
-  }
-
-  @override
+    ),
+  );
+}
+  
+ @override
   Widget build(BuildContext context) {
     return FutureBuilder<_SlipsData>(
       future: _slipsFuture,
