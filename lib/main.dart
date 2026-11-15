@@ -513,27 +513,27 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 
   /// Bright day and date header for the suggested daily slip card
   Widget _buildDayHeader(String dateStr) {
-    final dt = DateTime.tryParse(dateStr);
-    String formatted = dateStr;
-    if (dt != null) {
-      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-      formatted = '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-      child: Text(
-        formatted.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.bold,
-          color: Color(0xFF00E5FF), // Bright Cyan highlight
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
+  final dt = DateTime.tryParse(dateStr);
+  String formatted = dateStr;
+  if (dt != null) {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+    formatted = '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
+
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+    child: Text(
+      formatted.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF00C853), // Vibrant Safaricom Green
+        letterSpacing: 1.2,
+      ),
+    ),
+  );
+}
 // ---------------------------------------------------------------------------
 // Updated layout for the Suggested Slip card to match the professional ticket style
 // ---------------------------------------------------------------------------
