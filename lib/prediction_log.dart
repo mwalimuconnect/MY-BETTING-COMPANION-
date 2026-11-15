@@ -17,12 +17,12 @@ bool? evaluateTip(String tip, String home, String away, String score) {
   return null;
 }
 
-/// Helper widget to render the PROLIFIC 🔥 header in bold Teal Green capital letters
+/// Helper widget to render the PROLIFIC \u{1F525} header in bold Teal Green capital letters
 Widget buildProlificHeader() {
   return const Padding(
     padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
     child: Text(
-      'PROLIFIC 🔥',
+      'PROLIFIC \u{1F525}',
       style: TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.bold,
