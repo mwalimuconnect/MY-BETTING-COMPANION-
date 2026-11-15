@@ -177,7 +177,25 @@ class SuggestedSlipStore {
     }
   }
 }
-
+/// Saves an updated stake for today's active suggested slip
+  static Future<void> updateStake(double newStake) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final slip = await load();
+      if (slip != null) {
+        final updatedSlip = SuggestedSlip(
+          title: slip.title,
+          totalOdds: slip.totalOdds,
+          selections: slip.selections,
+          stake: newStake,
+          date: slip.date,
+        );
+        await prefs.setString(_slipKey, jsonEncode(updatedSlip.toJson()));
+      }
+    } catch (e) {
+      debugPrint('Could not update suggested slip stake: $e');
+    }
+  }
 Future<void> _safely(Future<void> Function() action) async {
   try {
     await action();
