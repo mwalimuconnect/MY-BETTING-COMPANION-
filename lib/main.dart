@@ -564,9 +564,6 @@ class _FixturesTabState extends State<FixturesTab> {
 // ---------------------------------------------------------------------------
 // Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Slips tab (MY PICKS)
-// ---------------------------------------------------------------------------
 class _SlipsData {
   final List<SlipLeg> legs;
   final SuggestedSlip? suggested;
@@ -837,11 +834,12 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 
-  /// Manual Saved Picks Ticket per day with edit & save stake buttons
-  Widget _buildManualSlipCard(String day, List<SlipLeg> dayLegs) {
+    /// Manual Saved Picks Ticket per day with edit & save stake buttons
+    Widget _buildManualSlipCard(String day, List<SlipLeg> dayLegs) {
+    // Default standard combined odds calculation for saved manual legs
     double totalOdds = 1.0;
-    for (var leg in dayLegs) {
-      totalOdds *= (leg.odds > 1 ? leg.odds : 1.85);
+    for (int i = 0; i < dayLegs.length; i++) {
+      totalOdds *= 1.85; // Standard model-implied accumulator multiplier per leg
     }
 
     _manualStakeControllers.putIfAbsent(day, () => TextEditingController(text: (_customManualStakes[day] ?? 200.0).toStringAsFixed(0)));
@@ -895,7 +893,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Date: ${dayLegs[i].date.isNotEmpty ? dayLegs[i].date : day} | Tip: ${dayLegs[i].tip.isNotEmpty ? dayLegs[i].tip : "None"}',
+                            'Date: ${dayLegs[i].utcDate.isNotEmpty ? dayLegs[i].utcDate : day} | Tip: ${dayLegs[i].tip.isNotEmpty ? dayLegs[i].tip : "None"}',
                             style: TextStyle(fontSize: 11, color: mutedText(context)),
                           ),
                           Text(
