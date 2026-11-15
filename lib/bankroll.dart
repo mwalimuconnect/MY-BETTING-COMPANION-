@@ -888,3 +888,4 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 }
+
