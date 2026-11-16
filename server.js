@@ -8,9 +8,9 @@ const FOOTBALL_DATA_TOKEN = process.env.FOOTBALL_DATA_TOKEN;
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 const TIMEZONE = 'Africa/Nairobi';
 const CACHE_TTL_MS = 60 * 1000;
-const TABLE_TTL_MS = 10 * 60 * 1000; // football-data.org standings/scorers cache
+const TABLE_TTL_MS = 10 * 60 * 1000; // football-data.org standings cache
 const EXTRA_FIXTURES_TTL_MS = 30 * 60 * 1000; // 30 mins for API-Football fixtures
-const EXTRA_TABLE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for API-Football tables (protects 100/day limit)
+const EXTRA_TABLE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for API-Football tables
 const DAYS_BACK = 7;
 const DAYS_AHEAD = 8;
 const MAX_UPCOMING = 50;
@@ -325,7 +325,7 @@ function ensureRatings() {
       console.error('refreshRatings crashed:', e.message);
     });
   }
-  }
+        }
 // ---------- Live data mapping (football-data.org v4) ----------
 const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
@@ -428,6 +428,10 @@ async function fetchExtraLeagueFixtures() {
         timeout: 15000,
       });
 
+      if (res.data.errors && Object.keys(res.data.errors).length > 0) {
+        console.error('API-Football API error:', JSON.stringify(res.data.errors));
+      }
+
       const list = res.data.response || [];
       for (const item of list) {
         const leagueId = item.league && item.league.id;
@@ -464,7 +468,7 @@ async function fetchExtraLeagueFixtures() {
     }
 
     extraFixturesCache = { data: results, fetchedAt: now };
-    console.log(`API-Football: ${results.length} fixtures fetched across 8 global leagues`);
+    console.log(`API-Football: ${results.length} fixtures fetched across global leagues`);
     return results;
   } catch (err) {
     console.error('API-Football fixtures failed:', err.message);
@@ -542,9 +546,8 @@ function pickFixtures(allMatches) {
     ...upcoming.map((m) => formatFixture(m, true)),
     ...finished.map((m) => formatFixture(m, true)),
   ];
-}
-
-// ---------- Standings and top scorers (Hybrid Router) ----------
+      }
+// ---------- Standings (Hybrid Router) ----------
 const tableCache = {};
 
 async function cachedFootballData(cacheKey, url, params, mapper, ttl = TABLE_TTL_MS) {
@@ -600,7 +603,7 @@ app.get('/api/standings/:code', async (req, res) => {
   const code = String(req.params.code || '').toUpperCase();
   if (!ALL_COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
 
-  // Route 1: 8 Global Leagues via API-Football
+  // Route 1: Global Leagues via API-Football
   if (EXTRA_LEAGUES[code]) {
     if (!API_FOOTBALL_KEY) return res.status(503).json({ error: 'API-Football key not set' });
     const meta = EXTRA_LEAGUES[code];
@@ -610,22 +613,25 @@ app.get('/api/standings/:code', async (req, res) => {
         'standings',
         { league: meta.id, season: meta.season },
         (d) => {
-          const standingsArrays = d.response?.[0]?.league?.standings || [];
+          const leagueData = d.response?.[0]?.league;
+          const rawStandings = leagueData?.standings || [];
+          const standingsArrays = Array.isArray(rawStandings[0]) ? rawStandings : [rawStandings];
+
           return {
             competition: meta.name,
-            groups: standingsArrays.map((groupRows) => ({
-              name: groupRows[0]?.group || '',
+            groups: standingsArrays.map((groupRows, index) => ({
+              name: groupRows[0]?.group || (standingsArrays.length > 1 ? `Group ${index + 1}` : ''),
               table: groupRows.map((r) => ({
-                position: r.rank,
+                position: r.rank ?? 0,
                 team: r.team?.name || '',
-                played: r.all?.played || 0,
-                won: r.all?.win || 0,
-                draw: r.all?.draw || 0,
-                lost: r.all?.lose || 0,
-                goalsFor: r.all?.goals?.for || 0,
-                goalsAgainst: r.all?.goals?.against || 0,
-                goalDifference: r.goalsDiff || 0,
-                points: r.points || 0,
+                played: r.all?.played ?? 0,
+                won: r.all?.win ?? 0,
+                draw: r.all?.draw ?? 0,
+                lost: r.all?.lose ?? 0,
+                goalsFor: r.all?.goals?.for ?? 0,
+                goalsAgainst: r.all?.goals?.against ?? 0,
+                goalDifference: r.goalsDiff ?? 0,
+                points: r.points ?? 0,
                 form: r.form ? r.form.split('').join(',') : '',
               })),
             })),
@@ -637,7 +643,8 @@ app.get('/api/standings/:code', async (req, res) => {
       return sendTableError(res, `API-Football Standings ${code}`, err);
     }
   }
-   // Route 2: 12 Core Competitions via football-data.org
+
+  // Route 2: 12 Core Competitions via football-data.org (Standings)
   if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
   try {
     const data = await cachedFootballData(
@@ -646,20 +653,20 @@ app.get('/api/standings/:code', async (req, res) => {
       {},
       (d) => ({
         competition: (d.competition && d.competition.name) || code,
-        groups: (d.standings || []).map((st) => ({
-          name: st.group ? st.group.replace(/_/g, ' ') : '',
-          table: (st.table || []).map((row) => ({
-            position: row.position,
-            team: (row.team && (row.team.shortName || row.team.name)) || '',
-            played: row.playedGames,
-            won: row.won,
-            draw: row.draw,
-            lost: row.lost,
-            goalsFor: row.goalsFor,
-            goalsAgainst: row.goalsAgainst,
-            goalDifference: row.goalDifference,
-            points: row.points,
-            form: row.form ? row.form.split('').join(',') : '',
+        groups: (d.standings || []).map((table) => ({
+          name: table.group ? table.group.replace('_', ' ') : '',
+          table: (table.table || []).map((r) => ({
+            position: r.position,
+            team: (r.team && (r.team.shortName || r.team.name)) || '',
+            played: r.playedGames || 0,
+            won: r.won || 0,
+            draw: r.draw || 0,
+            lost: r.lost || 0,
+            goalsFor: r.goalsFor || 0,
+            goalsAgainst: r.goalsAgainst || 0,
+            goalDifference: r.goalDifference || 0,
+            points: r.points || 0,
+            form: r.form ? r.form.split('').join(',') : '',
           })),
         })),
       })
@@ -667,60 +674,6 @@ app.get('/api/standings/:code', async (req, res) => {
     return res.json(data);
   } catch (err) {
     return sendTableError(res, `Standings ${code}`, err);
-  }
-});
-
-app.get('/api/scorers/:code', async (req, res) => {
-  const code = String(req.params.code || '').toUpperCase();
-  if (!ALL_COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
-
-  if (EXTRA_LEAGUES[code]) {
-    if (!API_FOOTBALL_KEY) return res.status(503).json({ error: 'API-Football key not set' });
-    const meta = EXTRA_LEAGUES[code];
-    try {
-      const data = await cachedApiFootballTable(
-        `scorers:${code}`,
-        'players/topscorers',
-        { league: meta.id, season: meta.season },
-        (d) => ({
-          competition: meta.name,
-          scorers: (d.response || []).slice(0, 20).map((item) => ({
-            name: item.player?.name || '',
-            team: item.statistics?.[0]?.team?.name || '',
-            goals: item.statistics?.[0]?.goals?.total || 0,
-            assists: item.statistics?.[0]?.goals?.assists || 0,
-            penalties: item.statistics?.[0]?.penalty?.scored || 0,
-            played: item.statistics?.[0]?.games?.appearences || 0,
-          })),
-        })
-      );
-      return res.json(data);
-    } catch (err) {
-      return sendTableError(res, `API-Football Scorers ${code}`, err);
-    }
-  }
-
-  if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
-  try {
-    const data = await cachedFootballData(
-      `scorers:${code}`,
-      `https://api.football-data.org/v4/competitions/${code}/scorers`,
-      { limit: 20 },
-      (d) => ({
-        competition: (d.competition && d.competition.name) || code,
-        scorers: (d.scorers || []).map((s) => ({
-          name: (s.player && s.player.name) || '',
-          team: (s.team && (s.team.shortName || s.team.name)) || '',
-          goals: s.goals || 0,
-          assists: s.assists || 0,
-          penalties: s.penalties || 0,
-          played: s.playedMatches || 0,
-        })),
-      })
-    );
-    return res.json(data);
-  } catch (err) {
-    return sendTableError(res, `Scorers ${code}`, err);
   }
 });
 
