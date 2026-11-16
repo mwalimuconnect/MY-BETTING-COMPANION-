@@ -176,14 +176,28 @@ class FixtureModel {
     );
   }
 
-  /// Global filter helper method for lists of fixtures
-  static List<FixtureModel> filterFixtures(List<FixtureModel> fixtures, String filter) {
-    final query = filter.toLowerCase();
-    return fixtures.where((f) {
-      if (query == 'upcoming') return f.isUpcoming;
-      if (query == 'live') return f.isLiveMatch;
-      if (query == 'finished') return f.isFinishedMatch;
+  /// Global filter helper method supporting status tabs and text search (teams & competitions)
+  static List<FixtureModel> filterFixtures(List<FixtureModel> fixtures, String filter, {String searchQuery = ''}) {
+    // 1. Status Filter (All, Upcoming, Live, Finished)
+    final statusQuery = filter.toLowerCase();
+    var filtered = fixtures.where((f) {
+      if (statusQuery == 'upcoming') return f.isUpcoming;
+      if (statusQuery == 'live') return f.isLiveMatch;
+      if (statusQuery == 'finished') return f.isFinishedMatch;
       return true; // 'all'
     }).toList();
+
+    // 2. Text Search Filter (Team names, league name, or competition code)
+    final textQuery = searchQuery.toLowerCase().trim();
+    if (textQuery.isNotEmpty) {
+      filtered = filtered.where((f) {
+        return f.homeTeam.toLowerCase().contains(textQuery) ||
+               f.awayTeam.toLowerCase().contains(textQuery) ||
+               f.league.toLowerCase().contains(textQuery) ||
+               f.competitionCode.toLowerCase().contains(textQuery);
+      }).toList();
+    }
+
+    return filtered;
   }
 }
