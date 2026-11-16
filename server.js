@@ -49,6 +49,7 @@ app.get('/health', (req, res) => {
   res.json({
     ok: true,
     hasApiKey: Boolean(FOOTBALL_DATA_TOKEN),
+    hasApiFootballKey: Boolean(process.env.API_FOOTBALL_KEY),
     ratingsLoading,
     ratingsCompetitions: Object.keys(ratings),
   });
@@ -558,13 +559,70 @@ app.get('/api/scorers/:code', async (req, res) => {
   }
 });
 
+// ---------- Team Insights Route ----------
+const teamInsightsCache = new Map();
+const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+app.get('/api/team-insights', async (req, res) => {
+  const teamName = req.query.team;
+  if (!teamName) {
+    return res.status(400).json({ error: 'Team name is required' });
+  }
+
+  const cacheKey = teamName.toLowerCase().trim();
+  const cached = teamInsightsCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION_MS) {
+    return res.json(cached.data);
+  }
+
+  try {
+    // 1. Search for the team ID using your API_FOOTBALL_KEY environment variable
+    const teamRes = await axios.get(
+      `https://v3.football.api-sports.io/teams`,
+      {
+        headers: { 'x-apisports-key': process.env.API_FOOTBALL_KEY },
+        params: { search: teamName },
+        timeout: 15000,
+      }
+    );
+    const teamId = teamRes.data.response?.[0]?.team?.id;
+
+    if (!teamId) {
+      return res.json({ response: [] });
+    }
+
+    // 2. Fetch injuries/suspensions for that team ID
+    const injuriesRes = await axios.get(
+      `https://v3.football.api-sports.io/injuries`,
+      {
+        headers: { 'x-apisports-key': process.env.API_FOOTBALL_KEY },
+        params: { team: teamId, season: 2026 },
+        timeout: 15000,
+      }
+    );
+    const injuriesData = injuriesRes.data;
+
+    // Cache the result before responding
+    teamInsightsCache.set(cacheKey, {
+      timestamp: Date.now(),
+      data: injuriesData,
+    });
+
+    res.json(injuriesData);
+  } catch (error) {
+    const status = error.response && error.response.status;
+    const detail = error.response && error.response.data && error.response.data.message;
+    console.error('Error fetching team insights:', status || '', detail || error.message);
+    res.status(500).json({ error: 'Failed to fetch team insights' });
+  }
+});
+
 // ---------- Route ----------
 app.get('/api/fixtures', async (req, res) => {
   ensureRatings(); // starts in the background, never blocks the response
 
   let matches = [];
-
-  if (FOOTBALL_DATA_TOKEN) {
+if (FOOTBALL_DATA_TOKEN) {
     try {
       matches = await fetchMatchWindow();
     } catch (err) {
