@@ -15,6 +15,7 @@ class _TablesScreenState extends State<TablesScreen> with SingleTickerProviderSt
   String _selectedLeague = 'PL'; // Default competition code
 
     final Map<String, String> _leagues = {
+    'KPL': 'Kenyan Premier League (Kenya)',
     'PL': 'Premier League (England)',
     'ELC': 'Championship (England)',
     'PD': 'La Liga (Spain)',
