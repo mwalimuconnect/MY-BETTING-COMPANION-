@@ -14,20 +14,27 @@ class _TablesScreenState extends State<TablesScreen> with SingleTickerProviderSt
   late TabController _tabController;
   String _selectedLeague = 'PL'; // Default competition code
 
-  // The 12 competitions available on the football-data.org free plan.
-  final Map<String, String> _leagues = {
-    'PL': 'Premier League',
-    'ELC': 'Championship',
-    'PD': 'La Liga',
-    'SA': 'Serie A',
-    'BL1': 'Bundesliga',
-    'FL1': 'Ligue 1',
-    'DED': 'Eredivisie',
-    'PPL': 'Primeira Liga',
-    'BSA': 'Brasileirao Serie A',
-    'CL': 'Champions League',
-    'WC': 'World Cup',
+    final Map<String, String> _leagues = {
+    'PL': 'Premier League (England)',
+    'ELC': 'Championship (England)',
+    'PD': 'La Liga (Spain)',
+    'SA': 'Serie A (Italy)',
+    'BL1': 'Bundesliga (Germany)',
+    'FL1': 'Ligue 1 (France)',
+    'DED': 'Eredivisie (Netherlands)',
+    'PPL': 'Primeira Liga (Portugal)',
+    'CL': 'UEFA Champions League',
     'EC': 'European Championship',
+    'WC': 'FIFA World Cup',
+    'BSA': 'Brasileirão Série A (Brazil)',
+    'ARG': 'Liga Profesional (Argentina)',
+    'MLS': 'Major League Soccer (USA)',
+    'SPL': 'Saudi Pro League (Saudi Arabia)',
+    'J1': 'J1 League (Japan)',
+    'KL1': 'K League 1 (South Korea)',
+    'ALE': 'A-League Men (Australia)',
+    'ACN': 'Africa Cup of Nations (AFCON)',
+    'CAF': 'CAF Champions League (Africa)',
   };
 
   @override
