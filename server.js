@@ -601,9 +601,6 @@ function sendTableError(res, label, err) {
   return res.status(502).json({ error: 'Could not load data' });
 }
 
-app.get('/api/scorers/:code', async (req, res) => {
-  const code = String(req.params.code || '').toUpperCase();
-  if (!ALL_COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
 
   // 1. Global Leagues via API-Football
   if (EXTRA_LEAGUES[code]) {
@@ -705,6 +702,116 @@ app.get('/api/scorers/:code', async (req, res) => {
     return sendTableError(res, `Scorers ${code}`, err);
   }
 });
+
+// ---------- Standings (Hybrid Router) ----------
+app.get('/api/standings/:code', async (req, res) => {
+  const code = String(req.params.code || '').toUpperCase();
+
+  if (!ALL_COMPETITIONS.includes(code)) {
+    return res.status(400).json({
+      error: 'Unknown competition',
+    });
+  }
+
+  // Extra leagues from API-Football
+  if (EXTRA_LEAGUES[code]) {
+    if (!API_FOOTBALL_KEY) {
+      return res.status(503).json({
+        error: 'API-Football key not set',
+      });
+    }
+
+    const meta = EXTRA_LEAGUES[code];
+
+    try {
+      const data = await cachedApiFootballTable(
+        `standings:${code}`,
+        'standings',
+        {
+          league: meta.id,
+          season: meta.season,
+        },
+        (d) => {
+          const standings =
+            d.response?.[0]?.league?.standings?.[0] || [];
+
+          return {
+            competition: meta.name,
+            standings: standings.map((row) => ({
+              position: row.rank,
+              team: row.team?.name || '',
+              played: row.all?.played || 0,
+              won: row.all?.win || 0,
+              draw: row.all?.draw || 0,
+              lost: row.all?.lose || 0,
+              goalsFor: row.all?.goals?.for || 0,
+              goalsAgainst: row.all?.goals?.against || 0,
+              goalDifference: row.goalsDiff || 0,
+              points: row.points || 0,
+            })),
+          };
+        }
+      );
+
+      return res.json(data);
+    } catch (err) {
+      return sendTableError(
+        res,
+        `Standings ${code}`,
+        err
+      );
+    }
+  }
+
+  // Core football-data.org competitions
+  if (!FOOTBALL_DATA_TOKEN) {
+    return res.status(503).json({
+      error: 'Server token not set',
+    });
+  }
+
+  try {
+    const data = await cachedFootballData(
+      `standings:${code}`,
+      `https://api.football-data.org/v4/competitions/${code}/standings`,
+      {},
+      (d) => {
+        const table =
+          d.standings?.find((s) => s.type === 'TOTAL')?.table ||
+          d.standings?.[0]?.table ||
+          [];
+
+        return {
+          competition: d.competition?.name || code,
+          standings: table.map((row) => ({
+            position: row.position,
+            team:
+              row.team?.shortName ||
+              row.team?.name ||
+              '',
+            played: row.playedGames,
+            won: row.won,
+            draw: row.draw,
+            lost: row.lost,
+            goalsFor: row.goalsFor,
+            goalsAgainst: row.goalsAgainst,
+            goalDifference: row.goalDifference,
+            points: row.points,
+          })),
+        };
+      }
+    );
+
+    return res.json(data);
+  } catch (err) {
+    return sendTableError(
+      res,
+      `Standings ${code}`,
+      err
+    );
+  }
+});
+
 
 // ---------- Team Insights Route ----------
 const teamInsightsCache = new Map();
