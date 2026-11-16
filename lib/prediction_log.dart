@@ -4,73 +4,116 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fixture_model.dart';
 
-/// Helper to show model insight breakdown when a prediction log item is tapped
+/// Dialog shown when a logged prediction is tapped. It only states things the
+/// app really knows: the tip, its confidence, the data saved when the tip was
+/// made, and the result. It does not invent match-specific reasons.
 class PredictionInsightHelper {
-  static void show(BuildContext context, String matchTitle, String prediction, int? prob) {
-    final probability = prob ?? 55;
-    final double odds = probability > 0 ? 100 / probability.toDouble() : 1.85;
+  static void show(
+    BuildContext context,
+    String matchTitle,
+    String prediction,
+    int? prob, {
+    String league = '',
+    String kickoff = '',
+    String status = '',
+    String score = '',
+    String detail = '',
+  }) {
+    final int? confidence = (prob != null && prob > 0) ? prob : null;
+    final double? fairOdds = confidence == null ? null : 100 / confidence;
 
-    String reasoning = 'Based on historical performance metrics, recent goal conversion rates, and home/away form analysis.';
-    
-    if (prediction.contains('Double Chance')) {
-      reasoning = 'The defensive solidity and recent unbeaten run of this selection suggest a high probability of securing at least a draw.';
-    } else if (prediction.contains('Over')) {
-      reasoning = 'Both teams exhibit high expected goals (xG) metrics and aggressive offensive pressing, pointing toward an open, high-scoring fixture.';
-    } else if (prediction.contains('Handicap')) {
-      reasoning = 'Significant disparity in squad quality and head-to-head dominance supports a multi-goal winning margin.';
-    } else if (prediction.contains('Win')) {
-      reasoning = 'Home/Away venue advantage, squad depth, and recent point accumulation heavily favor this outcome.';
-    }
+    Widget heading(String text) => Padding(
+          padding: const EdgeInsets.only(top: 14, bottom: 6),
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              color: Color(0xFF008080),
+              letterSpacing: 0.5,
+            ),
+          ),
+        );
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.insights, color: Color(0xFF008080)),
-            const SizedBox(width: 8),
-            const Expanded(
+            Icon(Icons.insights, color: Color(0xFF008080)),
+            SizedBox(width: 8),
+            Expanded(
               child: Text(
-                'Model Insight Breakdown',
+                'Why this prediction',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              matchTitle,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF008080)),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Selection: $prediction',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-            ),
-            const Divider(height: 20),
-            const Text(
-              'Statistical Analysis:',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '• Model-Implied Probability: ~$probability%',
-              style: const TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '• Fair Model Odds: ${odds.toStringAsFixed(2)}x (calculated as 100 ÷ probability)',
-              style: const TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              reasoning,
-              style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.black87),
-            ),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                matchTitle,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF008080)),
+              ),
+              if (league.isNotEmpty || kickoff.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    [league, kickoff].where((t) => t.isNotEmpty).join('  |  '),
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Text(
+                'Selection: $prediction',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+
+              heading('WHAT THE MODEL SAID'),
+              Text(
+                confidence != null
+                    ? 'Confidence: $confidence%'
+                    : 'Confidence was not recorded for this tip.',
+                style: const TextStyle(fontSize: 13),
+              ),
+              if (fairOdds != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Model odds: ${fairOdds.toStringAsFixed(2)} (100 divided by the confidence). These are not bookmaker odds.',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+
+              if (detail.isNotEmpty) ...[
+                heading('DATA BEHIND IT (SAVED WHEN THE TIP WAS MADE)'),
+                Text(detail, style: const TextStyle(fontSize: 13, height: 1.35)),
+              ],
+
+              if (status.isNotEmpty) ...[
+                heading('RESULT'),
+                Text(
+                  score.isNotEmpty ? '$status (final score $score)' : status,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ],
+
+              heading('HOW IT IS CALCULATED'),
+              const Text(
+                'The model counts the goals each team has scored and conceded in this season\'s '
+                'finished matches in the same competition, adjusts for home advantage, and '
+                'pulls small samples toward the league average. It then simulates the possible '
+                'scorelines to get win, draw and goals chances. It does not know about injuries, '
+                'suspensions, lineups or bookmaker odds, and no tip is guaranteed.',
+                style: TextStyle(fontSize: 12, height: 1.4, color: Colors.grey),
+              ),
+            ],
+          ),
         ),
         actions: [
           ElevatedButton(
@@ -116,6 +159,27 @@ Widget buildProlificHeader() {
   );
 }
 
+String _statusTextOf(LogEntry entry) {
+  if (!entry.settled) return 'Pending';
+  if (entry.isVoid) return 'Void';
+  return entry.won == true ? 'Won' : 'Lost';
+}
+
+/// Opens the insight dialog for a logged prediction.
+void showLogEntryInsight(BuildContext context, LogEntry entry) {
+  PredictionInsightHelper.show(
+    context,
+    '${entry.home} vs ${entry.away}',
+    entry.tip,
+    entry.tipProb,
+    league: entry.league,
+    kickoff: entry.kickoff,
+    status: _statusTextOf(entry),
+    score: entry.score,
+    detail: entry.detail,
+  );
+}
+
 /// Helper builder to render your logged prediction items cleanly with tap-to-inspect insights
 Widget buildPredictionLogList(List<LogEntry> entries) {
   if (entries.isEmpty) {
@@ -156,12 +220,7 @@ Widget buildPredictionLogList(List<LogEntry> entries) {
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           // Tapping any logged prediction opens its insight breakdown dialog
-          onTap: () => PredictionInsightHelper.show(
-            context,
-            '${entry.home} vs ${entry.away}',
-            entry.tip,
-            entry.tipProb,
-          ),
+          onTap: () => showLogEntryInsight(context, entry),
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
@@ -178,9 +237,14 @@ Widget buildPredictionLogList(List<LogEntry> entries) {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Text(
-                            'Tip: ${entry.tip}',
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF008080), fontWeight: FontWeight.w600),
+                          Flexible(
+                            child: Text(
+                              'Tip: ${entry.tip}',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF008080),
+                                  fontWeight: FontWeight.w600),
+                            ),
                           ),
                           const SizedBox(width: 4),
                           const Icon(Icons.info_outline, size: 12, color: Colors.grey),
@@ -219,6 +283,7 @@ class LogEntry {
   final int? tipProb;
   final String kickoff; // label shown in the list
   final String utcDate;
+  final String detail; // summary of the data behind the tip
   bool settled;
   bool isVoid;
   bool? won;
@@ -233,6 +298,7 @@ class LogEntry {
     required this.kickoff,
     required this.utcDate,
     this.tipProb,
+    this.detail = '',
     this.settled = false,
     this.isVoid = false,
     this.won,
@@ -248,6 +314,7 @@ class LogEntry {
         'tipProb': tipProb,
         'kickoff': kickoff,
         'utcDate': utcDate,
+        'detail': detail,
         'settled': settled,
         'isVoid': isVoid,
         'won': won,
@@ -264,6 +331,7 @@ class LogEntry {
       tipProb: j['tipProb'] is num ? (j['tipProb'] as num).toInt() : null,
       kickoff: j['kickoff']?.toString() ?? '',
       utcDate: j['utcDate']?.toString() ?? '',
+      detail: j['detail']?.toString() ?? '',
       settled: j['settled'] == true,
       isVoid: j['isVoid'] == true,
       won: j['won'] is bool ? j['won'] as bool : null,
@@ -336,6 +404,36 @@ class PredictionLog {
     }
   }
 
+  static int _formPoints(List<String> form) {
+    var total = 0;
+    for (final r in form) {
+      if (r == 'W') {
+        total += 3;
+      } else if (r == 'D') {
+        total += 1;
+      }
+    }
+    return total;
+  }
+
+  /// A short, factual summary of the data the tip was based on.
+  static String _detailOf(FixtureModel f) {
+    final parts = <String>[];
+    if (f.hasPrediction) {
+      parts.add(
+          'Chances: ${f.homeTeam} ${f.homeWinProb.round()}%, draw ${f.drawProb.round()}%, ${f.awayTeam} ${f.awayWinProb.round()}%.');
+    }
+    if (f.homeForm.isNotEmpty && f.awayForm.isNotEmpty) {
+      parts.add(
+          'Form (last ${f.homeForm.length}): ${f.homeTeam} ${_formPoints(f.homeForm)} points, '
+          '${f.awayTeam} ${_formPoints(f.awayForm)} points.');
+    }
+    if (f.over25Goals != 'N/A') {
+      parts.add('Over 2.5 goals ${f.over25Goals}, both teams to score ${f.btts}.');
+    }
+    return parts.join(' ');
+  }
+
   /// Records new tips (only before kickoff) and settles finished matches.
   static Future<void> update(List<FixtureModel> fixtures) async {
     final entries = await load();
@@ -367,6 +465,7 @@ class PredictionLog {
             tipProb: f.tipProbInt,
             kickoff: f.timeLabel,
             utcDate: f.utcDate,
+            detail: _detailOf(f),
           );
           entries.add(entry);
           byKey[k] = entry;
