@@ -52,4 +52,35 @@ class ApiService {
       rethrow;
     }
   }
+
+  /// Fetches real-time team insights, injuries, and squad news from your Render backend
+  static Future> fetchTeamInsights(String teamName) async {
+    final url = '$kApiBase/api/team-insights?team=${Uri.encodeComponent(teamName)}';
+    debugPrint('Fetching team insights from: $url');
+
+    try {
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 25));
+
+      if (response.statusCode != 200) {
+        throw Exception('Server returned ${response.statusCode} for team insights');
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      throw Exception('Invalid data format received from server');
+    } on SocketException catch (e) {
+      debugPrint('Socket error: $e');
+      throw Exception('Cannot reach server for team insights: ${e.message}');
+    } on TimeoutException {
+      debugPrint('Team insights request timed out');
+      throw Exception('Server took too long to respond with team insights.');
+    } catch (e) {
+      debugPrint('Error fetching team insights: $e');
+      rethrow;
+    }
+  }
 }
