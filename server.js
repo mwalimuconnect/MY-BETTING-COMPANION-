@@ -5,22 +5,42 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 const FOOTBALL_DATA_TOKEN = process.env.FOOTBALL_DATA_TOKEN;
+const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 const TIMEZONE = 'Africa/Nairobi';
 const CACHE_TTL_MS = 60 * 1000;
-const TABLE_TTL_MS = 10 * 60 * 1000; // standings / scorers cache
+const TABLE_TTL_MS = 10 * 60 * 1000; // football-data.org standings/scorers cache
+const EXTRA_FIXTURES_TTL_MS = 30 * 60 * 1000; // 30 mins for API-Football fixtures
+const EXTRA_TABLE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for API-Football tables (protects 100/day limit)
 const DAYS_BACK = 7;
 const DAYS_AHEAD = 8;
-const MAX_UPCOMING = 40;
-const MAX_FINISHED = 40;
+const MAX_UPCOMING = 50;
+const MAX_FINISHED = 50;
+
+// ---------- 12 Core Competitions (football-data.org free tier) ----------
+const CORE_COMPETITIONS = ['PL', 'ELC', 'BL1', 'SA', 'PD', 'FL1', 'DED', 'PPL', 'BSA', 'CL', 'WC', 'EC'];
+
+// ---------- 8 Global Leagues (API-Football v3) ----------
+// seasonType: 'calendar' uses current year (e.g. 2026); 'split' uses Aug-May start year (2026 for 2026/27)
+const EXTRA_LEAGUES = {
+  MLS: { id: 253, name: 'Major League Soccer', season: 2026 },
+  ALE: { id: 188, name: 'A-League Men', season: 2026 },
+  SPL: { id: 307, name: 'Saudi Pro League', season: 2026 },
+  J1:  { id: 98,  name: 'J1 League', season: 2026 },
+  KL1: { id: 292, name: 'K League 1', season: 2026 },
+  ACN: { id: 6,   name: 'Africa Cup of Nations', season: 2025 },
+  CAF: { id: 12,  name: 'CAF Champions League', season: 2026 },
+  ARG: { id: 128, name: 'Liga Profesional Argentina', season: 2026 },
+};
+
+const ALL_COMPETITIONS = [...CORE_COMPETITIONS, ...Object.keys(EXTRA_LEAGUES)];
 
 // ---------- Model settings ----------
-const COMPETITIONS = ['PL', 'ELC', 'BL1', 'SA', 'PD', 'FL1', 'DED', 'PPL', 'BSA', 'CL', 'WC', 'EC'];
-const RATINGS_TTL_MS = 6 * 60 * 60 * 1000; // rebuild ratings every 6 hours
-const RATINGS_GAP_MS = 8000; // free plan allows 10 requests/minute
-const MIN_LEAGUE_MATCHES = 20; // need this many finished matches in a competition
-const MIN_GAMES = 5; // each team needs this many games
-const SHRINK_GAMES = 4; // pulls small samples toward the league average
-const MIN_TIP_PROB = 45; // no tip unless a side has at least this % to win
+const RATINGS_TTL_MS = 6 * 60 * 60 * 1000;
+const RATINGS_GAP_MS = 8000;
+const MIN_LEAGUE_MATCHES = 20;
+const MIN_GAMES = 5;
+const SHRINK_GAMES = 4;
+const MIN_TIP_PROB = 45;
 const MAX_GOALS = 8;
 
 const PROLIFIC_TEAMS = [
@@ -28,7 +48,8 @@ const PROLIFIC_TEAMS = [
   'Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Real Madrid',
   'Barcelona', 'Atletico', 'Bayern', 'Leverkusen', 'Inter', 'Juventus',
   'PSG', 'France', 'Brazil', 'Argentina', 'Spain', 'Germany', 'England',
-  'Portugal', 'Belgium', 'Netherlands', 'Turkiye'
+  'Portugal', 'Belgium', 'Netherlands', 'Turkiye', 'Al Hilal', 'Al Nassr',
+  'Inter Miami', 'LAFC', 'Al Ahly', 'Mamelodi Sundowns', 'River Plate', 'Boca Juniors'
 ];
 
 // ---------- CORS ----------
@@ -42,14 +63,15 @@ app.use((req, res, next) => {
 
 // ---------- Health ----------
 app.get('/', (req, res) => {
-  res.send('My Betting Companion API is live!');
+  res.send('My Betting Companion API (20 Global Leagues) is live!');
 });
 
 app.get('/health', (req, res) => {
   res.json({
     ok: true,
+    totalLeagues: ALL_COMPETITIONS.length,
     hasApiKey: Boolean(FOOTBALL_DATA_TOKEN),
-    hasApiFootballKey: Boolean(process.env.API_FOOTBALL_KEY),
+    hasApiFootballKey: Boolean(API_FOOTBALL_KEY),
     ratingsLoading,
     ratingsCompetitions: Object.keys(ratings),
   });
@@ -109,8 +131,8 @@ function isProlificTeam(teamName) {
   return PROLIFIC_TEAMS.some((t) => name.includes(t.toLowerCase()));
 }
 
-// ---------- Prediction model ----------
-let ratings = {}; // competition code -> { teams, avgHome, avgAway, avgTeam, h2h }
+// ---------- Prediction model (for 12 core competitions) ----------
+let ratings = {};
 let ratingsBuiltAt = 0;
 let ratingsLoading = false;
 
@@ -142,7 +164,7 @@ function buildRatings(matches) {
   if (finished.length < MIN_LEAGUE_MATCHES) return null;
 
   const teams = {};
-  const h2h = {}; // pair of team ids -> list of meetings this season
+  const h2h = {};
   let homeGoals = 0;
   let awayGoals = 0;
 
@@ -224,7 +246,6 @@ function predictMatch(code, homeId, awayId, homeName, awayName) {
     tipProb = favProb;
   }
 
-  // Head-to-head: previous meetings this season in the same competition.
   const meetings = (r.h2h && r.h2h[pairKey(homeId, awayId)]) || [];
   const h2h = meetings
     .slice(-5)
@@ -262,13 +283,12 @@ async function fetchCompetitionMatches(code) {
   return res.data.matches || [];
 }
 
-// Runs in the background, one competition at a time, to stay under the rate limit.
 async function refreshRatings() {
   if (ratingsLoading || !FOOTBALL_DATA_TOKEN) return;
   ratingsLoading = true;
   console.log('Rebuilding team ratings...');
 
-  for (const code of COMPETITIONS) {
+  for (const code of CORE_COMPETITIONS) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const matches = await fetchCompetitionMatches(code);
@@ -278,17 +298,16 @@ async function refreshRatings() {
           console.log(`Ratings ${code}: ${Object.keys(built.teams).length} teams from ${matches.length} matches`);
         } else {
           delete ratings[code];
-          console.log(`Ratings ${code}: not enough finished matches yet`);
         }
         break;
       } catch (err) {
         const status = err.response && err.response.status;
         console.error(`Ratings ${code} failed:`, status || '', err.message);
         if (status === 429 && attempt === 1) {
-          await sleep(65000); // rate limited: wait a minute, then retry once
+          await sleep(65000);
           continue;
         }
-        break; // 403 (not in plan) or other error: skip this competition
+        break;
       }
     }
     await sleep(RATINGS_GAP_MS);
@@ -320,14 +339,12 @@ function formatFixture(item, showDate = false) {
 
   const homeTeam = (item.homeTeam && (item.homeTeam.name || item.homeTeam.shortName)) || 'Home Team';
   const awayTeam = (item.awayTeam && (item.awayTeam.name || item.awayTeam.shortName)) || 'Away Team';
-
   const prolific = isProlificTeam(homeTeam) || isProlificTeam(awayTeam);
 
   const fullTime = (item.score && item.score.fullTime) || {};
   const homeGoals = fullTime.home ?? 0;
   const awayGoals = fullTime.away ?? 0;
 
-  // Predictions only for matches that have not finished (no hindsight).
   const code = item.competition && item.competition.code;
   const pred = isFinished
     ? null
@@ -369,7 +386,7 @@ function formatFixture(item, showDate = false) {
     cardRisk: 'N/A',
     topTip: pred ? pred.topTip : '',
     tipProb: pred ? pred.tipProb : null,
-    odds: null, // no real bookmaker odds available
+    odds: null,
     isLive,
     isFinished,
     actualScore: isFinished ? `${homeGoals}-${awayGoals}` : 'Pending',
@@ -378,6 +395,83 @@ function formatFixture(item, showDate = false) {
     isSample: false,
     isEstimate: false,
   };
+}
+
+// ---------- Extra 8 Global Leagues via API-Football ----------
+let extraFixturesCache = { data: [], fetchedAt: 0 };
+
+function mapApiFootballStatus(short) {
+  if (['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE'].includes(short)) return 'IN_PLAY';
+  if (['FT', 'AET', 'PEN'].includes(short)) return 'FINISHED';
+  return 'SCHEDULED';
+}
+
+async function fetchExtraLeagueFixtures() {
+  if (!API_FOOTBALL_KEY) return [];
+  const now = Date.now();
+  if (extraFixturesCache.data.length > 0 && now - extraFixturesCache.fetchedAt < EXTRA_FIXTURES_TTL_MS) {
+    return extraFixturesCache.data;
+  }
+
+  const targetLeagueIds = new Set(Object.values(EXTRA_LEAGUES).map((l) => l.id));
+  const idToCode = Object.fromEntries(
+    Object.entries(EXTRA_LEAGUES).map(([code, info]) => [info.id, code])
+  );
+
+  // Fetch today and tomorrow from API-Football in just 2 requests total
+  const dates = [utcDateOffset(0), utcDateOffset(1)];
+  const results = [];
+
+  try {
+    for (const dateStr of dates) {
+      const res = await axios.get('https://v3.football.api-sports.io/fixtures', {
+        headers: { 'x-apisports-key': API_FOOTBALL_KEY },
+        params: { date: dateStr },
+        timeout: 15000,
+      });
+
+      const list = res.data.response || [];
+      for (const item of list) {
+        const leagueId = item.league && item.league.id;
+        if (!targetLeagueIds.has(leagueId)) continue;
+
+        const code = idToCode[leagueId];
+        const status = mapApiFootballStatus(item.fixture?.status?.short);
+        results.push({
+          id: `af-${item.fixture.id}`,
+          utcDate: item.fixture.date,
+          status,
+          competition: {
+            code,
+            name: EXTRA_LEAGUES[code].name,
+          },
+          homeTeam: {
+            id: item.teams?.home?.id,
+            name: item.teams?.home?.name,
+            shortName: item.teams?.home?.name,
+          },
+          awayTeam: {
+            id: item.teams?.away?.id,
+            name: item.teams?.away?.name,
+            shortName: item.teams?.away?.name,
+          },
+          score: {
+            fullTime: {
+              home: item.goals?.home,
+              away: item.goals?.away,
+            },
+          },
+        });
+      }
+    }
+
+    extraFixturesCache = { data: results, fetchedAt: now };
+    console.log(`API-Football: ${results.length} fixtures fetched across 8 global leagues`);
+    return results;
+  } catch (err) {
+    console.error('API-Football fixtures failed:', err.message);
+    return extraFixturesCache.data || [];
+  }
 }
 
 // ---------- Fetching + cache ----------
@@ -397,22 +491,17 @@ async function fetchMatchWindow() {
     return cache.data;
   }
 
-  const [past, future] = await Promise.all([
+  const [past, future, extra] = await Promise.all([
     requestMatches(utcDateOffset(-DAYS_BACK), utcDateOffset(0)),
     requestMatches(utcDateOffset(1), utcDateOffset(DAYS_AHEAD)),
+    fetchExtraLeagueFixtures(),
   ]);
 
   const byId = new Map();
-  [...(past.data.matches || []), ...(future.data.matches || [])].forEach((m) => {
+  [...(past.data.matches || []), ...(future.data.matches || []), ...extra].forEach((m) => {
     byId.set(m.id, m);
   });
   const matches = Array.from(byId.values());
-
-  const available = future.headers['x-requests-available-minute'];
-  console.log(
-    `football-data.org: ${matches.length} matches fetched` +
-      (available !== undefined ? ` (requests left this minute: ${available})` : '')
-  );
 
   cache = { data: matches, fetchedAt: now };
   return matches;
@@ -450,10 +539,6 @@ function pickFixtures(allMatches) {
     .sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate))
     .slice(0, MAX_FINISHED);
 
-  console.log(
-    `Fixtures for ${today}: ${todays.length} today, ${upcoming.length} upcoming, ${finished.length} finished`
-  );
-
   return [
     ...todays.map((m) => formatFixture(m, false)),
     ...upcoming.map((m) => formatFixture(m, true)),
@@ -461,13 +546,13 @@ function pickFixtures(allMatches) {
   ];
 }
 
-// ---------- Standings and top scorers ----------
-const tableCache = {}; // cacheKey -> { data, at }
+// ---------- Standings and top scorers (Hybrid Router) ----------
+const tableCache = {};
 
-async function cachedFootballData(cacheKey, url, params, mapper) {
+async function cachedFootballData(cacheKey, url, params, mapper, ttl = TABLE_TTL_MS) {
   const now = Date.now();
   const cached = tableCache[cacheKey];
-  if (cached && now - cached.at < TABLE_TTL_MS) return cached.data;
+  if (cached && now - cached.at < ttl) return cached.data;
 
   try {
     const res = await axios.get(url, {
@@ -479,7 +564,27 @@ async function cachedFootballData(cacheKey, url, params, mapper) {
     tableCache[cacheKey] = { data, at: now };
     return data;
   } catch (err) {
-    if (cached) return cached.data; // serve stale data rather than failing
+    if (cached) return cached.data;
+    throw err;
+  }
+}
+
+async function cachedApiFootballTable(cacheKey, endpoint, params, mapper) {
+  const now = Date.now();
+  const cached = tableCache[cacheKey];
+  if (cached && now - cached.at < EXTRA_TABLE_TTL_MS) return cached.data;
+
+  try {
+    const res = await axios.get(`https://v3.football.api-sports.io/${endpoint}`, {
+      headers: { 'x-apisports-key': API_FOOTBALL_KEY },
+      params,
+      timeout: 20000,
+    });
+    const data = mapper(res.data);
+    tableCache[cacheKey] = { data, at: now };
+    return data;
+  } catch (err) {
+    if (cached) return cached.data;
     throw err;
   }
 }
@@ -489,53 +594,54 @@ function sendTableError(res, label, err) {
   const detail = err.response && err.response.data && err.response.data.message;
   console.error(`${label} failed:`, status || '', detail || err.message);
   if (status === 429) return res.status(503).json({ error: 'Rate limited, try again in a minute' });
-  if (status === 403) return res.status(403).json({ error: 'Not available on the free plan' });
+  if (status === 403) return res.status(403).json({ error: 'Not available on current API plan' });
   return res.status(502).json({ error: 'Could not load data' });
 }
 
 app.get('/api/standings/:code', async (req, res) => {
   const code = String(req.params.code || '').toUpperCase();
-  if (!COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
-  if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
+  if (!ALL_COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
 
-  try {
-    const data = await cachedFootballData(
-      `standings:${code}`,
-      `https://api.football-data.org/v4/competitions/${code}/standings`,
-      {},
-      (d) => ({
-        competition: (d.competition && d.competition.name) || code,
-        groups: (d.standings || [])
-          .filter((s) => !s.type || s.type === 'TOTAL')
-          .map((s) => ({
-            name: s.group ? String(s.group).replace(/_/g, ' ') : '',
-            table: (s.table || []).map((r) => ({
-              position: r.position,
-              team: (r.team && (r.team.shortName || r.team.name)) || '',
-              played: r.playedGames,
-              won: r.won,
-              draw: r.draw,
-              lost: r.lost,
-              goalsFor: r.goalsFor,
-              goalsAgainst: r.goalsAgainst,
-              goalDifference: r.goalDifference,
-              points: r.points,
-              form: r.form || '',
+  // Route 1: 8 Global Leagues via API-Football
+  if (EXTRA_LEAGUES[code]) {
+    if (!API_FOOTBALL_KEY) return res.status(503).json({ error: 'API-Football key not set' });
+    const meta = EXTRA_LEAGUES[code];
+    try {
+      const data = await cachedApiFootballTable(
+        `standings:${code}`,
+        'standings',
+        { league: meta.id, season: meta.season },
+        (d) => {
+          const standingsArrays = d.response?.[0]?.league?.standings || [];
+          return {
+            competition: meta.name,
+            groups: standingsArrays.map((groupRows) => ({
+              name: groupRows[0]?.group || '',
+              table: groupRows.map((r) => ({
+                position: r.rank,
+                team: r.team?.name || '',
+                played: r.all?.played || 0,
+                won: r.all?.win || 0,
+                draw: r.all?.draw || 0,
+                lost: r.all?.lose || 0,
+                goalsFor: r.all?.goals?.for || 0,
+                goalsAgainst: r.all?.goals?.against || 0,
+                goalDifference: r.goalsDiff || 0,
+                points: r.points || 0,
+                form: r.form ? r.form.split('').join(',') : '',
+              })),
             })),
-          })),
-      })
-    );
-    return res.json(data);
-  } catch (err) {
-    return sendTableError(res, `Standings ${code}`, err);
+          };
+        }
+      );
+      return res.json(data);
+    } catch (err) {
+      return sendTableError(res, `API-Football Scorers ${code}`, err);
+    }
   }
-});
 
-app.get('/api/scorers/:code', async (req, res) => {
-  const code = String(req.params.code || '').toUpperCase();
-  if (!COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
+  // Route 2: 12 Core Competitions via football-data.org
   if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
-
   try {
     const data = await cachedFootballData(
       `scorers:${code}`,
@@ -561,7 +667,7 @@ app.get('/api/scorers/:code', async (req, res) => {
 
 // ---------- Team Insights Route ----------
 const teamInsightsCache = new Map();
-const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours
+const CACHE_DURATION_MS = 6 * 60 * 60 * 1000;
 
 app.get('/api/team-insights', async (req, res) => {
   const teamName = req.query.team;
@@ -576,33 +682,24 @@ app.get('/api/team-insights', async (req, res) => {
   }
 
   try {
-    // 1. Search for the team ID using your API_FOOTBALL_KEY environment variable
-    const teamRes = await axios.get(
-      `https://v3.football.api-sports.io/teams`,
-      {
-        headers: { 'x-apisports-key': process.env.API_FOOTBALL_KEY },
-        params: { search: teamName },
-        timeout: 15000,
-      }
-    );
+    const teamRes = await axios.get(`https://v3.football.api-sports.io/teams`, {
+      headers: { 'x-apisports-key': API_FOOTBALL_KEY },
+      params: { search: teamName },
+      timeout: 15000,
+    });
     const teamId = teamRes.data.response?.[0]?.team?.id;
 
     if (!teamId) {
       return res.json({ response: [] });
     }
 
-    // 2. Fetch injuries/suspensions for that team ID
-    const injuriesRes = await axios.get(
-      `https://v3.football.api-sports.io/injuries`,
-      {
-        headers: { 'x-apisports-key': process.env.API_FOOTBALL_KEY },
-        params: { team: teamId, season: 2026 },
-        timeout: 15000,
-      }
-    );
+    const injuriesRes = await axios.get(`https://v3.football.api-sports.io/injuries`, {
+      headers: { 'x-apisports-key': API_FOOTBALL_KEY },
+      params: { team: teamId, season: 2026 },
+      timeout: 15000,
+    });
     const injuriesData = injuriesRes.data;
 
-    // Cache the result before responding
     teamInsightsCache.set(cacheKey, {
       timestamp: Date.now(),
       data: injuriesData,
@@ -610,29 +707,23 @@ app.get('/api/team-insights', async (req, res) => {
 
     res.json(injuriesData);
   } catch (error) {
-    const status = error.response && error.response.status;
-    const detail = error.response && error.response.data && error.response.data.message;
-    console.error('Error fetching team insights:', status || '', detail || error.message);
+    console.error('Error fetching team insights:', error.message);
     res.status(500).json({ error: 'Failed to fetch team insights' });
   }
 });
 
-// ---------- Route ----------
+// ---------- Fixtures Route ----------
 app.get('/api/fixtures', async (req, res) => {
-  ensureRatings(); // starts in the background, never blocks the response
+  ensureRatings();
 
   let matches = [];
-if (FOOTBALL_DATA_TOKEN) {
+  if (FOOTBALL_DATA_TOKEN || API_FOOTBALL_KEY) {
     try {
       matches = await fetchMatchWindow();
     } catch (err) {
-      const status = err.response && err.response.status;
-      const detail = err.response && err.response.data && err.response.data.message;
-      console.error('football-data.org request failed:', status || '', detail || err.message);
+      console.error('Match window fetch failed:', err.message);
       if (cache.data) matches = cache.data;
     }
-  } else {
-    console.warn('FOOTBALL_DATA_TOKEN is not set.');
   }
 
   const fixtures = pickFixtures(matches);
@@ -640,6 +731,6 @@ if (FOOTBALL_DATA_TOKEN) {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server active on port ${PORT}`);
+  console.log(`Server active on port ${PORT} covering ${ALL_COMPETITIONS.length} leagues`);
   ensureRatings();
 });
