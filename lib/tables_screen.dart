@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'app_settings.dart';
 import 'league_data.dart';
+import 'api_service.dart'; // Import your updated ApiService
 
 class TablesScreen extends StatefulWidget {
   const TablesScreen({super.key});
@@ -110,6 +111,71 @@ class LeagueStandingsView extends StatelessWidget {
 
   static const TextStyle _head = TextStyle(fontWeight: FontWeight.bold);
 
+  // Function to show team insights dialog when a team is tapped
+  Future<void> _showTeamInsights(BuildContext context, String teamName) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final data = await ApiService.fetchTeamInsights(teamName);
+      if (!context.mounted) return;
+      Navigator.pop(context); // Dismiss loading dialog
+
+      // Parse response or show injuries list
+      final injuriesList = data['response'] as List? ?? [];
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('$teamName Insights'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Active Injuries & Suspensions:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kPrimary),
+                  ),
+                  const SizedBox(height: 8),
+                  if (injuriesList.isEmpty)
+                    const Text('No active injury reports returned for this team right now.')
+                  else
+                    ...injuriesList.map((injury) {
+                      final player = injury['player']?['name'] ?? 'Unknown Player';
+                      final type = injury['player']?['type'] ?? 'Injury';
+                      final reason = injury['player']?['reason'] ?? 'Unknown reason';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text('• $player ($type: $reason)', style: const TextStyle(fontSize: 12)),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context); // Dismiss loading dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load team insights: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<StandingGroup>>(
@@ -142,7 +208,7 @@ class LeagueStandingsView extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'P played, W won, D drawn, L lost, GF goals for, GA goals against, GD goal difference, Pts points. '
-                  'Yellow and red cards are not available from the free data source, so they are not shown.',
+                  'Tap any team name to view live injury reports and squad insights.',
                   style: TextStyle(fontSize: 11, color: mutedText(context)),
                 ),
               );
@@ -192,12 +258,21 @@ class LeagueStandingsView extends StatelessWidget {
                         return DataRow(cells: [
                           DataCell(Text('${row.position}',
                               style: TextStyle(fontWeight: FontWeight.bold, color: mutedText(context)))),
-                          DataCell(ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 140),
-                            child: Text(row.team,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w600)),
-                          )),
+                          DataCell(
+                            InkWell(
+                              onTap: () => _showTeamInsights(context, row.team),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 140),
+                                child: Text(row.team,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: kPrimary,
+                                      decoration: TextDecoration.underline,
+                                    )),
+                              ),
+                            ),
+                          ),
                           DataCell(Text('${row.played}')),
                           DataCell(Text('${row.won}')),
                           DataCell(Text('${row.draw}')),
