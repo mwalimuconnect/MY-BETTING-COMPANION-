@@ -19,7 +19,7 @@ const MAX_FINISHED = 50;
 // ---------- 12 Core Competitions (football-data.org free tier) ----------
 const CORE_COMPETITIONS = ['PL', 'ELC', 'BL1', 'SA', 'PD', 'FL1', 'DED', 'PPL', 'BSA', 'CL', 'WC', 'EC'];
 
-// ---------- 8 Global Leagues (API-Football v3) ----------
+// ---------- 9 Global Leagues (API-Football v3) ----------
 const EXTRA_LEAGUES = {
   KPL: { id: 276, name: 'Kenyan Premier League', season: 2026 },
   MLS: { id: 253, name: 'Major League Soccer', season: 2026 },
@@ -325,7 +325,8 @@ function ensureRatings() {
       console.error('refreshRatings crashed:', e.message);
     });
   }
-        }
+}
+
 // ---------- Live data mapping (football-data.org v4) ----------
 const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
@@ -546,8 +547,9 @@ function pickFixtures(allMatches) {
     ...upcoming.map((m) => formatFixture(m, true)),
     ...finished.map((m) => formatFixture(m, true)),
   ];
-      }
-// ---------- Standings (Hybrid Router) ----------
+}
+
+// ---------- Standings & Scorers (Hybrid Router) ----------
 const tableCache = {};
 
 async function cachedFootballData(cacheKey, url, params, mapper, ttl = TABLE_TTL_MS) {
@@ -677,6 +679,59 @@ app.get('/api/standings/:code', async (req, res) => {
   }
 });
 
+// ---------- Top Scorers (Hybrid Router) ----------
+app.get('/api/scorers/:code', async (req, res) => {
+  const code = String(req.params.code || '').toUpperCase();
+  if (!ALL_COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
+
+  // Route 1: Global Leagues via API-Football
+  if (EXTRA_LEAGUES[code]) {
+    if (!API_FOOTBALL_KEY) return res.status(503).json({ error: 'API-Football key not set' });
+    const meta = EXTRA_LEAGUES[code];
+    try {
+      const data = await cachedApiFootballTable(
+        `scorers:${code}`,
+        'players/topscorers',
+        { league: meta.id, season: meta.season },
+        (d) => ({
+          competition: meta.name,
+          scorers: (d.response || []).slice(0, 20).map((item) => ({
+            player: item.player?.name || 'Unknown',
+            team: item.statistics?.[0]?.team?.name || '',
+            goals: item.statistics?.[0]?.goals?.total || 0,
+            assists: item.statistics?.[0]?.goals?.assists || 0,
+          })),
+        })
+      );
+      return res.json(data);
+    } catch (err) {
+      return sendTableError(res, `API-Football Scorers ${code}`, err);
+    }
+  }
+
+  // Route 2: 12 Core Competitions via football-data.org (Restored)
+  if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
+  try {
+    const data = await cachedFootballData(
+      `scorers:${code}`,
+      `https://api.football-data.org/v4/competitions/${code}/scorers`,
+      {},
+      (d) => ({
+        competition: (d.competition && d.competition.name) || code,
+        scorers: (d.scorers || []).map((s) => ({
+          player: s.player?.name || '',
+          team: (s.team && (s.team.shortName || s.team.name)) || '',
+          goals: s.goals || 0,
+          assists: s.assists ?? 0,
+        })),
+      })
+    );
+    return res.json(data);
+  } catch (err) {
+    return sendTableError(res, `Scorers ${code}`, err);
+  }
+});
+
 // ---------- Team Insights Route ----------
 const teamInsightsCache = new Map();
 const CACHE_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -746,3 +801,4 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server active on port ${PORT} covering ${ALL_COMPETITIONS.length} leagues`);
   ensureRatings();
 });
+           
