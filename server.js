@@ -22,6 +22,7 @@ const CORE_COMPETITIONS = ['PL', 'ELC', 'BL1', 'SA', 'PD', 'FL1', 'DED', 'PPL', 
 // ---------- 8 Global Leagues (API-Football v3) ----------
 // seasonType: 'calendar' uses current year (e.g. 2026); 'split' uses Aug-May start year (2026 for 2026/27)
 const EXTRA_LEAGUES = {
+  KPL: { id: 2032, name: 'Kenyan Premier League', season: 2026 },
   MLS: { id: 253, name: 'Major League Soccer', season: 2026 },
   ALE: { id: 188, name: 'A-League Men', season: 2026 },
   SPL: { id: 307, name: 'Saudi Pro League', season: 2026 },
