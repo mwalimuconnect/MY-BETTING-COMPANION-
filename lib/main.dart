@@ -1213,6 +1213,8 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
                       color: cardBg(context),
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
+                        // Tapping any history item opens its audit breakdown dialog
+                        onTap: () => showLogEntryInsight(context, entry),
                         title: Text('${entry.home} vs ${entry.away}'),
                         subtitle: Text('Tip: ${entry.tip} | League: ${entry.league}'),
                         trailing: _buildStatusBadge(entry),
