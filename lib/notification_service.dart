@@ -112,7 +112,7 @@ class NotificationService {
         if (f is Map && f['odds'] != null) {
           odds = double.tryParse(f['odds'].toString()) ?? 1.5;
         } else if (f is FixtureModel) {
-          odds = f.odds; // Pulls the exact odds property from your model
+          odds = f.odds; // Pulls exact odds property from model
         }
       } catch (_) {}
 
@@ -127,7 +127,7 @@ class NotificationService {
           '🔥 Prolific Slip Ready!',
           'Your accumulator slip with total odds of ${cumulativeOdds.toStringAsFixed(2)}x ($selectionCount matches) is ready!',
         );
-        break; // Triggered once per check
+        break; 
       }
     }
   }
@@ -139,7 +139,7 @@ class NotificationService {
     if (!_ready) return;
 
     for (final fixture in fixtures) {
-      if (fixture.tipProb != null && fixture.tipProb! >= 75 && !fixture.isFinished) {
+      if (fixture.tipProb >= 75 && !fixture.isFinished && fixture.topTip.isNotEmpty) {
         final tipKey = 'tip_${fixture.key}_${fixture.topTip}';
         
         if (!_notifiedTipIds.contains(tipKey)) {
@@ -147,7 +147,7 @@ class NotificationService {
           
           await showNow(
             '💡 Prolific Tip Alert!',
-            '${fixture.topTip} (${fixture.tipProb}% confidence) for ${fixture.homeTeam} vs ${fixture.awayTeam}',
+            '${fixture.topTip} (${fixture.tipProb.round()}% confidence) for ${fixture.homeTeam} vs ${fixture.awayTeam}',
           );
         }
       }
