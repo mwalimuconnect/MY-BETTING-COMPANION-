@@ -601,81 +601,55 @@ function sendTableError(res, label, err) {
   return res.status(502).json({ error: 'Could not load data' });
 }
 
-app.get('/api/standings/:code', async (req, res) => {
+app.get('/api/scorers/:code', async (req, res) => {
   const code = String(req.params.code || '').toUpperCase();
   if (!ALL_COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
 
-  // Route 1: Global Leagues via API-Football
+  // 1. Global Leagues via API-Football
   if (EXTRA_LEAGUES[code]) {
     if (!API_FOOTBALL_KEY) return res.status(503).json({ error: 'API-Football key not set' });
     const meta = EXTRA_LEAGUES[code];
     try {
       const data = await cachedApiFootballTable(
-        `standings:${code}`,
-        'standings',
+        `scorers:${code}`,
+        'players/topscorers',
         { league: meta.id, season: meta.season },
-        (d) => {
-          const leagueData = d.response?.[0]?.league;
-          const rawStandings = leagueData?.standings || [];
-          const standingsArrays = Array.isArray(rawStandings[0]) ? rawStandings : [rawStandings];
-
-          return {
-            competition: meta.name,
-            groups: standingsArrays.map((groupRows, index) => ({
-              name: groupRows[0]?.group || (standingsArrays.length > 1 ? `Group ${index + 1}` : ''),
-              table: groupRows.map((r) => ({
-                position: r.rank ?? 0,
-                team: r.team?.name || '',
-                played: r.all?.played ?? 0,
-                won: r.all?.win ?? 0,
-                draw: r.all?.draw ?? 0,
-                lost: r.all?.lose ?? 0,
-                goalsFor: r.all?.goals?.for ?? 0,
-                goalsAgainst: r.all?.goals?.against ?? 0,
-                goalDifference: r.goalsDiff ?? 0,
-                points: r.points ?? 0,
-                form: r.form ? r.form.split('').join(',') : '',
-              })),
-            })),
-          };
-        }
+        (d) => ({
+          competition: meta.name,
+          scorers: (d.response || []).slice(0, 20).map((item) => ({
+            player: item.player?.name || 'Unknown',
+            team: item.statistics?.[0]?.team?.name || '',
+            goals: item.statistics?.[0]?.goals?.total || 0,
+            assists: item.statistics?.[0]?.goals?.assists || 0,
+          })),
+        })
       );
       return res.json(data);
     } catch (err) {
-      return sendTableError(res, `API-Football Standings ${code}`, err);
+      return sendTableError(res, `API-Football Scorers ${code}`, err);
     }
   }
 
-  // Route 2: 12 Core Competitions via football-data.org (Standings)
+  // 2. Core Competitions via football-data.org (Exact original working structure)
   if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
   try {
     const data = await cachedFootballData(
-      `standings:${code}`,
-      `https://api.football-data.org/v4/competitions/${code}/standings`,
+      `scorers:${code}`,
+      `https://api.football-data.org/v4/competitions/${code}/scorers`,
       {},
       (d) => ({
         competition: (d.competition && d.competition.name) || code,
-        groups: (d.standings || []).map((table) => ({
-          name: table.group ? table.group.replace('_', ' ') : '',
-          table: (table.table || []).map((r) => ({
-            position: r.position,
-            team: (r.team && (r.team.shortName || r.team.name)) || '',
-            played: r.playedGames || 0,
-            won: r.won || 0,
-            draw: r.draw || 0,
-            lost: r.lost || 0,
-            goalsFor: r.goalsFor || 0,
-            goalsAgainst: r.goalsAgainst || 0,
-            goalDifference: r.goalDifference || 0,
-            points: r.points || 0,
-            form: r.form ? r.form.split('').join(',') : '',
-          })),
+        scorers: (d.scorers || []).map((s) => ({
+          player: s.player?.name || 'Unknown',
+          team: s.team?.shortName || s.team?.name || '',
+          goals: s.goals || 0,
+          assists: s.assists ?? 0,
         })),
       })
     );
     return res.json(data);
   } catch (err) {
-    return sendTableError(res, `Standings ${code}`, err);
+    return sendTableError(res, `Scorers ${code}`, err);
   }
 });
 
