@@ -132,6 +132,28 @@ class NotificationService {
     }
   }
 
+  /// Scans fixtures and sends an immediate notification if a high-confidence tip (>= 75%) drops.
+  static final Set<String> _notifiedTipIds = {};
+
+  static Future<void> checkTipsForAlerts(List<FixtureModel> fixtures) async {
+    if (!_ready) return;
+
+    for (final fixture in fixtures) {
+      if (fixture.tipProb != null && fixture.tipProb! >= 75 && !fixture.isFinished) {
+        final tipKey = 'tip_${fixture.key}_${fixture.topTip}';
+        
+        if (!_notifiedTipIds.contains(tipKey)) {
+          _notifiedTipIds.add(tipKey);
+          
+          await showNow(
+            '💡 Prolific Tip Alert!',
+            '${fixture.topTip} (${fixture.tipProb}% confidence) for ${fixture.homeTeam} vs ${fixture.awayTeam}',
+          );
+        }
+      }
+    }
+  }
+
   static Future<void> cancelAll() async {
     if (!_ready) return;
     try {
