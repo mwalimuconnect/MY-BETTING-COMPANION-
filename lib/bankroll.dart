@@ -789,8 +789,8 @@ class _BankrollTabState extends State<BankrollTab> {
     return Column(
       children: grouped.entries.map((monthEntry) {
         final monthName = monthEntry.key;
-        final weeks = monthEntry.entries.toList()
-          ..sort((a, b) => b.key.compareTo(a.key)); // Newest week first
+        final weeks = monthEntry.value.entries.toList()
+  ..sort((a, b) => b.key.compareTo(a.key)); // Newest week first
 
         return Card(
           color: cardBg(context),
