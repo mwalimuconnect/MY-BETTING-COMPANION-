@@ -432,7 +432,7 @@ async function fetchExtraLeagueFixtures() {
       const list = res.data.response || [];
 
       console.log(`Date ${dateStr}: ${list.length} fixtures returned, errors: ${JSON.stringify(res.data.errors)}`);
-
+      console.log('Leagues in response:', [...new Set(list.map(i => `${i.league.id} ${i.league.name}`))].slice(0, 40).join(' | '));
     
       if (
         res.data.errors && 
