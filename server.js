@@ -649,7 +649,7 @@ function sendTableError(res, label, err) {
     return sendTableError(res, `Scorers ${code}`, err);
   }
 });
-
+ 
 // ---------- Top Scorers (Hybrid Router) ----------
 app.get('/api/scorers/:code', async (req, res) => {
   const code = String(req.params.code || '').toUpperCase();
@@ -680,7 +680,7 @@ app.get('/api/scorers/:code', async (req, res) => {
     }
   }
 
-  // Route 2: 12 Core Competitions via football-data.org (Restored)
+  // Route 2: 12 Core Competitions via football-data.org (Original Working State)
   if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
   try {
     const data = await cachedFootballData(
