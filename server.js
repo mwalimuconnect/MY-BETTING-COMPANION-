@@ -20,7 +20,6 @@ const MAX_FINISHED = 50;
 const CORE_COMPETITIONS = ['PL', 'ELC', 'BL1', 'SA', 'PD', 'FL1', 'DED', 'PPL', 'BSA', 'CL', 'WC', 'EC'];
 
 // ---------- 8 Global Leagues (API-Football v3) ----------
-// seasonType: 'calendar' uses current year (e.g. 2026); 'split' uses Aug-May start year (2026 for 2026/27)
 const EXTRA_LEAGUES = {
   KPL: { id: 2032, name: 'Kenyan Premier League', season: 2026 },
   MLS: { id: 253, name: 'Major League Soccer', season: 2026 },
@@ -326,8 +325,7 @@ function ensureRatings() {
       console.error('refreshRatings crashed:', e.message);
     });
   }
-}
-
+  }
 // ---------- Live data mapping (football-data.org v4) ----------
 const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
@@ -419,7 +417,6 @@ async function fetchExtraLeagueFixtures() {
     Object.entries(EXTRA_LEAGUES).map(([code, info]) => [info.id, code])
   );
 
-  // Fetch today and tomorrow from API-Football in just 2 requests total
   const dates = [utcDateOffset(0), utcDateOffset(1)];
   const results = [];
 
@@ -637,11 +634,72 @@ app.get('/api/standings/:code', async (req, res) => {
       );
       return res.json(data);
     } catch (err) {
+      return sendTableError(res, `API-Football Standings ${code}`, err);
+    }
+  }
+   // Route 2: 12 Core Competitions via football-data.org
+  if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
+  try {
+    const data = await cachedFootballData(
+      `standings:${code}`,
+      `https://api.football-data.org/v4/competitions/${code}/standings`,
+      {},
+      (d) => ({
+        competition: (d.competition && d.competition.name) || code,
+        groups: (d.standings || []).map((st) => ({
+          name: st.group ? st.group.replace(/_/g, ' ') : '',
+          table: (st.table || []).map((row) => ({
+            position: row.position,
+            team: (row.team && (row.team.shortName || row.team.name)) || '',
+            played: row.playedGames,
+            won: row.won,
+            draw: row.draw,
+            lost: row.lost,
+            goalsFor: row.goalsFor,
+            goalsAgainst: row.goalsAgainst,
+            goalDifference: row.goalDifference,
+            points: row.points,
+            form: row.form ? row.form.split('').join(',') : '',
+          })),
+        })),
+      })
+    );
+    return res.json(data);
+  } catch (err) {
+    return sendTableError(res, `Standings ${code}`, err);
+  }
+});
+
+app.get('/api/scorers/:code', async (req, res) => {
+  const code = String(req.params.code || '').toUpperCase();
+  if (!ALL_COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
+
+  if (EXTRA_LEAGUES[code]) {
+    if (!API_FOOTBALL_KEY) return res.status(503).json({ error: 'API-Football key not set' });
+    const meta = EXTRA_LEAGUES[code];
+    try {
+      const data = await cachedApiFootballTable(
+        `scorers:${code}`,
+        'players/topscorers',
+        { league: meta.id, season: meta.season },
+        (d) => ({
+          competition: meta.name,
+          scorers: (d.response || []).slice(0, 20).map((item) => ({
+            name: item.player?.name || '',
+            team: item.statistics?.[0]?.team?.name || '',
+            goals: item.statistics?.[0]?.goals?.total || 0,
+            assists: item.statistics?.[0]?.goals?.assists || 0,
+            penalties: item.statistics?.[0]?.penalty?.scored || 0,
+            played: item.statistics?.[0]?.games?.appearences || 0,
+          })),
+        })
+      );
+      return res.json(data);
+    } catch (err) {
       return sendTableError(res, `API-Football Scorers ${code}`, err);
     }
   }
 
-  // Route 2: 12 Core Competitions via football-data.org
   if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
   try {
     const data = await cachedFootballData(
