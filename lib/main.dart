@@ -469,85 +469,98 @@ class _FixturesTabState extends State<FixturesTab> {
                             margin: const EdgeInsets.only(bottom: 12),
                             elevation: 1,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(fixture.league.toUpperCase(),
-                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mutedText(context))),
-                                      ),
-                                      IconButton(
-                                        icon: Icon(isSaved ? Icons.bookmark : Icons.bookmark_border, color: kPrimary),
-                                        onPressed: () => _toggleSave(fixture),
-                                        tooltip: 'Save to Slip',
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(fixture.homeTeam,
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                      ),
-                                      const Padding(
-                                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                                        child: Text('vs', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                      ),
-                                      Expanded(
-                                        child: Text(fixture.awayTeam,
-                                            textAlign: TextAlign.right,
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                      ),
-                                    ],
-                                  ),
-                                  if (whenText.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(whenText, style: TextStyle(fontSize: 12, color: mutedText(context))),
-                                    ),
-                                  const Divider(height: 20),
-                                  if (fixture.hasPrediction) ...[
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              // Tapping anywhere on the fixture card opens the match insight bottom sheet
+                              onTap: () => showMatchInsights(context, fixture),
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Expanded(
-                                          child: Text(
-                                            fixture.topTip.isEmpty ? 'No clear tip' : 'Top Tip: ${fixture.topTip}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary, fontSize: 13),
-                                          ),
+                                          child: Text(fixture.league.toUpperCase(),
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mutedText(context))),
                                         ),
-                                        if (fixture.odds > 0)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: kPrimary.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Text('Odds: ${fixture.odds.toStringAsFixed(2)}',
-                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: kPrimary)),
-                                          ),
+                                        IconButton(
+                                          icon: Icon(isSaved ? Icons.bookmark : Icons.bookmark_border, color: kPrimary),
+                                          onPressed: () => _toggleSave(fixture),
+                                          tooltip: 'Save to Slip',
+                                        ),
                                       ],
                                     ),
-                                    const SizedBox(height: 8),
+                                    const SizedBox(height: 6),
                                     Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Expanded(child: Text('Home: ${fixture.homeWinProb.round()}%', style: const TextStyle(fontSize: 12))),
-                                        Expanded(child: Text('Draw: ${fixture.drawProb.round()}%', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
-                                        Expanded(child: Text('Away: ${fixture.awayWinProb.round()}%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
+                                        Expanded(
+                                          child: Text(fixture.homeTeam,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                        ),
+                                        const Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                                          child: Text('vs', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                        ),
+                                        Expanded(
+                                          child: Text(fixture.awayTeam,
+                                              textAlign: TextAlign.right,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                        ),
                                       ],
                                     ),
-                                  ] else if (!fixture.isFinished) ...[
-                                    Text('Analysis pending or unavailable',
-                                        style: TextStyle(fontStyle: FontStyle.italic, color: mutedText(context), fontSize: 12)),
+                                    if (whenText.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Text(whenText, style: TextStyle(fontSize: 12, color: mutedText(context))),
+                                      ),
+                                    const Divider(height: 20),
+                                    if (fixture.hasPrediction) ...[
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Row(
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    fixture.topTip.isEmpty ? 'No clear tip' : 'Top Tip: ${fixture.topTip}',
+                                                    style: const TextStyle(fontWeight: FontWeight.bold, color: kPrimary, fontSize: 13),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                const Icon(Icons.info_outline, size: 14, color: kPrimary),
+                                              ],
+                                            ),
+                                          ),
+                                          if (fixture.odds > 0)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: kPrimary.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text('Odds: ${fixture.odds.toStringAsFixed(2)}',
+                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: kPrimary)),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Expanded(child: Text('Home: ${fixture.homeWinProb.round()}%', style: const TextStyle(fontSize: 12))),
+                                          Expanded(child: Text('Draw: ${fixture.drawProb.round()}%', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
+                                          Expanded(child: Text('Away: ${fixture.awayWinProb.round()}%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
+                                        ],
+                                      ),
+                                    ] else if (!fixture.isFinished) ...[
+                                      Text('Analysis pending or unavailable',
+                                          style: TextStyle(fontStyle: FontStyle.italic, color: mutedText(context), fontSize: 12)),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
                             ),
                           );
@@ -561,7 +574,7 @@ class _FixturesTabState extends State<FixturesTab> {
     );
   }
 }
-                                  
+                                                                                                                     
 // ---------------------------------------------------------------------------
 // Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
