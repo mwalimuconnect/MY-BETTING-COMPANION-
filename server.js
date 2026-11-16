@@ -413,14 +413,6 @@ async function fetchExtraLeagueFixtures() {
     return extraFixturesCache.data;
   }
 
-const list = res.data.response || [];
-
-console.log(
-  'API Football fixtures received:',
-  list.length
-);
-  
-  
   const targetLeagueIds = new Set(Object.values(EXTRA_LEAGUES).map((l) => l.id));
   const idToCode = Object.fromEntries(
     Object.entries(EXTRA_LEAGUES).map(([code, info]) => [info.id, code])
@@ -437,11 +429,23 @@ console.log(
         timeout: 15000,
       });
 
-      if (res.data.errors && Object.keys(res.data.errors).length > 0) {
-        console.error('API-Football API error:', JSON.stringify(res.data.errors));
+      const list = res.data.response || [];
+
+console.log(
+  `Date ${dateStr}: $
+    {list.length} fixtures returned`
+);
+    
+      if (
+        res.data.errors && 
+        Object.keys(res.data.errors).length > 0
+      ) {
+        console.error(
+          'API-Football API error:', 
+          JSON.stringify(res.data.errors)
+        );
       }
 
-      const list = res.data.response || [];
       for (const item of list) {
         const leagueId = item.league && item.league.id;
         if (!targetLeagueIds.has(leagueId)) continue;
