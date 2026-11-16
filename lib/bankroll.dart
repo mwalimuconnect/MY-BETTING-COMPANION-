@@ -30,77 +30,77 @@ class UserProfileCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: onEdit,
         child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            // Photo Box / Avatar
-            Stack(
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: const Icon(
-                    Icons.person,
-                    size: 40,
-                    color: _teal,
-                  ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: _teal,
-                      shape: BoxShape.circle,
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              // Photo Box / Avatar
+              Stack(
+                children: [
+                  Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade300),
                     ),
                     child: const Icon(
-                      Icons.edit,
-                      size: 14,
-                      color: Colors.white,
+                      Icons.person,
+                      size: 40,
+                      color: _teal,
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 16),
-            // User Details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name.isNotEmpty ? name : 'Tap to add your name',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(Icons.phone, size: 14, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(
-                        phoneNumber.isNotEmpty ? phoneNumber : 'No phone number',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: mutedText(context),
-                        ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: _teal,
+                        shape: BoxShape.circle,
                       ),
-                    ],
+                      child: const Icon(
+                        Icons.edit,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(width: 16),
+              // User Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name.isNotEmpty ? name : 'Tap to add your name',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.phone, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          phoneNumber.isNotEmpty ? phoneNumber : 'No phone number',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: mutedText(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -167,8 +167,8 @@ class _BankrollTabState extends State<BankrollTab> {
 
   bool _loading = true;
   bool _isUnlocked = false;
-  String? _storedPin; // null until the user creates a PIN
 
+  String? _storedPin; // null until the user creates a PIN
   final TextEditingController _pinController = TextEditingController();
   final TextEditingController _confirmPinController = TextEditingController();
 
@@ -194,17 +194,15 @@ class _BankrollTabState extends State<BankrollTab> {
     super.dispose();
   }
 
-  // ---------------------------------------------------------------- storage
+    // ---------------------------------------------------------------- storage
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _storedPin = prefs.getString(_pinKey);
       _profileName = prefs.getString(_nameKey) ?? '';
       _profilePhone = prefs.getString(_phoneKey) ?? '';
-
       // Fetch today's generated daily accumulator slip automatically
       _todaySuggestedSlip = await SuggestedSlipStore.load();
-
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
@@ -237,7 +235,7 @@ class _BankrollTabState extends State<BankrollTab> {
         jsonEncode({
           'starting': _starting,
           'cap': _cap,
-          'bets': _bets.map((b) => b.toJson()).toList(),
+          'bets': _bets.map((b) => b.toJson()).toList(), // Preserves full multi-month history without truncation
         }),
       );
     } catch (e) {
@@ -362,19 +360,18 @@ class _BankrollTabState extends State<BankrollTab> {
     }
   }
 
-  // ---------------------------------------------------------------- numbers
+   // ---------------------------------------------------------------- numbers
   double? _parse(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
 
   double get _settledProfit => _bets.fold(0.0, (sum, b) => sum + b.profit);
   double get _balance => _starting + _settledProfit;
-  
+
   // Includes manual pending bets + today's automated suggested slip stake if present
   double get _pendingStake {
     double manualPending = _bets
         .where((b) => b.status == 'pending')
         .fold(0.0, (sum, b) => sum + b.stake);
-    
-    // Add today's suggested slip stake if available and not explicitly marked settled/manually overridden
+
     if (_todaySuggestedSlip != null) {
       manualPending += _todaySuggestedSlip!.stake;
     }
@@ -384,8 +381,7 @@ class _BankrollTabState extends State<BankrollTab> {
   double get _spentThisMonth {
     final now = DateTime.now();
     var total = 0.0;
-    
-    // Sum manual bets
+
     for (final b in _bets) {
       if (b.status == 'void') continue;
       final d = DateTime.tryParse(b.date);
@@ -393,15 +389,12 @@ class _BankrollTabState extends State<BankrollTab> {
         total += b.stake;
       }
     }
-
-    // Include today's automatic suggested slip stake into monthly spending
     if (_todaySuggestedSlip != null) {
       final d = DateTime.tryParse(_todaySuggestedSlip!.date);
       if (d != null && d.year == now.year && d.month == now.month) {
         total += _todaySuggestedSlip!.stake;
       }
     }
-
     return total;
   }
 
@@ -481,7 +474,6 @@ class _BankrollTabState extends State<BankrollTab> {
                   setDialogState(() => pinError = 'PIN must be exactly 4 digits');
                   return;
                 }
-
                 setState(() {
                   _starting = math.max(0, _parse(startCtl.text) ?? 0);
                   _cap = math.max(0, _parse(capCtl.text) ?? 0);
@@ -489,7 +481,6 @@ class _BankrollTabState extends State<BankrollTab> {
                 });
                 await _saveData();
                 if (newPin.isNotEmpty) await _savePin(newPin);
-
                 if (!dialogContext.mounted) return;
                 Navigator.pop(dialogContext);
                 if (!mounted) return;
@@ -540,12 +531,13 @@ class _BankrollTabState extends State<BankrollTab> {
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancel')),
           ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _teal,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Add')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _teal,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Add'),
+          ),
         ],
       ),
     );
@@ -587,7 +579,7 @@ class _BankrollTabState extends State<BankrollTab> {
     await _saveData();
   }
 
-  // ---------------------------------------------------------------- widgets
+   // ---------------------------------------------------------------- widgets
   Widget _summaryCard() {
     final spent = _spentThisMonth;
     final capUsed = _cap > 0 ? spent / _cap : 0.0;
@@ -647,13 +639,13 @@ class _BankrollTabState extends State<BankrollTab> {
                   backgroundColor: lineColor(context),
                 ),
               ),
-                if (capUsed >= 1)
+              if (capUsed >= 1)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
                     'You have reached your monthly cap. Consider stopping for this month.',
                     style: TextStyle(
-      color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                        color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 )
               else if (capUsed >= 0.8)
@@ -676,10 +668,8 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-  // Widget to display today's automated daily accumulator inside the bankroll overview
   Widget _automatedSlipCard() {
     if (_todaySuggestedSlip == null) return const SizedBox.shrink();
-
     return Card(
       color: cardBg(context),
       elevation: 1,
@@ -715,7 +705,7 @@ class _BankrollTabState extends State<BankrollTab> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Stake: ${_ksh(_todaySuggestedSlip!.stake)}', style: const TextStyle(fontSize: 12)),
-                Text('Potential Win: ${_ksh(_todaySuggestedSlip!.potentialPayout)}', 
+                Text('Potential Win: ${_ksh(_todaySuggestedSlip!.potentialPayout)}',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
               ],
             ),
@@ -753,59 +743,135 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-  Widget _betsTable() {
-    const head = TextStyle(fontWeight: FontWeight.bold);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columnSpacing: 16,
-        columns: const [
-          DataColumn(label: Text('#', style: head)),
-          DataColumn(label: Text('Description', style: head)),
-          DataColumn(label: Text('Stake', style: head), numeric: true),
-          DataColumn(label: Text('Odds', style: head), numeric: true),
-          DataColumn(label: Text('P/L', style: head), numeric: true),
-          DataColumn(label: Text('Status', style: head)),
-          DataColumn(label: Text('Actions', style: head)),
-        ],
-        rows: _bets.asMap().entries.map((entry) {
-          final int index = entry.key + 1;
-          final Bet b = entry.value;
-          final settled = b.status == 'won' || b.status == 'lost';
-          return DataRow(cells: [
-            DataCell(Text('$index')),
-            DataCell(ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 140),
-              child: Text(b.description, overflow: TextOverflow.ellipsis),
-            )),
-            DataCell(Text(b.stake.toStringAsFixed(2))),
-            DataCell(Text(b.odds.toStringAsFixed(2))),
-            DataCell(Text(
-              settled ? b.profit.toStringAsFixed(2) : '-',
-              style: TextStyle(color: settled ? _profitColor(b.profit) : null),
-            )),
-            DataCell(_statusChip(b)),
-            DataCell(
-              PopupMenuButton<String>(
-                onSelected: (v) => _onMenu(b, v),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'won', child: Text('Mark won')),
-                  PopupMenuItem(value: 'lost', child: Text('Mark lost')),
-                  PopupMenuItem(value: 'void', child: Text('Mark void')),
-                  PopupMenuItem(value: 'pending', child: Text('Mark pending')),
-                  PopupMenuItem(value: 'delete', child: Text('Delete')),
-                ],
-              ),
+  // Helper method to compute ISO week number for grouping
+  int _weekOfYear(DateTime date) {
+    final startOfYear = DateTime(date.year, 1, 1);
+    final days = date.difference(startOfYear).inDays;
+    return (days / 7).ceil();
+  }
+
+  String _monthName(int month) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return months[month - 1];
+  }
+
+  // ---------------------------------------------------------------- Hierarchical Grouped Bets View
+  Widget _groupedBetsSection() {
+    if (_bets.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'No bets logged yet. Tap "Add Bet" to record a stake and its odds, or view automated daily slips from the Slips tab.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: mutedText(context)),
+        ),
+      );
+    }
+
+    // Group bets by Month -> Week -> Day
+    final Map<String, Map<int, Map<String, List<Bet>>>> grouped = {};
+
+    for (final b in _bets) {
+      final dt = DateTime.tryParse(b.date) ?? DateTime.now();
+      final monthKey = '${_monthName(dt.month)} ${dt.year}';
+      final weekNum = _weekOfYear(dt);
+      final dayKey = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+      grouped.putIfAbsent(monthKey, () => {});
+      grouped[monthKey]!.putIfAbsent(weekNum, () => {});
+      grouped[monthKey]![weekNum]!.putIfAbsent(dayKey, () => []);
+      grouped[monthKey]![weekNum]![dayKey]!.add(b);
+    }
+
+    return Column(
+      children: grouped.entries.map((monthEntry) {
+        final monthName = monthEntry.key;
+        final weeks = monthEntry.entries.toList()
+          ..sort((a, b) => b.key.compareTo(a.key)); // Newest week first
+
+        return Card(
+          color: cardBg(context),
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ExpansionTile(
+            title: Text(
+              monthName,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _teal),
             ),
-          ]);
-        }).toList(),
-      ),
+            subtitle: Text('${weeks.fold(0, (sum, w) => sum + w.value.values.fold(0, (s, d) => s + d.length))} bets logged'),
+            children: weeks.map((weekEntry) {
+              final weekNum = weekEntry.key;
+              final days = weekEntry.value.entries.toList()
+                ..sort((a, b) => b.key.compareTo(a.key)); // Newest day first
+
+              return ExpansionTile(
+                title: Text('Week $weekNum', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                children: days.map((dayEntry) {
+                  final dayDate = dayEntry.key;
+                  final dayBets = dayEntry.value;
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Text(
+                            dayDate,
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mutedText(context)),
+                          ),
+                        ),
+                        ...dayBets.map((b) {
+                          final settled = b.status == 'won' || b.status == 'lost';
+                          return Card(
+                            elevation: 0,
+                            color: lineColor(context).withOpacity(0.3),
+                            margin: const EdgeInsets.only(bottom: 6),
+                            child: ListTile(
+                              dense: true,
+                              title: Text(b.description, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              subtitle: Text(
+                                'Stake: ${_ksh(b.stake)} • Odds: ${b.odds.toStringAsFixed(2)}${settled ? ' • P/L: ${_ksh(b.profit)}' : ''}',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: settled ? _profitColor(b.profit) : null),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _statusChip(b),
+                                  PopupMenuButton<String>(
+                                    onSelected: (v) => _onMenu(b, v),
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(value: 'won', child: Text('Mark won')),
+                                      PopupMenuItem(value: 'lost', child: Text('Mark lost')),
+                                      PopupMenuItem(value: 'void', child: Text('Mark void')),
+                                      PopupMenuItem(value: 'pending', child: Text('Mark pending')),
+                                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            }).toList(),
+          ),
+        );
+      }).toList(),
     );
   }
 
   Widget _lockScreen() {
     final creating = _storedPin == null;
-
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
@@ -881,12 +947,10 @@ class _BankrollTabState extends State<BankrollTab> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-
     // If locked (or no PIN yet), render the PIN screen
     if (!_isUnlocked) {
       return _lockScreen();
     }
-
     // Unlocked content view
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -938,19 +1002,9 @@ class _BankrollTabState extends State<BankrollTab> {
                 const SizedBox(height: 12),
                 _summaryCard(),
                 const SizedBox(height: 12),
-                _automatedSlipCard(), // Displays today's suggested daily accumulator preview
+                _automatedSlipCard(),
                 const SizedBox(height: 12),
-                if (_bets.isEmpty && _todaySuggestedSlip == null)
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      'No bets logged yet. Tap "Add Bet" to record a stake and its odds, or view automated daily slips from the Slips tab.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: mutedText(context)),
-                    ),
-                  )
-                else
-                  _betsTable(),
+                _groupedBetsSection(), // Replaces the single-row data table with Month -> Week -> Day collapsible groups
                 const SizedBox(height: 16),
                 Text(
                   'Only bet what you can afford to lose. Tips are model estimates, not guarantees.',
