@@ -10,6 +10,7 @@ import 'prediction_log.dart';
 import 'slip_generator.dart';
 import 'slip_store.dart';
 import 'tables_screen.dart';
+import 'match_insights.dart';
 
 const Color kTealGreen = Color(0xFF008080);
 
