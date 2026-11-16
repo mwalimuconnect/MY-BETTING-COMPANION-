@@ -601,55 +601,6 @@ function sendTableError(res, label, err) {
   return res.status(502).json({ error: 'Could not load data' });
 }
 
-
-  // 1. Global Leagues via API-Football
-  if (EXTRA_LEAGUES[code]) {
-    if (!API_FOOTBALL_KEY) return res.status(503).json({ error: 'API-Football key not set' });
-    const meta = EXTRA_LEAGUES[code];
-    try {
-      const data = await cachedApiFootballTable(
-        `scorers:${code}`,
-        'players/topscorers',
-        { league: meta.id, season: meta.season },
-        (d) => ({
-          competition: meta.name,
-          scorers: (d.response || []).slice(0, 20).map((item) => ({
-            player: item.player?.name || 'Unknown',
-            team: item.statistics?.[0]?.team?.name || '',
-            goals: item.statistics?.[0]?.goals?.total || 0,
-            assists: item.statistics?.[0]?.goals?.assists || 0,
-          })),
-        })
-      );
-      return res.json(data);
-    } catch (err) {
-      return sendTableError(res, `API-Football Scorers ${code}`, err);
-    }
-  }
-
-  // 2. Core Competitions via football-data.org (Exact original working structure)
-  if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
-  try {
-    const data = await cachedFootballData(
-      `scorers:${code}`,
-      `https://api.football-data.org/v4/competitions/${code}/scorers`,
-      {},
-      (d) => ({
-        competition: (d.competition && d.competition.name) || code,
-        scorers: (d.scorers || []).map((s) => ({
-          player: s.player?.name || 'Unknown',
-          team: s.team?.shortName || s.team?.name || '',
-          goals: s.goals || 0,
-          assists: s.assists ?? 0,
-        })),
-      })
-    );
-    return res.json(data);
-  } catch (err) {
-    return sendTableError(res, `Scorers ${code}`, err);
-  }
-});
- 
 // ---------- Top Scorers (Hybrid Router) ----------
 app.get('/api/scorers/:code', async (req, res) => {
   const code = String(req.params.code || '').toUpperCase();
