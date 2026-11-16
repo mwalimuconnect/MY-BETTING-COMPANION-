@@ -5,11 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'fixture_model.dart';
 
+/// Base address of your Render server.
 const String kApiBase = 'https://my-betting-companion.onrender.com';
 
 class ApiService {
   static const String apiUrl = '$kApiBase/api/fixtures';
 
+  /// Fetches fixtures from the backend.
   static Future<List<FixtureModel>> fetchFixtures() async {
     debugPrint('Fetching fixtures from: $apiUrl');
 
@@ -49,6 +51,7 @@ class ApiService {
     }
   }
 
+  /// Fetches real-time team insights, injuries, and squad news from your Render backend
   static Future> fetchTeamInsights(String teamName) async {
     final url = '$kApiBase/api/team-insights?team=${Uri.encodeComponent(teamName)}';
     debugPrint('Fetching team insights from: $url');
