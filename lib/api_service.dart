@@ -5,19 +5,15 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'fixture_model.dart';
 
-/// Base address of your Render server (shared by fixtures, tables and scorers).
 const String kApiBase = 'https://my-betting-companion.onrender.com';
 
 class ApiService {
   static const String apiUrl = '$kApiBase/api/fixtures';
 
-  /// Fetches fixtures from the backend. Throws a readable Exception on failure
-  /// so the dashboard can show the error and the Retry button.
   static Future<List<FixtureModel>> fetchFixtures() async {
     debugPrint('Fetching fixtures from: $apiUrl');
 
     try {
-      // 45s covers a sleeping Render free-tier server waking up.
       final response = await http
           .get(Uri.parse(apiUrl))
           .timeout(const Duration(seconds: 45));
@@ -53,7 +49,6 @@ class ApiService {
     }
   }
 
-  /// Fetches real-time team insights, injuries, and squad news from your Render backend
   static Future> fetchTeamInsights(String teamName) async {
     final url = '$kApiBase/api/team-insights?team=${Uri.encodeComponent(teamName)}';
     debugPrint('Fetching team insights from: $url');
