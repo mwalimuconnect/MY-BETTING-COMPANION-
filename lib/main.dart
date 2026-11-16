@@ -338,7 +338,7 @@ class _FixturesTabState extends State<FixturesTab> {
             controller: _searchController,
             onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
             decoration: InputDecoration(
-              hintText: 'Search team (e.g., Santos, Flamengo)...',
+              hintText: 'Search team or competition (e.g., Barcelona , EPL)...',
               hintStyle: TextStyle(fontSize: 13, color: mutedText(context)),
               prefixIcon: const Icon(Icons.search, color: kTealGreen, size: 20),
               suffixIcon: _searchQuery.isNotEmpty
@@ -429,15 +429,12 @@ class _FixturesTabState extends State<FixturesTab> {
           return const Center(child: Text('No fixtures available right now.'));
         }
 
-        // 1. Filter by status (All, Upcoming, Live, Finished)
-        List<FixtureModel> fixtures = FixtureModel.filterFixtures(snapshot.data!, _selectedFilter);
-
-        // 2. Filter by search query (team names)
-        if (_searchQuery.isNotEmpty) {
-          fixtures = fixtures.where((f) =>
-              f.homeTeam.toLowerCase().contains(_searchQuery) ||
-              f.awayTeam.toLowerCase().contains(_searchQuery)).toList();
-        }
+        // Filter by status and search query (teams, leagues & competition codes)
+        final List<FixtureModel> fixtures = FixtureModel.filterFixtures(
+          snapshot.data!,
+          _selectedFilter,
+          searchQuery: _searchQuery,
+        );
 
         return Column(
           children: [
