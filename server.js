@@ -413,6 +413,14 @@ async function fetchExtraLeagueFixtures() {
     return extraFixturesCache.data;
   }
 
+const list = res.data.response || [];
+
+console.log(
+  'API Football fixtures received:',
+  list.length
+);
+  
+  
   const targetLeagueIds = new Set(Object.values(EXTRA_LEAGUES).map((l) => l.id));
   const idToCode = Object.fromEntries(
     Object.entries(EXTRA_LEAGUES).map(([code, info]) => [info.id, code])
@@ -467,6 +475,11 @@ async function fetchExtraLeagueFixtures() {
         });
       }
     }
+
+    console.log(
+  'Matched fixtures after filtering:',
+  results.length
+);
 
     extraFixturesCache = { data: results, fetchedAt: now };
     console.log(`API-Football: ${results.length} fixtures fetched across global leagues`);
