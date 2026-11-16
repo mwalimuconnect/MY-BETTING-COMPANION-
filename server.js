@@ -431,10 +431,8 @@ async function fetchExtraLeagueFixtures() {
 
       const list = res.data.response || [];
 
-console.log(
-  `Date ${dateStr}: $
-    {list.length} fixtures returned`
-);
+      console.log(`Date ${dateStr}: ${list.length} fixtures returned, errors: ${JSON.stringify(res.data.errors)}`);
+
     
       if (
         res.data.errors && 
