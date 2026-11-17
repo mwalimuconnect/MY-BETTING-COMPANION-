@@ -7,6 +7,8 @@ const PORT = process.env.PORT || 10000;
 // .trim() protects against stray spaces / line breaks pasted into Render
 const FOOTBALL_DATA_TOKEN = (process.env.FOOTBALL_DATA_TOKEN || '').trim();
 const API_FOOTBALL_KEY = (process.env.API_FOOTBALL_KEY || '').trim();
+const ODDS_API_KEY = (process.env.ODDS_API_KEY || '').trim();
+
 const TIMEZONE = 'Africa/Nairobi';
 const CACHE_TTL_MS = 60 * 1000;
 const TABLE_TTL_MS = 10 * 60 * 1000; // football-data.org standings/scorers cache
@@ -76,6 +78,7 @@ app.get('/health', (req, res) => {
     totalLeagues: ALL_COMPETITIONS.length,
     hasApiKey: Boolean(FOOTBALL_DATA_TOKEN),
     hasApiFootballKey: Boolean(API_FOOTBALL_KEY),
+    hasOddsApiKey: Boolean(ODDS_API_KEY),
     ratingsLoading,
     ratingsCompetitions: Object.keys(ratings),
   });
@@ -330,7 +333,6 @@ function ensureRatings() {
     });
   }
 }
-
 // ---------- Live data mapping ----------
 const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
@@ -408,7 +410,7 @@ let extraLastFailAt = 0;
 function mapApiFootballStatus(short) {
   if (['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE'].includes(short)) return 'IN_PLAY';
   if (['FT', 'AET', 'PEN', 'AWD', 'WO'].includes(short)) return 'FINISHED';
-  if (['PST', 'CANC', 'ABD', 'SUSP', 'INT'].includes(short)) return 'POSTPONED'; // hidden from lists
+  if (['PST', 'CANC', 'ABD', 'SUSP', 'INT'].includes(short)) return 'POSTPONED';
   return 'SCHEDULED';
 }
 
@@ -421,11 +423,9 @@ async function fetchExtraLeagueFixtures() {
   if (!API_FOOTBALL_KEY) return [];
   const now = Date.now();
 
-  // Use cache while fresh (even if it is empty, so we don't burn the daily quota)
   if (extraFixturesCache.fetchedAt && now - extraFixturesCache.fetchedAt < EXTRA_FIXTURES_TTL_MS) {
     return extraFixturesCache.data;
   }
-  // After a failure, wait a few minutes before trying again
   if (extraLastFailAt && now - extraLastFailAt < EXTRA_RETRY_AFTER_FAIL_MS) {
     return extraFixturesCache.data;
   }
@@ -500,7 +500,6 @@ async function fetchExtraLeagueFixtures() {
   }
 
   if (okDates === 0) {
-    // Every call failed: keep whatever we had and back off for a few minutes
     extraLastFailAt = now;
     return extraFixturesCache.data;
   }
@@ -528,7 +527,6 @@ async function fetchMatchWindow() {
     return cache.data;
   }
 
-  // allSettled: if one source fails, the others still show up
   const [pastR, futureR, extraR] = await Promise.allSettled([
     FOOTBALL_DATA_TOKEN ? requestMatches(utcDateOffset(-DAYS_BACK), utcDateOffset(0)) : Promise.reject(new Error('no football-data token')),
     FOOTBALL_DATA_TOKEN ? requestMatches(utcDateOffset(1), utcDateOffset(DAYS_AHEAD)) : Promise.reject(new Error('no football-data token')),
@@ -552,7 +550,6 @@ async function fetchMatchWindow() {
   const anyOk =
     pastR.status === 'fulfilled' || futureR.status === 'fulfilled' || extraR.status === 'fulfilled';
 
-  // Don't overwrite a good cache with nothing if everything failed
   if (!anyOk && cache.data) return cache.data;
 
   cache = { data: matches, fetchedAt: now };
@@ -598,7 +595,6 @@ function pickFixtures(allMatches) {
     ...finished.map((m) => formatFixture(m, true)),
   ];
 }
-
 // ---------- Standings and top scorers (Hybrid Router) ----------
 const tableCache = {};
 
@@ -648,7 +644,6 @@ async function cachedApiFootballTable(cacheKey, endpoint, params, mapper) {
       timeout: 20000,
     });
 
-    // API-Football answers HTTP 200 even when it rejects the request
     if (hasApiErrors(res.data)) {
       const e = new Error('API-Football: ' + JSON.stringify(res.data.errors));
       e.planBlocked = Boolean(res.data.errors.plan);
@@ -657,7 +652,6 @@ async function cachedApiFootballTable(cacheKey, endpoint, params, mapper) {
     }
 
     const data = mapper(res.data);
-    // never cache an empty answer for 6 hours
     if (!isEmptyPayload(data)) tableCache[cacheKey] = { data, at: now };
     return data;
   } catch (err) {
@@ -683,7 +677,6 @@ app.get('/api/standings/:code', async (req, res) => {
   const code = String(req.params.code || '').toUpperCase();
   if (!ALL_COMPETITIONS.includes(code)) return res.status(400).json({ error: 'Unknown competition' });
 
-  // Route 1: Extra Global Leagues via API-Football
   if (EXTRA_LEAGUES[code]) {
     if (!API_FOOTBALL_KEY) return res.status(503).json({ error: 'API-Football key not set' });
     const meta = EXTRA_LEAGUES[code];
@@ -722,7 +715,6 @@ app.get('/api/standings/:code', async (req, res) => {
     }
   }
 
-  // Route 2: 12 Core Competitions via football-data.org
   if (!FOOTBALL_DATA_TOKEN) return res.status(503).json({ error: 'Server token not set' });
   try {
     const data = await cachedFootballData(
@@ -811,6 +803,28 @@ app.get('/api/scorers/:code', async (req, res) => {
     return res.json(data);
   } catch (err) {
     return sendTableError(res, `Scorers ${code}`, err);
+  }
+});
+
+// ---------- Real Odds via The Odds API ----------
+app.get('/api/odds/:sport', async (req, res) => {
+  const sport = req.params.sport || 'soccer_epl';
+  if (!ODDS_API_KEY) return res.status(503).json({ error: 'Odds API key not configured on server' });
+
+  try {
+    const response = await axios.get(`https://api.the-odds-api.com/v4/sports/${sport}/odds/`, {
+      params: {
+        apiKey: ODDS_API_KEY,
+        regions: 'eu,uk',
+        markets: 'h2h',
+        oddsFormat: 'decimal',
+      },
+      timeout: 15000,
+    });
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Failed to fetch odds:', err.message);
+    return res.status(502).json({ error: 'Could not fetch odds from provider' });
   }
 });
 
