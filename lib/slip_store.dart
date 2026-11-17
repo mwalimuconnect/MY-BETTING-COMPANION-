@@ -178,7 +178,11 @@ Widget buildGroupedSlipList(List<SlipLeg> legs, Function(String key) onDelete) {
                 ),
                 title: Text('${dayLegs[i].home} vs ${dayLegs[i].away}'),
                 subtitle: Text(
-                    'Tip: ${dayLegs[i].tip.isNotEmpty ? dayLegs[i].tip : "None"} | Score: ${dayLegs[i].score.isNotEmpty ? dayLegs[i].score : "Pending"}'),
+                  'Kickoff: ${dayLegs[i].kickoff.isNotEmpty ? dayLegs[i].kickoff : "TBD"}\n'
+                  'Tip: ${dayLegs[i].tip.isNotEmpty ? dayLegs[i].tip : "None"} | '
+                  'Score: ${dayLegs[i].score.isNotEmpty ? dayLegs[i].score : "Pending"}',
+                ),
+                isThreeLine: true,
                 trailing: IconButton(
                   icon: const Icon(Icons.delete_outline, color: Colors.red),
                   onPressed: () => onDelete(dayLegs[i].key),
