@@ -856,7 +856,23 @@ app.get('/debug-fixtures', async (req, res) => {
   }
 });
 
-
+app.get('/api/debug-leagues', async (req, res) => {
+  try {
+    const r = await axios.get('https://v3.football.api-sports.io/leagues', {
+      headers: { 'x-apisports-key': API_FOOTBALL_KEY },
+      params: { search: String(req.query.q || '') },
+      timeout: 15000,
+    });
+    res.json((r.data.response || []).map((x) => ({
+      id: x.league.id,
+      name: x.league.name,
+      country: x.country && x.country.name,
+      seasons: (x.seasons || []).map((s) => s.year).slice(-2),
+    })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 // ---------- Fixtures Route ----------
 app.get('/api/fixtures', async (req, res) => {
   ensureRatings();
