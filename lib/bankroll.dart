@@ -713,25 +713,33 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-  /// Side-by-side comparison table for System vs Manual performance
+   /// Side-by-side comparison table for System vs Manual performance
   Widget _comparisonTableCard() {
     // Separate system-generated bets from manual user bets
     final systemBets = _bets.where((b) => b.description.contains('Accumulator')).toList();
     final manualBets = _bets.where((b) => !b.description.contains('Accumulator')).toList();
 
     double totalStaked(List<Bet> list) => list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
+    
+    // Total amount won (stake + profit for won bets)
+    double totalWon(List<Bet> list) {
+      return list.where((b) => b.status == 'won').fold(0.0, (s, b) => s + b.stake + b.profit);
+    }
+
     double totalProfit(List<Bet> list) => list.fold(0.0, (s, b) => s + b.profit);
     int countStatus(List<Bet> list, String status) => list.where((b) => b.status == status).length;
 
     final sysStaked = totalStaked(systemBets);
+    final sysWonAmount = totalWon(systemBets);
     final sysProfit = totalProfit(systemBets);
-    final sysWon = countStatus(systemBets, 'won');
-    final sysLost = countStatus(systemBets, 'lost');
+    final sysWins = countStatus(systemBets, 'won');
+    final sysLosses = countStatus(systemBets, 'lost');
 
     final manStaked = totalStaked(manualBets);
+    final manWonAmount = totalWon(manualBets);
     final manProfit = totalProfit(manualBets);
-    final manWon = countStatus(manualBets, 'won');
-    final manLost = countStatus(manualBets, 'lost');
+    final manWins = countStatus(manualBets, 'won');
+    final manLosses = countStatus(manualBets, 'lost');
 
     return Card(
       color: cardBg(context),
@@ -749,7 +757,7 @@ class _BankrollTabState extends State<BankrollTab> {
             const SizedBox(height: 10),
             Table(
               columnWidths: const {
-                0: FlexColumnWidth(1.2),
+                0: FlexColumnWidth(1.3),
                 1: FlexColumnWidth(1.0),
                 2: FlexColumnWidth(1.0),
               },
@@ -758,30 +766,37 @@ class _BankrollTabState extends State<BankrollTab> {
                 TableRow(
                   decoration: BoxDecoration(color: lineColor(context).withOpacity(0.3)),
                   children: const [
-                    Padding(padding: EdgeInsets.all(8.0), child: Text('Metric', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                    Padding(padding: EdgeInsets.all(8.0), child: Text('System (Auto)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _teal))),
-                    Padding(padding: EdgeInsets.all(8.0), child: Text('Manual (You)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text('Metric', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text('System (Auto)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: _teal))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text('Manual (You)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
                   ],
                 ),
                 TableRow(
                   children: [
-                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Total Staked', style: TextStyle(fontSize: 12))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(sysStaked), style: const TextStyle(fontSize: 12))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(manStaked), style: const TextStyle(fontSize: 12))),
+                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Total Staked', style: TextStyle(fontSize: 11))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(sysStaked), style: const TextStyle(fontSize: 11))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(manStaked), style: const TextStyle(fontSize: 11))),
                   ],
                 ),
                 TableRow(
                   children: [
-                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Profit / Loss', style: TextStyle(fontSize: 12))),
-                    Padding(padding: EdgeInsets.all(8.0), child: Text(_ksh(sysProfit), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _profitColor(sysProfit)))),
-                    Padding(padding: EdgeInsets.all(8.0), child: Text(_ksh(manProfit), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _profitColor(manProfit)))),
+                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Amount Won', style: TextStyle(fontSize: 11))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(sysWonAmount), style: const TextStyle(fontSize: 11, color: Colors.green))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(manWonAmount), style: const TextStyle(fontSize: 11, color: Colors.green))),
                   ],
                 ),
                 TableRow(
                   children: [
-                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Record (W - L)', style: TextStyle(fontSize: 12))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text('$sysWon - $sysLost', style: const TextStyle(fontSize: 12))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text('$manWon - $manLost', style: const TextStyle(fontSize: 12))),
+                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Profit / Loss', style: TextStyle(fontSize: 11))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text(_ksh(sysProfit), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _profitColor(sysProfit)))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text(_ksh(manProfit), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _profitColor(manProfit)))),
+                  ],
+                ),
+                TableRow(
+                  children: [
+                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Record (W - L)', style: TextStyle(fontSize: 11))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text('$sysWins - $sysLosses', style: const TextStyle(fontSize: 11))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text('$manWins - $manLosses', style: const TextStyle(fontSize: 11))),
                   ],
                 ),
               ],
