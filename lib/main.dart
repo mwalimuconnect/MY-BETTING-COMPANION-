@@ -309,9 +309,69 @@ class _FixturesTabState extends State<FixturesTab> {
     });
   }
 
+    static const Map<String, String> _leagueToOddsSport = {
+    'PL': 'soccer_epl',
+    'ELC': 'soccer_efl_champ',
+    'BL1': 'soccer_germany_bundesliga',
+    'SA': 'soccer_italy_serie_a',
+    'PD': 'soccer_spain_la_liga',
+    'FL1': 'soccer_france_ligue_one',
+    'DED': 'soccer_netherlands_eredivisie',
+    'PPL': 'soccer_portugal_primeira_liga',
+    'BSA': 'soccer_brazil_campeonato',
+    'CL': 'soccer_uefa_champs_league',
+    'MLS': 'soccer_usa_mls',
+    'ALE': 'soccer_australia_aleague',
+    'ARG': 'soccer_argentina_primera_division',
+  };
+
   void _loadFixtures() {
     setState(() {
       _fixturesFuture = ApiService.fetchFixtures().then((fixtures) async {
+        // 1. Determine which sport keys are present in the current fixtures list
+        final activeSports = fixtures
+            .map((f) => _leagueToOddsSport[f.competitionCode.toUpperCase()])
+            .whereType<String>()
+            .toSet();
+
+        // 2. Fetch odds for all active sports concurrently
+        if (activeSports.isNotEmpty) {
+          try {
+            final oddsResponses = await Future.wait(
+              activeSports.map((sport) => ApiService.fetchOdds(sport)),
+            );
+            final allOdds = oddsResponses.expand((list) => list).toList();
+
+            // 3. Map the odds to matching fixtures based on team names
+            for (final fixture in fixtures) {
+              final fHome = fixture.homeTeam.toLowerCase();
+              for (final item in allOdds) {
+                final oHome = item['home_team']?.toString().toLowerCase() ?? '';
+                if (oHome.isEmpty) continue;
+
+                if (fHome.contains(oHome) || oHome.contains(fHome)) {
+                  final bookmakers = item['bookmakers'] as List? ?? [];
+                  if (bookmakers.isNotEmpty) {
+                    final markets = bookmakers[0]['markets'] as List? ?? [];
+                    for (var market in markets) {
+                      if (market['key'] == 'h2h') {
+                        final outcomes = market['outcomes'] as List? ?? [];
+                        for (var outcome in outcomes) {
+                          if (outcome['name'].toString().toLowerCase() == oHome) {
+                            fixture.odds = (outcome['price'] as num?)?.toDouble() ?? 0.0;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Failed to attach live odds: $e');
+          }
+        }
+
         await _safely(() => PredictionLog.update(fixtures));
         await _safely(() => SlipStore.settle(fixtures));
         await SuggestedSlipStore.refresh(fixtures);
