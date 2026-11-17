@@ -194,7 +194,7 @@ class _BankrollTabState extends State<BankrollTab> {
     super.dispose();
   }
 
-    // ---------------------------------------------------------------- storage
+  // ---------------------------------------------------------------- storage
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -235,7 +235,7 @@ class _BankrollTabState extends State<BankrollTab> {
         jsonEncode({
           'starting': _starting,
           'cap': _cap,
-          'bets': _bets.map((b) => b.toJson()).toList(), // Preserves full multi-month history without truncation
+          'bets': _bets.map((b) => b.toJson()).toList(),
         }),
       );
     } catch (e) {
@@ -360,18 +360,16 @@ class _BankrollTabState extends State<BankrollTab> {
     }
   }
 
-   // ---------------------------------------------------------------- numbers
+  // ---------------------------------------------------------------- numbers
   double? _parse(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
 
   double get _settledProfit => _bets.fold(0.0, (sum, b) => sum + b.profit);
   double get _balance => _starting + _settledProfit;
 
-  // Includes manual pending bets + today's automated suggested slip stake if present
   double get _pendingStake {
     double manualPending = _bets
         .where((b) => b.status == 'pending')
         .fold(0.0, (sum, b) => sum + b.stake);
-
     if (_todaySuggestedSlip != null) {
       manualPending += _todaySuggestedSlip!.stake;
     }
@@ -381,7 +379,6 @@ class _BankrollTabState extends State<BankrollTab> {
   double get _spentThisMonth {
     final now = DateTime.now();
     var total = 0.0;
-
     for (final b in _bets) {
       if (b.status == 'void') continue;
       final d = DateTime.tryParse(b.date);
@@ -545,6 +542,7 @@ class _BankrollTabState extends State<BankrollTab> {
     if (ok != true) return;
     final stake = _parse(stakeCtl.text);
     final odds = _parse(oddsCtl.text);
+
     if (stake == null || stake <= 0 || odds == null || odds <= 1) {
       if (!mounted) return;
       _snack('Enter a stake above 0 and odds above 1.0');
@@ -579,7 +577,7 @@ class _BankrollTabState extends State<BankrollTab> {
     await _saveData();
   }
 
-   // ---------------------------------------------------------------- widgets
+  // ---------------------------------------------------------------- widgets
   Widget _summaryCard() {
     final spent = _spentThisMonth;
     final capUsed = _cap > 0 ? spent / _cap : 0.0;
@@ -715,6 +713,85 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
+  /// Side-by-side comparison table for System vs Manual performance
+  Widget _comparisonTableCard() {
+    // Separate system-generated bets from manual user bets
+    final systemBets = _bets.where((b) => b.description.contains('Accumulator')).toList();
+    final manualBets = _bets.where((b) => !b.description.contains('Accumulator')).toList();
+
+    double totalStaked(List<Bet> list) => list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
+    double totalProfit(List<Bet> list) => list.fold(0.0, (s, b) => s + b.profit);
+    int countStatus(List<Bet> list, String status) => list.where((b) => b.status == status).length;
+
+    final sysStaked = totalStaked(systemBets);
+    final sysProfit = totalProfit(systemBets);
+    final sysWon = countStatus(systemBets, 'won');
+    final sysLost = countStatus(systemBets, 'lost');
+
+    final manStaked = totalStaked(manualBets);
+    final manProfit = totalProfit(manualBets);
+    final manWon = countStatus(manualBets, 'won');
+    final manLost = countStatus(manualBets, 'lost');
+
+    return Card(
+      color: cardBg(context),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(14.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '📊 Performance: System vs Manual',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
+            ),
+            const SizedBox(height: 10),
+            Table(
+              columnWidths: const {
+                0: FlexColumnWidth(1.2),
+                1: FlexColumnWidth(1.0),
+                2: FlexColumnWidth(1.0),
+              },
+              border: TableBorder.all(color: lineColor(context), width: 0.5),
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(color: lineColor(context).withOpacity(0.3)),
+                  children: const [
+                    Padding(padding: EdgeInsets.all(8.0), child: Text('Metric', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text('System (Auto)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _teal))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text('Manual (You)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                  ],
+                ),
+                TableRow(
+                  children: [
+                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Total Staked', style: TextStyle(fontSize: 12))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(sysStaked), style: const TextStyle(fontSize: 12))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(manStaked), style: const TextStyle(fontSize: 12))),
+                  ],
+                ),
+                TableRow(
+                  children: [
+                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Profit / Loss', style: TextStyle(fontSize: 12))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text(_ksh(sysProfit), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _profitColor(sysProfit)))),
+                    Padding(padding: EdgeInsets.all(8.0), child: Text(_ksh(manProfit), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _profitColor(manProfit)))),
+                  ],
+                ),
+                TableRow(
+                  children: [
+                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Record (W - L)', style: TextStyle(fontSize: 12))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text('$sysWon - $sysLost', style: const TextStyle(fontSize: 12))),
+                    Padding(padding: const EdgeInsets.all(8.0), child: Text('$manWon - $manLost', style: const TextStyle(fontSize: 12))),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _statusChip(Bet b) {
     Color bg;
     Color fg;
@@ -743,7 +820,6 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-  // Helper method to compute ISO week number for grouping
   int _weekOfYear(DateTime date) {
     final startOfYear = DateTime(date.year, 1, 1);
     final days = date.difference(startOfYear).inDays;
@@ -758,7 +834,6 @@ class _BankrollTabState extends State<BankrollTab> {
     return months[month - 1];
   }
 
-  // ---------------------------------------------------------------- Hierarchical Grouped Bets View
   Widget _groupedBetsSection() {
     if (_bets.isEmpty) {
       return Padding(
@@ -771,15 +846,12 @@ class _BankrollTabState extends State<BankrollTab> {
       );
     }
 
-    // Group bets by Month -> Week -> Day
     final Map<String, Map<int, Map<String, List<Bet>>>> grouped = {};
-
     for (final b in _bets) {
       final dt = DateTime.tryParse(b.date) ?? DateTime.now();
       final monthKey = '${_monthName(dt.month)} ${dt.year}';
       final weekNum = _weekOfYear(dt);
       final dayKey = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-
       grouped.putIfAbsent(monthKey, () => {});
       grouped[monthKey]!.putIfAbsent(weekNum, () => {});
       grouped[monthKey]![weekNum]!.putIfAbsent(dayKey, () => []);
@@ -790,8 +862,7 @@ class _BankrollTabState extends State<BankrollTab> {
       children: grouped.entries.map((monthEntry) {
         final monthName = monthEntry.key;
         final weeks = monthEntry.value.entries.toList()
-  ..sort((a, b) => b.key.compareTo(a.key)); // Newest week first
-
+          ..sort((a, b) => b.key.compareTo(a.key));
         return Card(
           color: cardBg(context),
           margin: const EdgeInsets.only(bottom: 12),
@@ -804,14 +875,12 @@ class _BankrollTabState extends State<BankrollTab> {
             children: weeks.map((weekEntry) {
               final weekNum = weekEntry.key;
               final days = weekEntry.value.entries.toList()
-                ..sort((a, b) => b.key.compareTo(a.key)); // Newest day first
-
+                ..sort((a, b) => b.key.compareTo(a.key));
               return ExpansionTile(
                 title: Text('Week $weekNum', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                 children: days.map((dayEntry) {
                   final dayDate = dayEntry.key;
                   final dayBets = dayEntry.value;
-
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     child: Column(
@@ -869,7 +938,6 @@ class _BankrollTabState extends State<BankrollTab> {
       }).toList(),
     );
   }
-
   Widget _lockScreen() {
     final creating = _storedPin == null;
     return Center(
@@ -947,11 +1015,9 @@ class _BankrollTabState extends State<BankrollTab> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    // If locked (or no PIN yet), render the PIN screen
     if (!_isUnlocked) {
       return _lockScreen();
     }
-    // Unlocked content view
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1003,8 +1069,10 @@ class _BankrollTabState extends State<BankrollTab> {
                 _summaryCard(),
                 const SizedBox(height: 12),
                 _automatedSlipCard(),
+                const SizedBox(height: 8),
+                _comparisonTableCard(),
                 const SizedBox(height: 12),
-                _groupedBetsSection(), // Replaces the single-row data table with Month -> Week -> Day collapsible groups
+                _groupedBetsSection(),
                 const SizedBox(height: 16),
                 Text(
                   'Only bet what you can afford to lose. Tips are model estimates, not guarantees.',
