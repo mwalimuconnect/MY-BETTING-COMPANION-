@@ -69,7 +69,7 @@ class ApiService {
   }
 
   /// Fetches team insights, injuries and squad news.
-  static Future<Map<String, dynamic>> fetchTeamInsights(
+  static Future> fetchTeamInsights(
     String teamName,
   ) async {
     final url =
@@ -122,6 +122,35 @@ class ApiService {
     } catch (e) {
       debugPrint('Error fetching team insights: $e');
       rethrow;
+    }
+  }
+
+  /// Fetches real bookmaker odds for a given sport key from the backend.
+  static Future<List<dynamic>> fetchOdds(String sportKey) async {
+    final url = '$kApiBase/api/odds/$sportKey';
+    debugPrint('Fetching odds from: $url');
+
+    try {
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 25));
+
+      debugPrint('Odds status code: ${response.statusCode}');
+
+      if (response.statusCode != 200) {
+        throw Exception('Server returned ${response.statusCode} for odds');
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is List) {
+        return decoded;
+      }
+
+      throw Exception('Invalid odds data format received from server');
+    } catch (e) {
+      debugPrint('Error fetching odds: $e');
+      return [];
     }
   }
 }
