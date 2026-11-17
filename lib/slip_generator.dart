@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 class GeneratedSlip {
   final String title;
   final double totalOdds;
-  final List<Map<String, dynamic>> selections;
+  final List> selections;
   final double stake;
   final double potentialPayout;
   final Color payoutColor;
 
-  /// Reminder that these are not bookmaker odds.
+  /// Reminder about odds source.
   final String note;
 
   GeneratedSlip({
@@ -20,7 +20,7 @@ class GeneratedSlip {
     double? potentialPayout,
     this.payoutColor = const Color(0xFF008080), // Teal Green
     this.note =
-        'Odds are model-implied (100 divided by win probability), not bookmaker odds.',
+        'Includes available bookmaker odds where live, otherwise model-implied.',
   }) : potentialPayout =
             potentialPayout ?? double.parse((totalOdds * stake).toStringAsFixed(2));
 }
@@ -28,7 +28,7 @@ class GeneratedSlip {
 class _Candidate {
   final String match;
   final String prediction;
-  final double odds; // model-implied "fair" odds
+  final double odds; 
   final num prob;
 
   const _Candidate(this.match, this.prediction, this.odds, this.prob);
@@ -43,29 +43,38 @@ class SlipGenerator {
     return value;
   }
 
-  /// Builds an accumulator from upcoming matches using markets that have a
-  /// real model probability (1X2 tip, Double Chance, Over 2.5 Goals, Both
-  /// Teams To Score), aiming for combined odds between 5.00 and 10.00.
+  /// Builds an accumulator strictly from TODAY'S matches, aiming for combined odds between 5.00 and 10.00.
   static GeneratedSlip? generateTargetSlip(List<dynamic> availableFixtures) {
+    final now = DateTime.now();
     final List<_Candidate> candidates = [];
 
     for (final fixture in availableFixtures) {
       if (fixture is! FixtureModel) continue;
       if (fixture.isFinished || fixture.isLive) continue;
 
+      // Ensure the match kickoff is strictly TODAY
+      if (fixture.kickoff == null) continue;
+      final localKickoff = fixture.kickoff!.toLocal();
+      if (localKickoff.year != now.year ||
+          localKickoff.month != now.month ||
+          localKickoff.day != now.day) {
+        continue;
+      }
+
       final double homeProb = fixture.homeWinProb.toDouble();
       final double drawProb = fixture.drawProb.toDouble();
       final double awayProb = fixture.awayWinProb.toDouble();
 
-      // No prediction from the server for this match.
       if (homeProb <= 0 && awayProb <= 0) continue;
 
       final String matchName = '${fixture.homeTeam} vs ${fixture.awayTeam}';
 
-      // 1. Standard 1X2 / winner tip
+      // 1. Standard 1X2 / winner tip (uses real bookmaker odds if available and > 0, else model odds)
       final num? tipProb = fixture.tipProb;
       if (fixture.topTip.isNotEmpty && tipProb != null && tipProb > 0) {
-        final double odds = 100 / tipProb.toDouble();
+        final double odds = (fixture.odds > 0 && fixture.topTip.toLowerCase().contains('win'))
+            ? fixture.odds
+            : 100 / tipProb.toDouble();
         candidates.add(_Candidate(matchName, fixture.topTip, odds, tipProb));
       }
 
@@ -92,13 +101,13 @@ class SlipGenerator {
         }
       }
 
-      // 3. Over 2.5 goals, using the server's real estimate
+      // 3. Over 2.5 goals
       final double? over25 = _percent(fixture.over25Goals);
       if (over25 != null && over25 >= 55.0) {
         candidates.add(_Candidate(matchName, 'Over 2.5 Goals', 100 / over25, over25));
       }
 
-      // 4. Both teams to score, using the server's real estimate
+      // 4. Both teams to score
       final double? btts = _percent(fixture.btts);
       if (btts != null && btts >= 55.0) {
         candidates.add(_Candidate(
@@ -109,7 +118,7 @@ class SlipGenerator {
     // Most confident first
     candidates.sort((a, b) => b.prob.compareTo(a.prob));
 
-    final List<Map<String, dynamic>> selectedBets = [];
+    final List> selectedBets = [];
     final Set<String> usedMatches = {};
     double cumulativeOdds = 1.0;
 
@@ -135,8 +144,7 @@ class SlipGenerator {
       }
     }
 
-    // Second pass if the target is not reached yet (a match may appear twice
-    // with different markets)
+    // Second pass if target not reached yet
     for (final c in candidates) {
       if (selectedBets.any((s) => s['match'] == c.match && s['prediction'] == c.prediction)) {
         continue;
