@@ -29,7 +29,7 @@ class FixtureModel {
   final DateTime? time; // Alias for kickoff required by UI
   final bool isLive;
   final bool isFinished;
-  final double odds; // 0 = no real bookmaker odds available
+  double odds; // 0 = no real bookmaker odds available (mutable so live odds can be mapped)
   final String prediction; // same as topTip
   final String league;
 
