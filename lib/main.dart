@@ -262,7 +262,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // Fixtures tab
 // ---------------------------------------------------------------------------
@@ -279,6 +278,15 @@ class _FixturesTabState extends State<FixturesTab> {
   String _selectedFilter = 'all';
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+
+  final Set<String> _openLeagues = {};
+  final Set<String> _pinnedLeagues = {};
+  final Map<String, int> _leagueEpoch = {};
+  bool _singleOpen = false;
+
+  // Time window in hours before kickoff. null = All
+  int? _windowHours;
+  static const List<int> _windowOptions = [3, 6, 12, 24, 72];
 
   @override
   void initState() {
@@ -326,6 +334,100 @@ class _FixturesTabState extends State<FixturesTab> {
       SnackBar(content: Text(nowSaved ? 'Saved to slips' : 'Removed from saved slips')),
     );
   }
+
+  // ---- time window filter -------------------------------------------------
+
+  List<FixtureModel> _applyTimeWindow(List<FixtureModel> list) {
+    final h = _windowHours;
+    if (h == null) return list;
+    final now = DateTime.now();
+    final limit = now.add(Duration(hours: h));
+    return list.where((f) {
+      if (f.isLive) return true;
+      if (f.isFinished) return false;
+      final k = f.kickoff;
+      if (k == null) return false;
+      return k.isAfter(now) && !k.isAfter(limit);
+    }).toList();
+  }
+
+  Widget _buildTimeWindows() {
+    Widget item(String label, int? hours) {
+      final selected = _windowHours == hours;
+      return Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _windowHours = hours),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: selected ? kTealGreen : Colors.transparent,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                color: selected ? Colors.white : mutedText(context),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      child: Row(
+        children: [
+          for (final h in _windowOptions) item('$h h', h),
+          item('All', null),
+        ],
+      ),
+    );
+  }
+
+  // ---- league open/close/pin logic ----------------------------------------
+
+  void _setAllLeagues(List<String> leagues, bool open) {
+    setState(() {
+      for (final l in leagues) {
+        if (open) {
+          _openLeagues.add(l);
+        } else {
+          _openLeagues.remove(l);
+        }
+        _leagueEpoch[l] = (_leagueEpoch[l] ?? 0) + 1;
+      }
+    });
+  }
+
+  void _onLeagueToggled(String league, bool open) {
+    setState(() {
+      if (open) {
+        if (_singleOpen) {
+          for (final other in _openLeagues.where((l) => l != league).toList()) {
+            _openLeagues.remove(other);
+            _leagueEpoch[other] = (_leagueEpoch[other] ?? 0) + 1;
+          }
+        }
+        _openLeagues.add(league);
+      } else {
+        _openLeagues.remove(league);
+      }
+    });
+  }
+
+  void _togglePin(String league) {
+    setState(() {
+      if (!_pinnedLeagues.remove(league)) _pinnedLeagues.add(league);
+    });
+  }
+
+  // ---- search + filter chips ----------------------------------------------
 
   Widget _buildSearchAndFilters() {
     const filters = ['All', 'Upcoming', 'Live', 'Finished'];
@@ -388,12 +490,48 @@ class _FixturesTabState extends State<FixturesTab> {
               }).toList(),
             ),
           ),
+          _buildTimeWindows(),
         ],
       ),
     );
   }
 
-  // ---- small helpers for the match flap ----------------------------------
+  // ---- expand all / one-at-a-time row -------------------------------------
+
+  Widget _buildLeagueControls(List<String> leagues) {
+    final bool allOpen =
+        leagues.isNotEmpty && leagues.every(_openLeagues.contains);
+    final bool showCollapse = _singleOpen ? _openLeagues.isNotEmpty : allOpen;
+    final bool disabled = leagues.isEmpty || (_singleOpen && !showCollapse);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+      child: Row(
+        children: [
+          TextButton.icon(
+            onPressed:
+                disabled ? null : () => _setAllLeagues(leagues, !showCollapse),
+            icon: Icon(showCollapse ? Icons.unfold_less : Icons.unfold_more,
+                size: 18),
+            label: Text(showCollapse ? 'Collapse all' : 'Expand all'),
+          ),
+          const Spacer(),
+          Text('One at a time',
+              style: TextStyle(fontSize: 12, color: mutedText(context))),
+          Switch(
+            value: _singleOpen,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: (v) {
+              setState(() => _singleOpen = v);
+              if (v) _setAllLeagues(leagues, false);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- small helpers for the match flap -----------------------------------
 
   Widget _sectionTitle(String text) {
     return Padding(
@@ -598,6 +736,9 @@ class _FixturesTabState extends State<FixturesTab> {
   // ---- one league flap ----------------------------------------------------
 
   Widget _buildLeagueTile(String league, List<FixtureModel> matches) {
+    final bool pinned = _pinnedLeagues.contains(league);
+    final int epoch = _leagueEpoch[league] ?? 0;
+
     return Card(
       color: cardBg(context),
       margin: const EdgeInsets.only(bottom: 12),
@@ -607,12 +748,30 @@ class _FixturesTabState extends State<FixturesTab> {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          key: PageStorageKey('league_$league'),
-          initiallyExpanded: false,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-          title: Text(
-            '${league.toUpperCase()} (${matches.length})',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          key: ValueKey('league_${league}_$epoch'),
+          initiallyExpanded: _openLeagues.contains(league),
+          onExpansionChanged: (open) => _onLeagueToggled(league, open),
+          tilePadding: const EdgeInsets.only(left: 16, right: 12),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${league.toUpperCase()} (${matches.length})',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: pinned ? 'Unpin league' : 'Pin to top',
+                icon: Icon(
+                  pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                  size: 20,
+                  color: pinned ? kPrimary : mutedText(context),
+                ),
+                onPressed: () => _togglePin(league),
+              ),
+            ],
           ),
           children: [
             for (int i = 0; i < matches.length; i++) ...[
@@ -664,22 +823,37 @@ class _FixturesTabState extends State<FixturesTab> {
           return const Center(child: Text('No fixtures available right now.'));
         }
 
-        final List<FixtureModel> fixtures = FixtureModel.filterFixtures(
-          snapshot.data!,
-          _selectedFilter,
-          searchQuery: _searchQuery,
+        // status + search filter, then time window
+        final List<FixtureModel> fixtures = _applyTimeWindow(
+          FixtureModel.filterFixtures(
+            snapshot.data!,
+            _selectedFilter,
+            searchQuery: _searchQuery,
+          ),
         );
 
-        // Group by league, keeping the order they first appear in
         final Map<String, List<FixtureModel>> byLeague = {};
         for (final f in fixtures) {
           byLeague.putIfAbsent(f.league, () => []).add(f);
         }
-        final leagues = byLeague.keys.toList();
+
+        // Pinned leagues first, then the leagues with the most matches
+        final leagues = byLeague.keys.toList()
+          ..sort((a, b) {
+            final pa = _pinnedLeagues.contains(a) ? 0 : 1;
+            final pb = _pinnedLeagues.contains(b) ? 0 : 1;
+            if (pa != pb) return pa - pb;
+            return byLeague[b]!.length.compareTo(byLeague[a]!.length);
+          });
+
+        final String emptyText = _windowHours == null
+            ? 'No matches found'
+            : 'No matches in the next $_windowHours hours';
 
         return Column(
           children: [
             _buildSearchAndFilters(),
+            _buildLeagueControls(leagues),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async => _loadFixtures(),
@@ -689,7 +863,7 @@ class _FixturesTabState extends State<FixturesTab> {
                           const SizedBox(height: 80),
                           Center(
                             child: Text(
-                              'No matches found',
+                              emptyText,
                               style: TextStyle(color: mutedText(context)),
                             ),
                           ),
@@ -698,8 +872,8 @@ class _FixturesTabState extends State<FixturesTab> {
                     : ListView.builder(
                         padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                         itemCount: leagues.length,
-                        itemBuilder: (context, index) =>
-                            _buildLeagueTile(leagues[index], byLeague[leagues[index]]!),
+                        itemBuilder: (context, index) => _buildLeagueTile(
+                            leagues[index], byLeague[leagues[index]]!),
                       ),
               ),
             ),
@@ -708,9 +882,7 @@ class _FixturesTabState extends State<FixturesTab> {
       },
     );
   }
-}
-                
-                                                                                                                                              
+                                                                                                                                                                         
 // ---------------------------------------------------------------------------
 // Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
