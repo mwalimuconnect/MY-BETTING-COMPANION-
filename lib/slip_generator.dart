@@ -296,7 +296,6 @@ class ProtectedSystemSlipCard extends StatefulWidget {
   State<ProtectedSystemSlipCard> createState() =>
       _ProtectedSystemSlipCardState();
 }
-
 class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
   bool _hasAccess = false;
   bool _isAdmin = false;
@@ -354,7 +353,7 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                 if (_isAdmin)
                   _badge('ADMIN', Colors.amber)
                 else if (_waiverDays > 0)
-                  _badge('FREE TRIAL (${_waiverDays}d left)', Colors.teal)
+                  _badge('FREE TRIAL ($_waiverDays d left)', Colors.teal)
                 else if (isSettled)
                   _badge('SETTLED', Colors.blueGrey),
               ],
@@ -393,9 +392,8 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        'POSSIBLE WIN (Ksh ${widget.slip.stake.toInt()} Stake)',
-                        style:
-                            const TextStyle(fontSize: 11, color: Colors.grey),
+                        'POSSIBLE WIN (Ksh ${widget.slip.stake.toInt() * widget.slip.totalOdds.toStringAsFixed(2)})', // or similar stake calculation
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                       Text(
                         'Ksh ${widget.slip.potentialPayout.toStringAsFixed(2)}',
@@ -419,98 +417,102 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                 ),
               )
             else if (canViewPicks)
-              ...widget.slip.selections.map(
-                (sel) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sel['match'] ?? '',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
+              ...widget.slip.selections.map((sel) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                sel['match'] ?? '',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            Text(
-                              sel['prediction'] ?? '',
-                              style: const TextStyle(
-                                color: Color(0xFF008080),
-                                fontSize: 13,
+                              Text(
+                                sel['prediction'] ?? '',
+                                style: const TextStyle(
+                                  color: Color(0xFF008080),
+                                  fontSize: 13,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black45,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          '${sel['odds']}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                            ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-              else
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.black38,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white12),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.lock_outline,
-                          color: Color(0xFF008080), size: 32),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${widget.slip.selections.length} High-Probability Picks locked',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black45,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${sel['odds']}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Unlock now to view matches & predictions before kickoff, or view free once settled.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey, fontSize: 12),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF008080),
-                          foregroundColor: Colors.white,
-                        ),
-                        icon: const Icon(Icons.vpn_key, size: 18),
-                        label: const Text('Unlock Slip (From Ksh 50)'),
-                        onPressed: () {
-                          showSlipSubscriptionSheet(context, () async {
-                            await _verifyAccess();
-                          });
-                        },
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ))
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white12),
                 ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.lock_outline,
+                        color: Color(0xFF008080), size: 32),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${widget.slip.selections.length} High-Probability Picks locked',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Unlock now to view matches & predictions before kickoff, or view free once settled.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF008080),
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.vpn_key, size: 18),
+                      label: const Text('Unlock Slip (From Ksh 50)'),
+                      onPressed: () {
+                        showSlipSubscriptionSheet(context, () async {
+                          await _verifyAccess();
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _badge(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -521,12 +523,11 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
       ),
       child: Text(
         text,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
       ),
     );
   }
 }
+
+              
+          
