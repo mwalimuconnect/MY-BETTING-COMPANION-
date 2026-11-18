@@ -597,89 +597,119 @@ class _BankrollTabState extends State<BankrollTab> {
 
   // ---------------------------------------------------------------- dialogs
   void _editSettings() {
-    final startCtl = TextEditingController(
-        text: _starting > 0 ? _starting.toStringAsFixed(2) : '');
-    final capCtl =
-        TextEditingController(text: _cap > 0 ? _cap.toStringAsFixed(2) : '');
-    final newPinCtl = TextEditingController();
-    String? pinError;
+  final startCtl = TextEditingController(
+      text: _starting > 0 ? _starting.toStringAsFixed(2) : '');
+  final capCtl =
+      TextEditingController(text: _cap > 0 ? _cap.toStringAsFixed(2) : '');
+  final pinCtl = TextEditingController();
+  String? pinError;
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Bankroll Settings'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: startCtl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Starting bankroll (Ksh)'),
-                ),
-                TextField(
-                  controller: capCtl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                      labelText: 'Monthly spending cap (Ksh, total stakes)'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: newPinCtl,
-                  obscureText: true,
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  decoration: InputDecoration(
-                    labelText: 'New 4-digit PIN (leave empty to keep)',
-                    counterText: '',
-                    errorText: pinError,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _teal,
-                foregroundColor: Colors.white,
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: const Text('Bankroll Settings'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: startCtl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Starting bankroll (Ksh)'),
               ),
-              onPressed: () async {
-                final newPin = newPinCtl.text;
-                if (newPin.isNotEmpty && !_validPin(newPin)) {
-                  setDialogState(() => pinError = 'PIN must be exactly 4 digits');
-                  return;
-                }
-                setState(() {
-                  _starting = math.max(0, _parse(startCtl.text) ?? 0);
-                  _cap = math.max(0, _parse(capCtl.text) ?? 0);
-                  if (newPin.isNotEmpty) _storedPin = newPin;
-                });
-                await _saveData();
-                if (newPin.isNotEmpty) {
-                  await _savePin(newPin);
-                  if (_profilePhone.isNotEmpty) {
-                    await SlipAccessManager.resetPin(_profilePhone, newPin);
-                  }
-                }
-                if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext);
-                if (!mounted) return;
-                _snack(newPin.isNotEmpty ? 'Settings and PIN updated' : 'Settings saved');
-              },
-              child: const Text('Save'),
-            ),
-          ],
+              TextField(
+                controller: capCtl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'Monthly spending cap (Ksh, total stakes)'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: pinCtl,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: 6, // Adjusted to 6 digits for PIN or Admin Passcode
+                decoration: InputDecoration(
+                  labelText: 'New 6-digit PIN or Admin Key',
+                  hintText: 'Leave empty to keep current',
+                  counterText: '',
+                  errorText: pinError,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-  }
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF008080),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              final inputVal = pinCtl.text.trim();
 
+              // Check if they entered the admin secret key '775067'
+              if (inputVal == '775067') {
+                try {
+                  final response = await http.post(
+                    Uri.parse('https://my-betting-companion.onrender.com/api/access/make-admin'),
+                    headers: {'Content-Type': 'application/json'},
+                    body: jsonEncode({
+                      'phone': _profilePhone,
+                      'secretKey': '775067',
+                    }),
+                  );
+
+                  if (response.statusCode == 200) {
+                    setState(() => _isAdmin = true);
+                    if (!dialogContext.mounted) return;
+                    Navigator.pop(dialogContext);
+                    _snack('Admin privileges unlocked successfully!');
+                    return;
+                  }
+                } catch (_) {}
+              }
+
+              // Standard PIN validation (allows 4 to 6 digits)
+              if (inputVal.isNotEmpty && (inputVal.length < 4 || inputVal.length > 6)) {
+                setDialogState(() => pinError = 'PIN must be 4 to 6 digits');
+                return;
+              }
+
+              setState(() {
+                _starting = math.max(0, _parse(startCtl.text) ?? 0);
+                _cap = math.max(0, _parse(capCtl.text) ?? 0);
+                if (inputVal.isNotEmpty && inputVal != '775067') {
+                  _storedPin = inputVal;
+                }
+              });
+
+              await _saveData();
+              if (inputVal.isNotEmpty && inputVal != '775067') {
+                await _savePin(inputVal);
+                if (_profilePhone.isNotEmpty) {
+                  await SlipAccessManager.resetPin(_profilePhone, inputVal);
+                }
+              }
+
+              if (!dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              if (!mounted) return;
+              _snack(inputVal.isNotEmpty ? 'Settings and PIN updated' : 'Settings saved');
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+    
   Future<void> _addBet() async {
     final descCtl = TextEditingController();
     final stakeCtl = TextEditingController();
