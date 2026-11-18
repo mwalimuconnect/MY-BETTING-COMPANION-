@@ -502,9 +502,11 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                       ),
                       icon: const Icon(Icons.vpn_key, size: 18),
                       label: const Text('Unlock Slip (From Ksh 50)'),
-                      onPressed: () {
-                        showSlipSubscriptionSheet(context, () {
-                          setState(() {});
+                       onPressed: () {
+                       showSlipSubscriptionSheet(context, () async {
+                       await _verifyAccess();
+                             });
+                           },
                         });
                       },
                     ),
