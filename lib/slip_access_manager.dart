@@ -1,67 +1,91 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+class SlipAccessStatus {
+  final bool hasAccess;
+  final bool isAdmin;
+  final int remainingWaiverDays;
+
+  SlipAccessStatus({
+    required this.hasAccess,
+    required this.isAdmin,
+    this.remainingWaiverDays = 0,
+  });
+}
+
 class SlipAccessManager {
-  static const String _expiryKey = 'slip_access_expiry';
-  static const String _installKey = 'app_install_timestamp';
+  // Replace with your deployed Express backend base URL
+  static const String _baseUrl = 'https://your-backend-url.com/api/access';
+  static const String _cachedAccessKey = 'cached_has_access';
+  static const String _cachedAdminKey = 'cached_is_admin';
 
-  /// Checks if the user has active access (Admin, active subscription, or 1-week new user waiver).
-  static Future<bool> hasActiveAccess(bool isAdmin) async {
-    if (isAdmin) return true;
-
+  /// Syncs with MongoDB backend using the user's saved phone number.
+  /// If no phone is saved yet, returns false (prompts user to set phone in profile).
+  static Future<SlipAccessStatus> checkAccess() async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // 1. Check 1-week new user waiver
-    int installTime = prefs.getInt(_installKey) ?? 0;
-    if (installTime == 0) {
-      installTime = DateTime.now().millisecondsSinceEpoch;
-      await prefs.setInt(_installKey, installTime);
-    }
-    
-    final waiverExpiry = installTime + (7 * 24 * 60 * 60 * 1000); // 7 days in milliseconds
-    final nowMillis = DateTime.now().millisecondsSinceEpoch;
-    
-    if (nowMillis < waiverExpiry) {
-      return true; // Active new user waiver
+    final phone = prefs.getString('profile_phone') ?? '';
+    final name = prefs.getString('profile_name') ?? '';
+
+    if (phone.isEmpty) {
+      return SlipAccessStatus(hasAccess: false, isAdmin: false);
     }
 
-    // 2. Check paid subscription expiry
-    final expiryMillis = prefs.getInt(_expiryKey) ?? 0;
-    return nowMillis < expiryMillis;
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/check'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone, 'name': name}),
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final bool hasAccess = data['hasAccess'] == true;
+        final bool isAdmin = data['isAdmin'] == true;
+        final int waiverDays = (data['remainingWaiverDays'] as num?)?.toInt() ?? 0;
+
+        // Cache locally for offline/fast UI fallback
+        await prefs.setBool(_cachedAccessKey, hasAccess);
+        await prefs.setBool(_cachedAdminKey, isAdmin);
+
+        return SlipAccessStatus(
+          hasAccess: hasAccess,
+          isAdmin: isAdmin,
+          remainingWaiverDays: waiverDays,
+        );
+      }
+    } catch (_) {
+      // Fallback to cached status if network is temporarily unavailable
+    }
+
+    return SlipAccessStatus(
+      hasAccess: prefs.getBool(_cachedAccessKey) ?? false,
+      isAdmin: prefs.getBool(_cachedAdminKey) ?? false,
+    );
   }
 
-  /// Returns remaining waiver days for new users, or 0 if expired
-  static Future<int> getRemainingWaiverDays() async {
+  /// Calls backend to activate plan (hook this to your M-Pesa STK Push verification)
+  static Future<bool> activatePlan(String planType, {String receipt = ''}) async {
     final prefs = await SharedPreferences.getInstance();
-    int installTime = prefs.getInt(_installKey) ?? 0;
-    if (installTime == 0) {
-      installTime = DateTime.now().millisecondsSinceEpoch;
-      await prefs.setInt(_installKey, installTime);
-    }
-    
-    final waiverExpiry = installTime + (7 * 24 * 60 * 60 * 1000);
-    final nowMillis = DateTime.now().millisecondsSinceEpoch;
-    
-    if (nowMillis < waiverExpiry) {
-      final diff = waiverExpiry - nowMillis;
-      return (diff / (24 * 60 * 60 * 1000)).ceil();
-    }
-    return 0;
-  }
+    final phone = prefs.getString('profile_phone') ?? '';
+    if (phone.isEmpty) return false;
 
-  /// Grant access based on the selected plan duration (daily, weekly, monthly)
-  static Future<void> grantAccess(String planType) async {
-    final prefs = await SharedPreferences.getInstance();
-    final now = DateTime.now();
-    DateTime expiryDate;
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/grant'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+          'planType': planType,
+          'mpesaReceipt': receipt,
+        }),
+      );
 
-    if (planType == 'daily') {
-      expiryDate = now.add(const Duration(days: 1));
-    } else if (planType == 'weekly') {
-      expiryDate = now.add(const Duration(days: 7));
-    } else { // monthly
-      expiryDate = now.add(const Duration(days: 30));
-    }
-
-    await prefs.setInt(_expiryKey, expiryDate.millisecondsSinceEpoch);
+      if (response.statusCode == 200) {
+        await prefs.setBool(_cachedAccessKey, true);
+        return true;
+      }
+    } catch (_) {}
+    return false;
   }
 }
