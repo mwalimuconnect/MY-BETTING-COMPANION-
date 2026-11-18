@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
 import 'main.dart';
 import 'slip_access_manager.dart';
+import 'package:http/http.dart' as http;
 
 const Color _teal = Color(0xFF008080); // Teal Green
 
