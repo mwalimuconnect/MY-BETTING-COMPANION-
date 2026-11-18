@@ -176,11 +176,11 @@ class SuggestedSlipStore {
       }
 
       final slip = SuggestedSlip(
-        title: generated.title,
-        totalOdds: generated.totalOdds,
-        selections: generated.selections,
-        date: todayStr,
-      );
+  title: generated.title,
+  totalOdds: generated.totalOdds,
+  selections: List>.from(generated.selections),
+  date: todayStr,
+);
 
       await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
 
