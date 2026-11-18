@@ -7,7 +7,7 @@ class GeneratedSlip {
   final String id;
   final String title;
   final double totalOdds;
-  final List> selections;
+  final List selections;
   final double stake;
   final double potentialPayout;
   final Color payoutColor;
@@ -31,9 +31,12 @@ class GeneratedSlip {
         potentialPayout = potentialPayout ??
             double.parse((totalOdds * stake).toStringAsFixed(2));
 
-  bool areAllMatchesSettled(List<FixtureModel> latestFixtures) {
+  bool areAllMatchesSettled(List latestFixtures) {
     if (selections.isEmpty) return false;
-    final fixtureMap = {for (final f in latestFixtures) f.key: f};
+    final fixtureMap = {};
+    for (final f in latestFixtures) {
+      if (f.key != null) fixtureMap[f.key] = f;
+    }
 
     for (final sel in selections) {
       final key = sel['fixtureKey']?.toString() ?? '';
@@ -46,7 +49,7 @@ class GeneratedSlip {
     return true;
   }
 
-  Map<String, dynamic> toJson() => {
+  Map toJson() => {
         'id': id,
         'title': title,
         'totalOdds': totalOdds,
@@ -56,11 +59,12 @@ class GeneratedSlip {
         'createdAt': createdAt.toIso8601String(),
       };
 
-  factory GeneratedSlip.fromJson(Map<String, dynamic> json) {
-    var rawSelections = json['selections'] as List<dynamic>? ?? [];
-    List> parsedSelections = rawSelections
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList();
+  factory GeneratedSlip.fromJson(Map json) {
+    var rawSelections = json['selections'] as List ?? [];
+    List parsedSelections = [];
+    for (final item in rawSelections) {
+      parsedSelections.add(Map.from(item));
+    }
 
     return GeneratedSlip(
       id: json['id'],
@@ -102,9 +106,9 @@ class SlipGenerator {
     return value;
   }
 
-  static GeneratedSlip? generateTargetSlip(List<dynamic> availableFixtures) {
+  static GeneratedSlip? generateTargetSlip(List availableFixtures) {
     final now = DateTime.now();
-    final List<_Candidate> candidates = [];
+    final List candidates = [];
 
     for (final fixture in availableFixtures) {
       if (fixture is! FixtureModel) continue;
@@ -208,8 +212,8 @@ class SlipGenerator {
 
     candidates.sort((a, b) => b.prob.compareTo(a.prob));
 
-    final List> selectedBets = [];
-    final Set<String> usedMatches = {};
+    final List selectedBets = [];
+    final Set usedMatches = {};
     double cumulativeOdds = 1.0;
 
     for (final c in candidates) {
@@ -237,11 +241,14 @@ class SlipGenerator {
     }
 
     for (final c in candidates) {
-      if (selectedBets.any(
-        (s) => s['match'] == c.match && s['prediction'] == c.prediction,
-      )) {
-        continue;
+      bool alreadyUsed = false;
+      for (final s in selectedBets) {
+        if (s['match'] == c.match && s['prediction'] == c.prediction) {
+          alreadyUsed = true;
+          break;
+        }
       }
+      if (alreadyUsed) continue;
       if ((cumulativeOdds * c.odds) > 14.0) continue;
 
       selectedBets.add({
@@ -277,7 +284,7 @@ class SlipGenerator {
 
 class ProtectedSystemSlipCard extends StatefulWidget {
   final GeneratedSlip slip;
-  final List<FixtureModel> latestFixtures;
+  final List latestFixtures;
 
   const ProtectedSystemSlipCard({
     super.key,
