@@ -595,7 +595,7 @@ class _BankrollTabState extends State<BankrollTab> {
     return Colors.grey;
   }
 
-  / ---------------------------------------------------------------- dialogs
+  // ---------------------------------------------------------------- dialogs
   void _editSettings() {
     final startCtl = TextEditingController(
         text: _starting > 0 ? _starting.toStringAsFixed(2) : '');
