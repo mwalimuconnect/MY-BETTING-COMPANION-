@@ -11,6 +11,8 @@ import 'slip_generator.dart';
 import 'slip_store.dart';
 import 'tables_screen.dart';
 import 'match_insights.dart';
+import 'slip_access_manager.dart';
+import 'slip_subscription_sheet.dart';
 
 const Color kTealGreen = Color(0xFF008080);
 
@@ -216,7 +218,7 @@ class MainHomeScreen extends StatefulWidget {
 }
 
 class _MainHomeScreenState extends State<MainHomeScreen> {
-  int _currentIndex = 0;
+  int _currentIndex = 4;
 
   final List<Widget> _screens = const [
     FixturesTab(),
@@ -255,7 +257,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.leaderboard), label: 'Standings'),
           BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: 'Slips'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
-          BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet), label: 'Bankroll'),
+          BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet), label: 'Bankroll Account'),
         ],
       ),
     );
@@ -942,7 +944,8 @@ class _FixturesTabState extends State<FixturesTab> {
       },
     );
   }
-}                                                                                                                                                                       
+} 
+
 // ---------------------------------------------------------------------------
 // Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
@@ -962,6 +965,7 @@ class SavedSlipsTab extends StatefulWidget {
 
 class _SavedSlipsTabState extends State<SavedSlipsTab> {
   late Future<_SlipsData> _slipsFuture;
+  late Future<SlipAccessStatus> _accessFuture;
   
   // Controllers and edit modes for suggested slip & daily manual slips
   final TextEditingController _suggestedStakeController = TextEditingController();
@@ -1001,6 +1005,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   void _loadSlips() {
     setState(() {
       _slipsFuture = _fetch();
+      _accessFuture = SlipAccessManager.checkAccess();
     });
   }
 
@@ -1216,8 +1221,53 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 
-    /// Manual Saved Picks Ticket per day with edit & save stake buttons
-    Widget _buildManualSlipCard(String day, List<SlipLeg> dayLegs) {
+  /// Locked Paywall card for suggested slip
+  Widget _buildLockedSuggestedCard(BuildContext context) {
+    return Card(
+      color: cardBg(context),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: kTealGreen, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            const Icon(Icons.lock, size: 42, color: kTealGreen),
+            const SizedBox(height: 10),
+            const Text(
+              'Daily Prolific System Slip Locked',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Your free access waiver has expired. Unlock today\'s high-confidence value accumulator via M-Pesa.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kTealGreen,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.lock_open),
+              label: const Text('Pay to View Slip'),
+              onPressed: () {
+                showSlipSubscriptionSheet(context, () async {
+                  _loadSlips();
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Manual Saved Picks Ticket per day with edit & save stake buttons
+  Widget _buildManualSlipCard(String day, List<SlipLeg> dayLegs) {
     // Default standard combined odds calculation for saved manual legs
     double totalOdds = 1.0;
     for (int i = 0; i < dayLegs.length; i++) {
@@ -1423,6 +1473,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ],
     );
   }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_SlipsData>(
@@ -1441,60 +1492,70 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
         final legs = data.legs;
         final summary = SlipStore.summary(legs);
 
-        return ListView(
-          padding: const EdgeInsets.only(bottom: 24),
-          children: [
-            buildMyPicksHeader(),
+        return FutureBuilder<SlipAccessStatus>(
+          future: _accessFuture,
+          builder: (context, accessSnapshot) {
+            final hasAccess = accessSnapshot.data?.hasAccess ?? true;
 
-            if (data.suggested != null) ...[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: Text(
-                  '\u{1F525} DAILY VALUE ACCUMULATOR',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: kTealGreen,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-              ),
-              _buildDayHeader(data.suggested!.date),
-              _suggestedCard(context, data.suggested!),
-            ],
+            return ListView(
+              padding: const EdgeInsets.only(bottom: 24),
+              children: [
+                buildMyPicksHeader(),
 
-            if (legs.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                child: Card(
-                  color: cardBg(context),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _statItem('Accumulator', summary.status),
-                        _statItem('Won', '${summary.won}'),
-                        _statItem('Lost', '${summary.lost}'),
-                        _statItem('Pending', '${summary.pending}'),
-                      ],
+                if (data.suggested != null) ...[
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Text(
+                      '\u{1F525} DAILY VALUE ACCUMULATOR',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: kTealGreen,
+                        letterSpacing: 1.1,
+                      ),
                     ),
                   ),
-                ),
-              ),
+                  _buildDayHeader(data.suggested!.date),
+                  if (!hasAccess)
+                    _buildLockedSuggestedCard(context)
+                  else
+                    _suggestedCard(context, data.suggested!),
+                ],
 
-            if (legs.isEmpty && data.suggested == null)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'No saved picks yet. Bookmark matches from the Fixtures tab to add them here.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: mutedText(context)),
-                ),
-              )
-            else
-              _buildGroupedManualList(legs),
-          ],
+                if (legs.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                    child: Card(
+                      color: cardBg(context),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _statItem('Accumulator', summary.status),
+                            _statItem('Won', '${summary.won}'),
+                            _statItem('Lost', '${summary.lost}'),
+                            _statItem('Pending', '${summary.pending}'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                if (legs.isEmpty && data.suggested == null)
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'No saved picks yet. Bookmark matches from the Fixtures tab to add them here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: mutedText(context)),
+                    ),
+                  )
+                else
+                  _buildGroupedManualList(legs),
+              ],
+            );
+          },
         );
       },
     );
