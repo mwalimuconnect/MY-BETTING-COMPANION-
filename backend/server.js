@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// ---------- Environment Variables & Core Configuration ----------
 // .trim() protects against stray spaces / line breaks pasted into Render
 const FOOTBALL_DATA_TOKEN = (process.env.FOOTBALL_DATA_TOKEN || '').trim();
 const API_FOOTBALL_KEY = (process.env.API_FOOTBALL_KEY || '').trim();
@@ -67,6 +68,8 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+
+app.use(express.json());
 
 // ---------- Health ----------
 app.get('/', (req, res) => {
@@ -334,6 +337,7 @@ function ensureRatings() {
     });
   }
 }
+
 // ---------- Live data mapping ----------
 const LIVE_STATUSES = ['IN_PLAY', 'PAUSED', 'LIVE'];
 const FINISHED_STATUSES = ['FINISHED', 'AWARDED'];
@@ -509,7 +513,8 @@ async function fetchExtraLeagueFixtures() {
   extraFixturesCache = { data: results, fetchedAt: now };
   console.log(`API-Football: ${results.length} fixtures fetched across ${Object.keys(EXTRA_LEAGUES).length} global leagues`);
   return results;
-  }
+}
+
 // ---------- Fetching + cache (football-data.org + API-Football) ----------
 let cache = { data: null, fetchedAt: 0 };
 
@@ -595,6 +600,7 @@ function pickFixtures(allMatches) {
     ...finished.map((m) => formatFixture(m, true)),
   ];
 }
+
 // ---------- Standings and top scorers (Hybrid Router) ----------
 const tableCache = {};
 
@@ -805,7 +811,6 @@ app.get('/api/scorers/:code', async (req, res) => {
     return sendTableError(res, `Scorers ${code}`, err);
   }
 });
-    
 // ---------- Real Odds via The Odds API ----------
 app.get('/api/odds/:sport', async (req, res) => {
   const sport = req.params.sport || 'soccer_epl';
@@ -899,11 +904,6 @@ app.get('/api/fixtures', async (req, res) => {
 
   const fixtures = pickFixtures(matches);
   return res.json(fixtures);
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server active on port ${PORT} covering ${ALL_COMPETITIONS.length} leagues`);
-  ensureRatings();
 });
 
 // ---------- User Access & Subscription Schema & Routes ----------
@@ -1048,7 +1048,8 @@ app.post('/api/access/make-admin', async (req, res) => {
     res.status(500).json({ error: 'Server error upgrading user' });
   }
 });
-
-
-
-
+// ---------- Server Listener ----------
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server active on port ${PORT} covering ${ALL_COMPETITIONS.length} leagues`);
+  ensureRatings();
+});
