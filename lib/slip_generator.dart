@@ -467,58 +467,50 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                   ),
                 ),
               )
-            else
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.black38,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(Icons.lock_outline,
-                        color: Color(0xFF008080), size: 32),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${widget.slip.selections.length} High-Probability Picks Locked',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.black38,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.lock_outline,
+                          color: Color(0xFF008080), size: 32),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${widget.slip.selections.length} High-Probability Picks locked',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Unlock now to view matches & predictions before kickoff, or view free once settled.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF008080),
-                        foregroundColor: Colors.white,
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Unlock now to view matches & predictions before kickoff, or view free once settled.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
                       ),
-                      icon: const Icon(Icons.vpn_key, size: 18),
-                      label: const Text('Unlock Slip (From Ksh 50)'),
-                      onPressed: () async {
-                        showSlipSubscriptionSheet(context, () async {
-                          await _verifyAccess();
-                        });
-                      },
-                    )
-                      },
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF008080),
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.vpn_key, size: 18),
+                        label: const Text('Unlock Slip (From Ksh 50)'),
+                        onPressed: () {
+                          showSlipSubscriptionSheet(context, () async {
+                            await _verifyAccess();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _badge(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
