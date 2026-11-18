@@ -178,7 +178,7 @@ class SuggestedSlipStore {
       final slip = SuggestedSlip(
   title: generated.title,
   totalOdds: generated.totalOdds,
-  selections: List>.from(generated.selections),
+  selections: List.from(generated.selections),
   date: todayStr,
 );
 
