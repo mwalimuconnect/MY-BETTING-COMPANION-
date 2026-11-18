@@ -906,60 +906,10 @@ app.listen(PORT, '0.0.0.0', () => {
   ensureRatings();
 });
 
-// .trim() protects against stray spaces / line breaks pasted into Render
-const FOOTBALL_DATA_TOKEN = (process.env.FOOTBALL_DATA_TOKEN || '').trim();
-const API_FOOTBALL_KEY = (process.env.API_FOOTBALL_KEY || '').trim();
-const ODDS_API_KEY = (process.env.ODDS_API_KEY || '').trim();
-const MONGO_URI = (process.env.MONGO_URI || '').trim(); // <-- MongoDB URI
-
-const TIMEZONE = 'Africa/Nairobi';
-const CACHE_TTL_MS = 60 * 1000;
-const TABLE_TTL_MS = 10 * 60 * 1000; // football-data.org standings/scorers cache
-const EXTRA_FIXTURES_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours for API-Football fixtures
-const EXTRA_RETRY_AFTER_FAIL_MS = 5 * 60 * 1000; // wait 5 mins after a failed API-Football call
-const EXTRA_TABLE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for API-Football tables (protects 100/day limit)
-const EXTRA_DAYS_BACK = 1; // Free plan only allows yesterday, today and tomorrow
-const EXTRA_DAYS_AHEAD = 1; // = 3 API-Football calls per refresh
-const DAYS_BACK = 7;
-const DAYS_AHEAD = 8;
-const MAX_UPCOMING = 50;
-const MAX_FINISHED = 50;
-
-// ---------- 12 Core Competitions (football-data.org free tier) ----------
-const CORE_COMPETITIONS = ['PL', 'ELC', 'BL1', 'SA', 'PD', 'FL1', 'DED', 'PPL', 'BSA', 'CL', 'WC', 'EC'];
-
-// ---------- Extra Global Leagues (API-Football v3) ----------
-const EXTRA_LEAGUES = {
-  KPL: { id: 276, name: 'Kenyan Premier League', season: 2026 },
-  MLS: { id: 253, name: 'Major League Soccer', season: 2026 },
-  ALE: { id: 188, name: 'A-League Men', season: 2026 },
-  SPL: { id: 307, name: 'Saudi Pro League', season: 2026 },
-  J1:  { id: 98,  name: 'J1 League', season: 2026 },
-  KL1: { id: 292, name: 'K League 1', season: 2026 },
-  ACN: { id: 6,   name: 'Africa Cup of Nations', season: 2025 },
+// Cup of Nations', season: 2025 },
   CAF: { id: 12,  name: 'CAF Champions League', season: 2026 },
   ARG: { id: 128, name: 'Liga Profesional Argentina', season: 2026 },
 };
-
-const ALL_COMPETITIONS = [...CORE_COMPETITIONS, ...Object.keys(EXTRA_LEAGUES)];
-
-// ---------- Model settings ----------
-const RATINGS_TTL_MS = 6 * 60 * 60 * 1000;
-const RATINGS_GAP_MS = 8000;
-const MIN_LEAGUE_MATCHES = 20;
-const MIN_GAMES = 5;
-const SHRINK_GAMES = 4;
-const MIN_TIP_PROB = 45;
-const MAX_GOALS = 8;
-
-const PROLIFIC_TEAMS = [
-  'Angola', 'South Sudan', 'Uganda', 'Botswana', 'Algeria', 'Togo',
-  'Manchester City', 'Arsenal', 'Liverpool', 'Chelsea', 'Real Madrid',
-  'Barcelona', 'Atletico', 'Bayern', 'Leverkusen', 'Inter', 'Juventus',
-  'PSG', 'France', 'Brazil', 'Argentina', 'Spain', 'Germany', 'England',
-  'Portugal', 'Belgium', 'Netherlands', 'Turkiye', 'Al Hilal', 'Al Nassr',
-  'Inter Miami', 'LAFC', 'Al Ahly', 'Mamelodi Sundowns', 'River Plate', 'Boca Juniors'
-];
 
 // ---------- User Access & Subscription Schema & Routes ----------
 const userAccessSchema = new mongoose.Schema({
