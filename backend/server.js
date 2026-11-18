@@ -906,11 +906,6 @@ app.listen(PORT, '0.0.0.0', () => {
   ensureRatings();
 });
 
-// Cup of Nations', season: 2025 },
-  CAF: { id: 12,  name: 'CAF Champions League', season: 2026 },
-  ARG: { id: 128, name: 'Liga Profesional Argentina', season: 2026 },
-};
-
 // ---------- User Access & Subscription Schema & Routes ----------
 const userAccessSchema = new mongoose.Schema({
   phone: { type: String, required: true, unique: true, trim: true },
