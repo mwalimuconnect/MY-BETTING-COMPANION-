@@ -888,28 +888,11 @@ app.get('/api/team-insights', async (req, res) => {
   }
 });
 
-// ---------- Fixtures Route ----------
-app.get('/api/fixtures', async (req, res) => {
-  ensureRatings();
-
-  let matches = [];
-  if (FOOTBALL_DATA_TOKEN || API_FOOTBALL_KEY) {
-    try {
-      matches = await fetchMatchWindow();
-    } catch (err) {
-      console.error('Match window fetch failed:', err.message);
-      if (cache.data) matches = cache.data;
-    }
-  }
-
-  const fixtures = pickFixtures(matches);
-  return res.json(fixtures);
-});
-
 // ---------- User Access & Subscription Schema & Routes ----------
 const userAccessSchema = new mongoose.Schema({
   phone: { type: String, required: true, unique: true, trim: true },
   name: { type: String, default: '' },
+  pin: { type: String, default: '' },
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
   waiverExpiry: { type: Date, required: true },
   subscriptionExpiry: { type: Date, default: null },
@@ -926,11 +909,12 @@ function normalizePhone(phone) {
   return cleaned;
 }
 
-// POST /api/access/check - Registers new users with 7-day waiver or returns current access status
+// POST /api/access/check - Registers or logs in user, saves/syncs PIN, returns access status
 app.post('/api/access/check', async (req, res) => {
   try {
     const rawPhone = req.body.phone;
     const name = req.body.name || '';
+    const pin = req.body.pin ? String(req.body.pin).trim() : '';
     if (!rawPhone) return res.status(400).json({ error: 'Phone number required' });
 
     const phone = normalizePhone(rawPhone);
@@ -943,12 +927,25 @@ app.post('/api/access/check', async (req, res) => {
       user = await UserAccess.create({
         phone,
         name,
+        pin,
         role: isAdminPhone ? 'admin' : 'user',
         waiverExpiry,
       });
-    } else if (isAdminPhone && user.role !== 'admin') {
-      user.role = 'admin';
-      await user.save();
+    } else {
+      let modified = false;
+      if (isAdminPhone && user.role !== 'admin') {
+        user.role = 'admin';
+        modified = true;
+      }
+      if (name && !user.name) {
+        user.name = name;
+        modified = true;
+      }
+      if (pin && !user.pin) {
+        user.pin = pin;
+        modified = true;
+      }
+      if (modified) await user.save();
     }
 
     const now = new Date();
@@ -968,10 +965,40 @@ app.post('/api/access/check', async (req, res) => {
       remainingWaiverDays,
       waiverExpiry: user.waiverExpiry,
       subscriptionExpiry: user.subscriptionExpiry,
+      pin: user.pin || '',
+      name: user.name || '',
     });
   } catch (err) {
     console.error('Access check error:', err.message);
     res.status(500).json({ error: 'Server error checking access' });
+  }
+});
+
+// POST /api/access/reset-pin - Verifies registered phone and updates PIN
+app.post('/api/access/reset-pin', async (req, res) => {
+  try {
+    const { phone: rawPhone, newPin } = req.body;
+    if (!rawPhone || !newPin || !/^\d{4}$/.test(String(newPin))) {
+      return res.status(400).json({ error: 'Valid phone number and 4-digit PIN required' });
+    }
+
+    const phone = normalizePhone(rawPhone);
+    const user = await UserAccess.findOne({ phone });
+
+    if (!user) {
+      return res.status(404).json({ error: 'No Bankroll Account found for this phone number' });
+    }
+
+    user.pin = String(newPin);
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'PIN updated successfully',
+    });
+  } catch (err) {
+    console.error('Reset PIN error:', err.message);
+    res.status(500).json({ error: 'Server error resetting PIN' });
   }
 });
 
@@ -989,7 +1016,7 @@ app.post('/api/access/grant', async (req, res) => {
     if (!user) {
       user = await UserAccess.create({
         phone,
-        waiverExpiry: new Date(Date.now() - 1000), // expired waiver
+        waiverExpiry: new Date(Date.now() - 1000),
       });
     }
 
@@ -1010,7 +1037,7 @@ app.post('/api/access/grant', async (req, res) => {
     console.error('Grant access error:', err.message);
     res.status(500).json({ error: 'Failed to update subscription' });
   }
-});      
+});
 
 // POST /api/access/make-admin - Upgrades user to admin via secret key 775067
 app.post('/api/access/make-admin', async (req, res) => {
@@ -1047,9 +1074,4 @@ app.post('/api/access/make-admin', async (req, res) => {
     console.error('Make admin error:', err.message);
     res.status(500).json({ error: 'Server error upgrading user' });
   }
-});
-// ---------- Server Listener ----------
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server active on port ${PORT} covering ${ALL_COMPETITIONS.length} leagues`);
-  ensureRatings();
 });
