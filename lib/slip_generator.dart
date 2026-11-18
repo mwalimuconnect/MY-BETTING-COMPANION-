@@ -391,10 +391,10 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        'POSSIBLE WIN (Ksh ${widget.slip.stake.toInt() * widget.slip.totalOdds.toStringAsFixed(2)})', // or similar stake calculation
+                    Text(
+                        'POSSIBLE WIN (Ksh ${(widget.slip.stake.toInt() * widget.slip.totalOdds).toStringAsFixed(2)})',
                         style: const TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
+                    ),
                       Text(
                         'Ksh ${widget.slip.potentialPayout.toStringAsFixed(2)}',
                         style: TextStyle(
