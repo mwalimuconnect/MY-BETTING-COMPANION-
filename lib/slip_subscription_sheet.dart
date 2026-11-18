@@ -109,7 +109,7 @@ Future<void> _simulateMpesaPayment(BuildContext context, String planType, Future
   if (!context.mounted) return;
   Navigator.pop(context); // close loading
 
-  await SlipAccessManager.grantAccess(planType);
+  await SlipAccessManager.activatePlan(planType);
   await onUnlocked();
 
   ScaffoldMessenger.of(context).showSnackBar(
