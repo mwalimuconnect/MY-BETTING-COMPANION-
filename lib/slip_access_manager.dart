@@ -15,8 +15,8 @@ class SlipAccessStatus {
 }
 
 class SlipAccessManager {
-  // Replace with your deployed Express backend base URL
-  static const String _baseUrl = 'https://your-backend-url.com/api/access';
+  // TODO: Replace with your actual deployed Render backend URL
+  static const String _baseUrl = 'https://my-betting-companion.onrender.com/api/access';
   static const String _cachedAccessKey = 'cached_has_access';
   static const String _cachedAdminKey = 'cached_is_admin';
 
