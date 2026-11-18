@@ -11,13 +11,17 @@ const Color _teal = Color(0xFF008080); // Teal Green
 class UserProfileCard extends StatelessWidget {
   final String name;
   final String phoneNumber;
+  final bool isAdmin;
   final VoidCallback? onEdit;
+  final VoidCallback? onAdminAction;
 
   const UserProfileCard({
     super.key,
     required this.name,
     required this.phoneNumber,
+    required this.isAdmin,
     this.onEdit,
+    this.onAdminAction,
   });
 
   @override
@@ -74,12 +78,34 @@ class UserProfileCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name.isNotEmpty ? name : 'Tap to add your name',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name.isNotEmpty ? name : 'Tap to add your name',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (isAdmin)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'ADMIN',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange.shade800,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Row(
@@ -167,6 +193,7 @@ class _BankrollTabState extends State<BankrollTab> {
 
   bool _loading = true;
   bool _isUnlocked = false;
+  bool _isAdmin = false; // Added tracking for Admin status
 
   String? _storedPin; // null until the user creates a PIN
   final TextEditingController _pinController = TextEditingController();
@@ -201,6 +228,19 @@ class _BankrollTabState extends State<BankrollTab> {
       _storedPin = prefs.getString(_pinKey);
       _profileName = prefs.getString(_nameKey) ?? '';
       _profilePhone = prefs.getString(_phoneKey) ?? '';
+      
+      // Check admin status from backend API if phone exists
+      if (_profilePhone.isNotEmpty) {
+        try {
+          // Replace with your actual backend URL / service call for access check
+          // e.g. final res = await http.post(Uri.parse('https://your-backend.onrender.com/api/access/check'), body: {'phone': _profilePhone});
+          // if (res.statusCode == 200) {
+          //   final data = jsonDecode(res.body);
+          //   _isAdmin = data['isAdmin'] ?? false;
+          // }
+        } catch (_) {}
+      }
+
       // Fetch today's generated daily accumulator slip automatically
       _todaySuggestedSlip = await SuggestedSlipStore.load();
       final raw = prefs.getString(_dataKey);
@@ -715,13 +755,11 @@ class _BankrollTabState extends State<BankrollTab> {
 
    /// Side-by-side comparison table for System vs Manual performance
   Widget _comparisonTableCard() {
-    // Separate system-generated bets from manual user bets
     final systemBets = _bets.where((b) => b.description.contains('Accumulator')).toList();
     final manualBets = _bets.where((b) => !b.description.contains('Accumulator')).toList();
 
     double totalStaked(List<Bet> list) => list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
     
-    // Total amount won (stake + profit for won bets)
     double totalWon(List<Bet> list) {
       return list.where((b) => b.status == 'won').fold(0.0, (s, b) => s + b.stake + b.profit);
     }
@@ -806,7 +844,6 @@ class _BankrollTabState extends State<BankrollTab> {
       ),
     );
   }
-
   Widget _statusChip(Bet b) {
     Color bg;
     Color fg;
@@ -918,7 +955,7 @@ class _BankrollTabState extends State<BankrollTab> {
                               dense: true,
                               title: Text(b.description, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                               subtitle: Text(
-                                'Stake: ${_ksh(b.stake)} • Odds: ${b.odds.toStringAsFixed(2)}${settled ? ' • P/L: ${_ksh(b.profit)}' : ''}',
+                                'Stake: ${_ksh(b.stake)} – Odds: ${b.odds.toStringAsFixed(2)}${settled ? ' – P/L: ${_ksh(b.profit)}' : ''}',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: settled ? _profitColor(b.profit) : null),
@@ -953,6 +990,7 @@ class _BankrollTabState extends State<BankrollTab> {
       }).toList(),
     );
   }
+
   Widget _lockScreen() {
     final creating = _storedPin == null;
     return Center(
@@ -1078,8 +1116,34 @@ class _BankrollTabState extends State<BankrollTab> {
                 UserProfileCard(
                   name: _profileName,
                   phoneNumber: _profilePhone,
+                  isAdmin: _isAdmin,
                   onEdit: _editProfile,
                 ),
+                if (_isAdmin) ...[
+                  const SizedBox(height: 8),
+                  Card(
+                    color: Colors.orange.shade50,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: Colors.orange.shade300, width: 0.8),
+                    ),
+                    child: ListTile(
+                      leading: Icon(Icons.admin_panel_settings, color: Colors.orange.shade800),
+                      title: Text(
+                        'Admin Panel Active',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.orange.shade900),
+                      ),
+                      subtitle: const Text('You have administrative privileges unlocked.', style: TextStyle(fontSize: 11)),
+                      trailing: TextButton(
+                        onPressed: () {
+                          _snack('Admin tools menu selected');
+                        },
+                        child: const Text('Manage'),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 _summaryCard(),
                 const SizedBox(height: 12),
