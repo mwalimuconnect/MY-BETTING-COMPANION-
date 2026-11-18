@@ -7,7 +7,7 @@ class GeneratedSlip {
   final String id;
   final String title;
   final double totalOdds;
-  final List selections;
+  final List> selections;
   final double stake;
   final double potentialPayout;
   final Color payoutColor;
@@ -31,7 +31,7 @@ class GeneratedSlip {
         potentialPayout = potentialPayout ??
             double.parse((totalOdds * stake).toStringAsFixed(2));
 
-  bool areAllMatchesSettled(List latestFixtures) {
+  bool areAllMatchesSettled(List<FixtureModel> latestFixtures) {
     if (selections.isEmpty) return false;
     final fixtureMap = {for (final f in latestFixtures) f.key: f};
 
@@ -57,8 +57,8 @@ class GeneratedSlip {
       };
 
   factory GeneratedSlip.fromJson(Map<String, dynamic> json) {
-    var rawSelections = json['selections'] as List? ?? [];
-    List parsedSelections = rawSelections
+    var rawSelections = json['selections'] as List<dynamic>? ?? [];
+    List> parsedSelections = rawSelections
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList();
 
@@ -102,9 +102,9 @@ class SlipGenerator {
     return value;
   }
 
-  static GeneratedSlip? generateTargetSlip(List availableFixtures) {
+  static GeneratedSlip? generateTargetSlip(List<dynamic> availableFixtures) {
     final now = DateTime.now();
-    final List candidates = [];
+    final List<_Candidate> candidates = [];
 
     for (final fixture in availableFixtures) {
       if (fixture is! FixtureModel) continue;
@@ -125,6 +125,7 @@ class SlipGenerator {
       if (homeProb <= 0 && awayProb <= 0) continue;
 
       final String matchName = '${fixture.homeTeam} vs ${fixture.awayTeam}';
+      final String safeKey = fixture.key ?? '';
       final String? kickoffIso = fixture.kickoff?.toIso8601String();
 
       final num? tipProb = fixture.tipProb;
@@ -136,7 +137,7 @@ class SlipGenerator {
 
         candidates.add(
           _Candidate(
-            fixture.key,
+            safeKey,
             matchName,
             fixture.topTip,
             odds,
@@ -151,7 +152,7 @@ class SlipGenerator {
         if (dcProb < 95.0) {
           candidates.add(
             _Candidate(
-              fixture.key,
+              safeKey,
               matchName,
               'Double Chance: ${fixture.homeTeam} or Draw (1X)',
               100 / dcProb,
@@ -165,7 +166,7 @@ class SlipGenerator {
         if (dcProb < 95.0) {
           candidates.add(
             _Candidate(
-              fixture.key,
+              safeKey,
               matchName,
               'Double Chance: Draw or ${fixture.awayTeam} (X2)',
               100 / dcProb,
@@ -180,7 +181,7 @@ class SlipGenerator {
       if (over25 != null && over25 >= 55.0) {
         candidates.add(
           _Candidate(
-            fixture.key,
+            safeKey,
             matchName,
             'Over 2.5 Goals',
             100 / over25,
@@ -194,7 +195,7 @@ class SlipGenerator {
       if (btts != null && btts >= 55.0) {
         candidates.add(
           _Candidate(
-            fixture.key,
+            safeKey,
             matchName,
             'Both Teams To Score: Yes',
             100 / btts,
@@ -207,8 +208,8 @@ class SlipGenerator {
 
     candidates.sort((a, b) => b.prob.compareTo(a.prob));
 
-    final List selectedBets = [];
-    final Set usedMatches = {};
+    final List> selectedBets = [];
+    final Set<String> usedMatches = {};
     double cumulativeOdds = 1.0;
 
     for (final c in candidates) {
@@ -276,7 +277,7 @@ class SlipGenerator {
 
 class ProtectedSystemSlipCard extends StatefulWidget {
   final GeneratedSlip slip;
-  final List latestFixtures;
+  final List<FixtureModel> latestFixtures;
 
   const ProtectedSystemSlipCard({
     super.key,
@@ -496,7 +497,7 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                       label: const Text('Unlock Slip (From Ksh 50)'),
                       onPressed: () {
                         showSlipSubscriptionSheet(context, () {
-                          _verifyAccess();
+                          setState(() {});
                         });
                       },
                     ),
