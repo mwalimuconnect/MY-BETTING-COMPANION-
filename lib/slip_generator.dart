@@ -13,7 +13,6 @@ class GeneratedSlip {
   final Color payoutColor;
   final DateTime createdAt;
 
-  /// Reminder about odds source.
   final String note;
 
   GeneratedSlip({
@@ -33,8 +32,6 @@ class GeneratedSlip {
         potentialPayout = potentialPayout ??
             double.parse((totalOdds * stake).toStringAsFixed(2));
 
-  /// Returns true if every match in this slip has finished.
-  /// Used to auto-reveal system slips for performance transparency after matches end.
   bool areAllMatchesSettled(List<FixtureModel> latestFixtures) {
     if (selections.isEmpty) return false;
     final fixtureMap = {for (final f in latestFixtures) f.key: f};
@@ -61,11 +58,16 @@ class GeneratedSlip {
       };
 
   factory GeneratedSlip.fromJson(Map<String, dynamic> json) {
+    var rawSelections = json['selections'] as List<dynamic>? ?? [];
+    List> parsedSelections = rawSelections
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+
     return GeneratedSlip(
       id: json['id'],
       title: json['title'] ?? '🔥 Prolific Value Accumulator',
       totalOdds: (json['totalOdds'] as num).toDouble(),
-      selections: List>.from(json['selections'] ?? []),
+      selections: parsedSelections,
       stake: (json['stake'] as num?)?.toDouble() ?? 200.0,
       potentialPayout: (json['potentialPayout'] as num?)?.toDouble(),
       createdAt: json['createdAt'] != null
@@ -94,7 +96,6 @@ class _Candidate {
 }
 
 class SlipGenerator {
-  /// Reads a percentage such as "62%" and returns 62.0.
   static double? _percent(String text) {
     final cleaned = text.replaceAll('%', '').trim();
     final value = double.tryParse(cleaned);
@@ -106,8 +107,6 @@ class SlipGenerator {
     return value;
   }
 
-  /// Builds an accumulator strictly from TODAY'S matches,
-  /// aiming for combined odds between 5.00 and 10.00.
   static GeneratedSlip? generateTargetSlip(
     List<dynamic> availableFixtures,
   ) {
@@ -135,7 +134,6 @@ class SlipGenerator {
       final String matchName = '${fixture.homeTeam} vs ${fixture.awayTeam}';
       final String? kickoffIso = fixture.kickoff?.toIso8601String();
 
-      // 1X2 Winner Prediction
       final num? tipProb = fixture.tipProb;
       if (fixture.topTip.isNotEmpty && tipProb != null && tipProb > 0) {
         final double odds =
@@ -155,7 +153,6 @@ class SlipGenerator {
         );
       }
 
-      // Double Chance
       if (homeProb >= 55.0) {
         final double dcProb = homeProb + drawProb;
         if (dcProb < 95.0) {
@@ -186,7 +183,6 @@ class SlipGenerator {
         }
       }
 
-      // Over 2.5 Goals
       final double? over25 = _percent(fixture.over25Goals);
       if (over25 != null && over25 >= 55.0) {
         candidates.add(
@@ -201,7 +197,6 @@ class SlipGenerator {
         );
       }
 
-      // Both Teams To Score
       final double? btts = _percent(fixture.btts);
       if (btts != null && btts >= 55.0) {
         candidates.add(
@@ -217,14 +212,12 @@ class SlipGenerator {
       }
     }
 
-    // Sort strongest probabilities first
     candidates.sort((a, b) => b.prob.compareTo(a.prob));
 
     final List> selectedBets = [];
     final Set<String> usedMatches = {};
     double cumulativeOdds = 1.0;
 
-    // First pass: one selection per match
     for (final c in candidates) {
       if (usedMatches.contains(c.match)) continue;
       if ((cumulativeOdds * c.odds) > 14.0) continue;
@@ -249,7 +242,6 @@ class SlipGenerator {
       }
     }
 
-    // Second pass if target odds not reached
     for (final c in candidates) {
       if (selectedBets.any(
         (s) => s['match'] == c.match && s['prediction'] == c.prediction,
@@ -289,8 +281,6 @@ class SlipGenerator {
   }
 }
 
-/// Reusable UI Card that shows Total Odds & Possible Win (Odds x 200),
-/// while locking picks until unlocked via subscription/waiver or match settlement.
 class ProtectedSystemSlipCard extends StatefulWidget {
   final GeneratedSlip slip;
   final List<FixtureModel> latestFixtures;
@@ -347,7 +337,6 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -370,8 +359,6 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
               ],
             ),
             const SizedBox(height: 12),
-
-            // Always-Visible Multiplier & Possible Win Banner (Odds x 200)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -423,8 +410,6 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
               ),
             ),
             const SizedBox(height: 14),
-
-            // Selections List OR Paywall Lock Overlay
             if (_loading)
               const Center(
                 child: Padding(
