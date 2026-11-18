@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
-import 'main.dart'; // Ensure this matches where SuggestedSlipStore is defined
+import 'main.dart';
+import 'slip_access_manager.dart';
 
 const Color _teal = Color(0xFF008080); // Teal Green
 
@@ -13,7 +14,6 @@ class UserProfileCard extends StatelessWidget {
   final String phoneNumber;
   final bool isAdmin;
   final VoidCallback? onEdit;
-  final VoidCallback? onAdminAction;
 
   const UserProfileCard({
     super.key,
@@ -21,7 +21,6 @@ class UserProfileCard extends StatelessWidget {
     required this.phoneNumber,
     required this.isAdmin,
     this.onEdit,
-    this.onAdminAction,
   });
 
   @override
@@ -37,7 +36,6 @@ class UserProfileCard extends StatelessWidget {
           padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
-              // Photo Box / Avatar
               Stack(
                 children: [
                   Container(
@@ -73,7 +71,6 @@ class UserProfileCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: 16),
-              // User Details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -150,7 +147,6 @@ class Bet {
     this.status = 'pending',
   });
 
-  /// Profit or loss once settled (a pending stake is not counted yet).
   double get profit {
     if (status == 'won') return stake * (odds - 1);
     if (status == 'lost') return -stake;
@@ -192,19 +188,20 @@ class _BankrollTabState extends State<BankrollTab> {
   static const String _phoneKey = 'profile_phone';
 
   bool _loading = true;
+  bool _submittingAccount = false;
   bool _isUnlocked = false;
-  bool _isAdmin = false; // Added tracking for Admin status
+  bool _isAdmin = false;
 
-  String? _storedPin; // null until the user creates a PIN
+  String? _storedPin;
+  final TextEditingController _phoneSetupController = TextEditingController();
   final TextEditingController _pinController = TextEditingController();
   final TextEditingController _confirmPinController = TextEditingController();
 
   double _starting = 0;
-  double _cap = 0; // monthly cap on total stakes, 0 = not set
+  double _cap = 0;
   List<Bet> _bets = [];
-  SuggestedSlip? _todaySuggestedSlip; // Automatically fetched daily slip
+  SuggestedSlip? _todaySuggestedSlip;
 
-  // Profile details live only on this phone (never in the code).
   String _profileName = '';
   String _profilePhone = '';
 
@@ -216,6 +213,7 @@ class _BankrollTabState extends State<BankrollTab> {
 
   @override
   void dispose() {
+    _phoneSetupController.dispose();
     _pinController.dispose();
     _confirmPinController.dispose();
     super.dispose();
@@ -228,20 +226,16 @@ class _BankrollTabState extends State<BankrollTab> {
       _storedPin = prefs.getString(_pinKey);
       _profileName = prefs.getString(_nameKey) ?? '';
       _profilePhone = prefs.getString(_phoneKey) ?? '';
-      
-      // Check admin status from backend API if phone exists
+      _phoneSetupController.text = _profilePhone;
+
       if (_profilePhone.isNotEmpty) {
-        try {
-          // Replace with your actual backend URL / service call for access check
-          // e.g. final res = await http.post(Uri.parse('https://your-backend.onrender.com/api/access/check'), body: {'phone': _profilePhone});
-          // if (res.statusCode == 200) {
-          //   final data = jsonDecode(res.body);
-          //   _isAdmin = data['isAdmin'] ?? false;
-          // }
-        } catch (_) {}
+        final status = await SlipAccessManager.checkAccess();
+        _isAdmin = status.isAdmin;
+        if (_storedPin == null && status.serverPin.isNotEmpty) {
+          _storedPin = status.serverPin;
+        }
       }
 
-      // Fetch today's generated daily accumulator slip automatically
       _todaySuggestedSlip = await SuggestedSlipStore.load();
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
@@ -292,7 +286,6 @@ class _BankrollTabState extends State<BankrollTab> {
     }
   }
 
-  // ---------------------------------------------------------------- profile
   Future<void> _saveProfile(String name, String phone) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -310,7 +303,7 @@ class _BankrollTabState extends State<BankrollTab> {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit Profile'),
+        title: const Text('Edit Bankroll Account'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -324,11 +317,6 @@ class _BankrollTabState extends State<BankrollTab> {
                 controller: phoneCtl,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(labelText: 'Phone number'),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Saved on this phone only.',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ],
           ),
@@ -351,6 +339,9 @@ class _BankrollTabState extends State<BankrollTab> {
                 _profilePhone = phone;
               });
               await _saveProfile(name, phone);
+              final status = await SlipAccessManager.checkAccess();
+              if (!mounted) return;
+              setState(() => _isAdmin = status.isAdmin);
               if (!dialogContext.mounted) return;
               Navigator.pop(dialogContext);
             },
@@ -361,35 +352,53 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-  // -------------------------------------------------------------------- PIN
+  // --------------------------------------------------- Account Setup & PIN
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   bool _validPin(String pin) => RegExp(r'^\d{4}$').hasMatch(pin);
 
-  Future<void> _createPin() async {
-    final pin = _pinController.text;
+  Future<void> _createBankrollAccount() async {
+    final phone = _phoneSetupController.text.trim();
+    final pin = _pinController.text.trim();
+
+    if (phone.length < 9) {
+      _snack('Enter a valid phone number (e.g. 0712345678)');
+      return;
+    }
     if (!_validPin(pin)) {
       _snack('Choose a PIN of exactly 4 digits');
       return;
     }
-    if (pin != _confirmPinController.text) {
+    if (pin != _confirmPinController.text.trim()) {
       _snack('The two PINs do not match');
       return;
     }
+
+    setState(() => _submittingAccount = true);
+
+    await _saveProfile(_profileName, phone);
     await _savePin(pin);
+
+    // Register & sync account with backend MongoDB
+    final status = await SlipAccessManager.checkAccess(overridePhone: phone, pin: pin);
+
     if (!mounted) return;
     setState(() {
+      _submittingAccount = false;
+      _profilePhone = phone;
       _storedPin = pin;
+      _isAdmin = status.isAdmin;
       _isUnlocked = true;
       _pinController.clear();
       _confirmPinController.clear();
     });
+    _snack('Bankroll Account created and synced!');
   }
 
   void _verifyPin() {
-    if (_pinController.text == _storedPin) {
+    if (_pinController.text.trim() == _storedPin) {
       setState(() {
         _isUnlocked = true;
         _pinController.clear();
@@ -398,6 +407,141 @@ class _BankrollTabState extends State<BankrollTab> {
       _pinController.clear();
       _snack('Incorrect PIN');
     }
+  }
+
+  void _forgotPinDialog() {
+    final phoneCtl = TextEditingController();
+    final newPinCtl = TextEditingController();
+    final confirmPinCtl = TextEditingController();
+    bool resetting = false;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Reset Bankroll PIN'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter the phone number registered to your Bankroll Account to set a new 4-digit PIN.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: phoneCtl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Registered Phone Number',
+                    hintText: 'e.g. 0712345678',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: newPinCtl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'New 4-Digit PIN',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: confirmPinCtl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm New PIN',
+                    counterText: '',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: resetting ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _teal,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: resetting
+                  ? null
+                  : () async {
+                      final enteredPhone = phoneCtl.text.trim();
+                      final newPin = newPinCtl.text.trim();
+
+                      if (enteredPhone.isEmpty) {
+                        _snack('Enter your registered phone number');
+                        return;
+                      }
+                      if (!_validPin(newPin)) {
+                        _snack('PIN must be exactly 4 digits');
+                        return;
+                      }
+                      if (newPin != confirmPinCtl.text.trim()) {
+                        _snack('PINs do not match');
+                        return;
+                      }
+
+                      String norm(String p) {
+                        var c = p.replaceAll(RegExp(r'\s+|\+'), '');
+                        if (c.startsWith('0')) c = '254${c.substring(1)}';
+                        return c;
+                      }
+
+                      if (_profilePhone.isNotEmpty &&
+                          norm(enteredPhone) != norm(_profilePhone)) {
+                        _snack('Phone number does not match this account');
+                        return;
+                      }
+
+                      setDialogState(() => resetting = true);
+
+                      // Sync reset with backend MongoDB
+                      final backendOk =
+                          await SlipAccessManager.resetPin(enteredPhone, newPin);
+
+                      // Always save locally if local phone matched, even if offline
+                      if (backendOk || _profilePhone.isNotEmpty) {
+                        await _savePin(newPin);
+                        if (!dialogContext.mounted) return;
+                        Navigator.pop(dialogContext);
+
+                        setState(() {
+                          _profilePhone = enteredPhone;
+                          _storedPin = newPin;
+                          _isUnlocked = true;
+                          _pinController.clear();
+                        });
+                        _snack('PIN reset successfully. Account unlocked.');
+                      } else {
+                        setDialogState(() => resetting = false);
+                        _snack('Account not found on server for that phone number');
+                      }
+                    },
+              child: resetting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Reset PIN'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------- numbers
@@ -451,7 +595,7 @@ class _BankrollTabState extends State<BankrollTab> {
     return Colors.grey;
   }
 
-  // ---------------------------------------------------------------- dialogs
+  / ---------------------------------------------------------------- dialogs
   void _editSettings() {
     final startCtl = TextEditingController(
         text: _starting > 0 ? _starting.toStringAsFixed(2) : '');
@@ -517,7 +661,12 @@ class _BankrollTabState extends State<BankrollTab> {
                   if (newPin.isNotEmpty) _storedPin = newPin;
                 });
                 await _saveData();
-                if (newPin.isNotEmpty) await _savePin(newPin);
+                if (newPin.isNotEmpty) {
+                  await _savePin(newPin);
+                  if (_profilePhone.isNotEmpty) {
+                    await SlipAccessManager.resetPin(_profilePhone, newPin);
+                  }
+                }
                 if (!dialogContext.mounted) return;
                 Navigator.pop(dialogContext);
                 if (!mounted) return;
@@ -616,7 +765,6 @@ class _BankrollTabState extends State<BankrollTab> {
     });
     await _saveData();
   }
-
   // ---------------------------------------------------------------- widgets
   Widget _summaryCard() {
     final spent = _spentThisMonth;
@@ -652,7 +800,8 @@ class _BankrollTabState extends State<BankrollTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Bankroll (settled bets)', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text('Bankroll (settled bets)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 Text(_ksh(_balance),
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               ],
@@ -742,9 +891,11 @@ class _BankrollTabState extends State<BankrollTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Stake: ${_ksh(_todaySuggestedSlip!.stake)}', style: const TextStyle(fontSize: 12)),
+                Text('Stake: ${_ksh(_todaySuggestedSlip!.stake)}',
+                    style: const TextStyle(fontSize: 12)),
                 Text('Potential Win: ${_ksh(_todaySuggestedSlip!.potentialPayout)}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
               ],
             ),
           ],
@@ -753,19 +904,22 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-   /// Side-by-side comparison table for System vs Manual performance
   Widget _comparisonTableCard() {
     final systemBets = _bets.where((b) => b.description.contains('Accumulator')).toList();
     final manualBets = _bets.where((b) => !b.description.contains('Accumulator')).toList();
 
-    double totalStaked(List<Bet> list) => list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
-    
+    double totalStaked(List<Bet> list) =>
+        list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
+
     double totalWon(List<Bet> list) {
-      return list.where((b) => b.status == 'won').fold(0.0, (s, b) => s + b.stake + b.profit);
+      return list
+          .where((b) => b.status == 'won')
+          .fold(0.0, (s, b) => s + b.stake + b.profit);
     }
 
     double totalProfit(List<Bet> list) => list.fold(0.0, (s, b) => s + b.profit);
-    int countStatus(List<Bet> list, String status) => list.where((b) => b.status == status).length;
+    int countStatus(List<Bet> list, String status) =>
+        list.where((b) => b.status == status).length;
 
     final sysStaked = totalStaked(systemBets);
     final sysWonAmount = totalWon(systemBets);
@@ -804,37 +958,85 @@ class _BankrollTabState extends State<BankrollTab> {
                 TableRow(
                   decoration: BoxDecoration(color: lineColor(context).withOpacity(0.3)),
                   children: const [
-                    Padding(padding: EdgeInsets.all(8.0), child: Text('Metric', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
-                    Padding(padding: EdgeInsets.all(8.0), child: Text('System (Auto)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: _teal))),
-                    Padding(padding: EdgeInsets.all(8.0), child: Text('Manual (You)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
+                    Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text('Metric',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
+                    Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text('System (Auto)',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                color: _teal))),
+                    Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text('Manual (You)',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
                   ],
                 ),
                 TableRow(
                   children: [
-                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Total Staked', style: TextStyle(fontSize: 11))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(sysStaked), style: const TextStyle(fontSize: 11))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(manStaked), style: const TextStyle(fontSize: 11))),
+                    const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text('Total Staked', style: TextStyle(fontSize: 11))),
+                    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(_ksh(sysStaked), style: const TextStyle(fontSize: 11))),
+                    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(_ksh(manStaked), style: const TextStyle(fontSize: 11))),
                   ],
                 ),
                 TableRow(
                   children: [
-                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Amount Won', style: TextStyle(fontSize: 11))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(sysWonAmount), style: const TextStyle(fontSize: 11, color: Colors.green))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text(_ksh(manWonAmount), style: const TextStyle(fontSize: 11, color: Colors.green))),
+                    const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text('Amount Won', style: TextStyle(fontSize: 11))),
+                    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(_ksh(sysWonAmount),
+                            style: const TextStyle(fontSize: 11, color: Colors.green))),
+                    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(_ksh(manWonAmount),
+                            style: const TextStyle(fontSize: 11, color: Colors.green))),
                   ],
                 ),
                 TableRow(
                   children: [
-                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Profit / Loss', style: TextStyle(fontSize: 11))),
-                    Padding(padding: EdgeInsets.all(8.0), child: Text(_ksh(sysProfit), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _profitColor(sysProfit)))),
-                    Padding(padding: EdgeInsets.all(8.0), child: Text(_ksh(manProfit), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _profitColor(manProfit)))),
+                    const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text('Profit / Loss', style: TextStyle(fontSize: 11))),
+                    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(_ksh(sysProfit),
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _profitColor(sysProfit)))),
+                    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(_ksh(manProfit),
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _profitColor(manProfit)))),
                   ],
                 ),
                 TableRow(
                   children: [
-                    const Padding(padding: EdgeInsets.all(8.0), child: Text('Record (W - L)', style: TextStyle(fontSize: 11))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text('$sysWins - $sysLosses', style: const TextStyle(fontSize: 11))),
-                    Padding(padding: const EdgeInsets.all(8.0), child: Text('$manWins - $manLosses', style: const TextStyle(fontSize: 11))),
+                    const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text('Record (W - L)', style: TextStyle(fontSize: 11))),
+                    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text('$sysWins - $sysLosses',
+                            style: const TextStyle(fontSize: 11))),
+                    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text('$manWins - $manLosses',
+                            style: const TextStyle(fontSize: 11))),
                   ],
                 ),
               ],
@@ -903,7 +1105,8 @@ class _BankrollTabState extends State<BankrollTab> {
       final dt = DateTime.tryParse(b.date) ?? DateTime.now();
       final monthKey = '${_monthName(dt.month)} ${dt.year}';
       final weekNum = _weekOfYear(dt);
-      final dayKey = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+      final dayKey =
+          '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
       grouped.putIfAbsent(monthKey, () => {});
       grouped[monthKey]!.putIfAbsent(weekNum, () => {});
       grouped[monthKey]![weekNum]!.putIfAbsent(dayKey, () => []);
@@ -923,13 +1126,15 @@ class _BankrollTabState extends State<BankrollTab> {
               monthName,
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _teal),
             ),
-            subtitle: Text('${weeks.fold(0, (sum, w) => sum + w.value.values.fold(0, (s, d) => s + d.length))} bets logged'),
+            subtitle: Text(
+                '${weeks.fold(0, (sum, w) => sum + w.value.values.fold(0, (s, d) => s + d.length))} bets logged'),
             children: weeks.map((weekEntry) {
               final weekNum = weekEntry.key;
               final days = weekEntry.value.entries.toList()
                 ..sort((a, b) => b.key.compareTo(a.key));
               return ExpansionTile(
-                title: Text('Week $weekNum', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                title: Text('Week $weekNum',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                 children: days.map((dayEntry) {
                   final dayDate = dayEntry.key;
                   final dayBets = dayEntry.value;
@@ -942,7 +1147,10 @@ class _BankrollTabState extends State<BankrollTab> {
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Text(
                             dayDate,
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mutedText(context)),
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: mutedText(context)),
                           ),
                         ),
                         ...dayBets.map((b) {
@@ -953,7 +1161,9 @@ class _BankrollTabState extends State<BankrollTab> {
                             margin: const EdgeInsets.only(bottom: 6),
                             child: ListTile(
                               dense: true,
-                              title: Text(b.description, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              title: Text(b.description,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold, fontSize: 13)),
                               subtitle: Text(
                                 'Stake: ${_ksh(b.stake)} – Odds: ${b.odds.toStringAsFixed(2)}${settled ? ' – P/L: ${_ksh(b.profit)}' : ''}',
                                 style: TextStyle(
@@ -970,7 +1180,8 @@ class _BankrollTabState extends State<BankrollTab> {
                                       PopupMenuItem(value: 'won', child: Text('Mark won')),
                                       PopupMenuItem(value: 'lost', child: Text('Mark lost')),
                                       PopupMenuItem(value: 'void', child: Text('Mark void')),
-                                      PopupMenuItem(value: 'pending', child: Text('Mark pending')),
+                                      PopupMenuItem(
+                                          value: 'pending', child: Text('Mark pending')),
                                       PopupMenuItem(value: 'delete', child: Text('Delete')),
                                     ],
                                   ),
@@ -992,30 +1203,45 @@ class _BankrollTabState extends State<BankrollTab> {
   }
 
   Widget _lockScreen() {
-    final creating = _storedPin == null;
+    final creating = _storedPin == null || _profilePhone.isEmpty;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.lock_outline, size: 64, color: _teal),
+            const Icon(Icons.account_balance_wallet, size: 64, color: _teal),
             const SizedBox(height: 16),
             Text(
-              creating ? 'Create a PIN' : 'Bankroll Protected',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              creating ? 'Create Bankroll Account' : 'Bankroll Account',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               creating
-                  ? 'Choose a 4-digit PIN to protect your bankroll records.'
-                  : 'Enter your 4-digit PIN to view financial records.',
+                  ? 'Register with your phone number and a 4-digit PIN to create your Bankroll Account.'
+                  : 'Enter your 4-digit PIN to unlock your Bankroll Account.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
             const SizedBox(height: 24),
+            if (creating) ...[
+              SizedBox(
+                width: 260,
+                child: TextField(
+                  controller: _phoneSetupController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: 'Phone Number (e.g. 0712345678)',
+                    prefixIcon: Icon(Icons.phone, color: _teal),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             SizedBox(
-              width: 200,
+              width: 260,
               child: TextField(
                 controller: _pinController,
                 obscureText: true,
@@ -1025,7 +1251,7 @@ class _BankrollTabState extends State<BankrollTab> {
                 onSubmitted: (_) => creating ? null : _verifyPin(),
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  hintText: 'PIN',
+                  hintText: '4-Digit PIN',
                   counterText: '',
                 ),
               ),
@@ -1033,7 +1259,7 @@ class _BankrollTabState extends State<BankrollTab> {
             if (creating) ...[
               const SizedBox(height: 12),
               SizedBox(
-                width: 200,
+                width: 260,
                 child: TextField(
                   controller: _confirmPinController,
                   obscureText: true,
@@ -1042,28 +1268,49 @@ class _BankrollTabState extends State<BankrollTab> {
                   textAlign: TextAlign.center,
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
-                    hintText: 'Confirm PIN',
+                    hintText: 'Confirm 4-Digit PIN',
                     counterText: '',
                   ),
                 ),
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: _teal,
                 foregroundColor: Colors.white,
+                minimumSize: const Size(260, 48),
               ),
-              onPressed: creating ? _createPin : _verifyPin,
-              child: Text(creating ? 'Set PIN' : 'Unlock Bankroll'),
+              onPressed: _submittingAccount
+                  ? null
+                  : (creating ? _createBankrollAccount : _verifyPin),
+              child: _submittingAccount
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(creating ? 'Create Bankroll Account' : 'Unlock Bankroll Account'),
             ),
+            if (!creating) ...[
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: _forgotPinDialog,
+                child: const Text(
+                  'Forgot PIN?',
+                  style: TextStyle(color: _teal, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
-
-  @override
+   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -1080,13 +1327,13 @@ class _BankrollTabState extends State<BankrollTab> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Bankroll',
+                'Bankroll Account',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _teal),
               ),
               Row(
                 children: [
                   IconButton(
-                    tooltip: 'Lock Bankroll',
+                    tooltip: 'Lock Account',
                     icon: const Icon(Icons.lock, color: _teal),
                     onPressed: () {
                       setState(() {
@@ -1132,15 +1379,13 @@ class _BankrollTabState extends State<BankrollTab> {
                       leading: Icon(Icons.admin_panel_settings, color: Colors.orange.shade800),
                       title: Text(
                         'Admin Panel Active',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.orange.shade900),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Colors.orange.shade900),
                       ),
-                      subtitle: const Text('You have administrative privileges unlocked.', style: TextStyle(fontSize: 11)),
-                      trailing: TextButton(
-                        onPressed: () {
-                          _snack('Admin tools menu selected');
-                        },
-                        child: const Text('Manage'),
-                      ),
+                      subtitle: const Text('You have administrative privileges unlocked.',
+                          style: TextStyle(fontSize: 11)),
                     ),
                   ),
                 ],
