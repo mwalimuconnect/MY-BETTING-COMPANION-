@@ -462,7 +462,8 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                         ),
                       ],
                     ),
-                  ))
+                  )
+                )
             else
               Container(
                 width: double.infinity,
