@@ -836,11 +836,34 @@ class _FixturesTabState extends State<FixturesTab> {
 
   // ---- one match flap -----------------------------------------------------
 
+    Widget _buildAnalysedBadge(FixtureModel fixture) {
+    if (!fixture.hasAnalysis) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color.fromARGB(36, 14, 107, 88),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF0E6B58), width: 1),
+      ),
+      child: const Text(
+        'Analysed',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF0E6B58),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMatchTile(FixtureModel fixture, int index) {
     final isSaved = _savedKeys.contains(fixture.key);
 
     final String whenText = fixture.isFinished
-        ? '${fixture.timeLabel.isNotEmpty ? "${fixture.timeLabel} • " : ""}FT ${fixture.actualScore}'
+        ? '${fixture.timeLabel.isNotEmpty ? '${fixture.timeLabel} · ' : ''}FT ${fixture.actualScore}'
         : fixture.timeLabel;
 
     return Theme(
@@ -871,26 +894,7 @@ class _FixturesTabState extends State<FixturesTab> {
                 ],
               ),
             ),
-          ),
-        fixture.hasAnalysis)
-          Container(
-            margin: const EdgeInsets.only(right: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0E6B58).withOpacity(0.14),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF0E6B58), width: 1),
-            ),
-            child: const Text(
-              'Analysed',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF0E6B58),
-              ),
-            ),
-          ),
-        : const SizedBox.shrink(),
+            _buildAnalysedBadge(fixture),
             IconButton(
               visualDensity: VisualDensity.compact,
               icon: Icon(
@@ -904,7 +908,7 @@ class _FixturesTabState extends State<FixturesTab> {
           ],
         ),
         children: [
-          // Prediction
+          // PredictionhTile
           _sectionTitle('Prediction'),
           if (fixture.hasPrediction) ...[
             Text(
