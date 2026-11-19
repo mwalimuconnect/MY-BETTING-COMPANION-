@@ -1,5 +1,6 @@
-import 'fixture_model.dart';
 import 'package:flutter/material.dart';
+
+import 'fixture_model.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
 
@@ -7,7 +8,7 @@ class GeneratedSlip {
   final String id;
   final String title;
   final double totalOdds;
-  final List selections;
+  final List> selections;
   final double stake;
   final double potentialPayout;
   final Color payoutColor;
@@ -31,25 +32,25 @@ class GeneratedSlip {
         potentialPayout = potentialPayout ??
             double.parse((totalOdds * stake).toStringAsFixed(2));
 
-  bool areAllMatchesSettled(List latestFixtures) {
+  bool areAllMatchesSettled(List<dynamic> latestFixtures) {
     if (selections.isEmpty) return false;
-    final fixtureMap = {};
+    final Map<String, dynamic> fixtureMap = {};
     for (final f in latestFixtures) {
-      if (f.key != null) fixtureMap[f.key] = f;
+      if (f.key != null) fixtureMap[f.key.toString()] = f;
     }
 
     for (final sel in selections) {
       final key = sel['fixtureKey']?.toString() ?? '';
       if (key.isEmpty) return false;
       final match = fixtureMap[key];
-      if (match == null || !match.isFinished) {
+      if (match == null || match.isFinished != true) {
         return false;
       }
     }
     return true;
   }
 
-  Map toJson() => {
+  Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
         'totalOdds': totalOdds,
@@ -59,22 +60,27 @@ class GeneratedSlip {
         'createdAt': createdAt.toIso8601String(),
       };
 
-  factory GeneratedSlip.fromJson(Map json) {
-    var rawSelections = json['selections'] as List? ?? [];
-    List parsedSelections = [];
+  factory GeneratedSlip.fromJson(Map<dynamic, dynamic> json) {
+    final rawSelections = json['selections'] as List? ?? const [];
+    final List> parsedSelections = [];
     for (final item in rawSelections) {
-      parsedSelections.add(Map.from(item));
+      if (item is Map) {
+        parsedSelections.add(Map<String, dynamic>.from(item));
+      }
     }
 
+    final double totalOdds = (json['totalOdds'] as num?)?.toDouble() ?? 1.0;
+    final double stake = (json['stake'] as num?)?.toDouble() ?? 200.0;
+
     return GeneratedSlip(
-      id: json['id'],
-      title: json['title'] ?? '🔥 Prolific Value Accumulator',
-      totalOdds: (json['totalOdds'] as num).toDouble(),
+      id: json['id']?.toString(),
+      title: json['title']?.toString() ?? '🔥 Prolific Value Accumulator',
+      totalOdds: totalOdds,
       selections: parsedSelections,
-      stake: (json['stake'] as num?)?.toDouble() ?? 200.0,
+      stake: stake,
       potentialPayout: (json['potentialPayout'] as num?)?.toDouble(),
       createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
     );
   }
@@ -86,7 +92,7 @@ class _Candidate {
   final String market;
   final String prediction;
   final double odds;
-  final num prob;
+  final double prob;
   final String? kickoffIso;
 
   const _Candidate(
@@ -101,6 +107,44 @@ class _Candidate {
 }
 
 class SlipGenerator {
+  static String _normalizeMarket(String market) {
+    switch (market.trim().toLowerCase()) {
+      case '1x2':
+      case '1x2 / tip':
+        return '1X2';
+      case 'double chance':
+      case 'dc':
+        return 'Double Chance';
+      case 'gg':
+      case 'btts':
+      case 'both teams to score':
+        return 'GG';
+      case 'over 1.5':
+      case 'ov1.5':
+        return 'Over 1.5';
+      case 'ov2.5':
+      case 'over 2.5':
+        return 'Ov2.5';
+      case 'under 3.5':
+      case 'un3.5':
+        return 'Under 3.5';
+      case 'half with most goals':
+        return 'Half with Most Goals';
+      case 'corner 1x2':
+      case 'corners 1x2':
+        return 'Corner 1X2';
+      case 'cards 1x2':
+        return 'Cards 1X2';
+      case 'half with most cards':
+        return 'Half with Most Cards';
+      case 'player to score':
+      case 'anytime goalscorer':
+        return 'Player to Score';
+      default:
+        return market.trim();
+    }
+  }
+
   static double? _percent(dynamic raw) {
     if (raw == null) return null;
     if (raw is num) {
@@ -111,6 +155,12 @@ class SlipGenerator {
     final value = double.tryParse(cleaned);
     if (value == null || value <= 0 || value >= 100) return null;
     return value;
+  }
+
+  static double _impliedOdds(double prob) {
+    if (prob <= 1.0 || prob >= 100.0) return 1.25;
+    final raw = 100.0 / prob;
+    return raw.clamp(1.15, 12.0).toDouble();
   }
 
   static dynamic _readField(dynamic obj, List<String> names) {
@@ -163,7 +213,7 @@ class SlipGenerator {
             break;
         }
       } catch (_) {
-        // Property not defined on FixtureModel; continue safely.
+        // Property not present on object; continue safely.
       }
     }
     return null;
@@ -176,7 +226,7 @@ class SlipGenerator {
     required String? kickoffIso,
     required double homeProb,
     required double awayProb,
-    required List candidates,
+    required List<_Candidate> candidates,
   }) {
     final rawScorers = _readField(
       fixture,
@@ -186,8 +236,24 @@ class SlipGenerator {
     bool addedExplicit = false;
     if (rawScorers is List) {
       for (final item in rawScorers) {
-        if (item is Map) {
-          final name = item['name']?.toString().trim() ?? '';
+        if (item is PlayerScorerTip) {
+          if (item.name.trim().isNotEmpty && item.goalProb >= 25.0) {
+            final double p = item.goalProb.clamp(25.0, 85.0).toDouble();
+            candidates.add(
+              _Candidate(
+                safeKey,
+                matchName,
+                'Player to Score',
+                'Anytime Goalscorer: ${item.name.trim()}',
+                item.odds > 0 ? item.odds : _impliedOdds(p),
+                p,
+                kickoffIso,
+              ),
+            );
+            addedExplicit = true;
+          }
+        } else if (item is Map) {
+          final name = (item['name'] ?? item['player'] ?? '').toString().trim();
           final prob = _percent(item['prob'] ?? item['goalProb']) ?? 35.0;
           if (name.isNotEmpty && prob >= 25.0) {
             candidates.add(
@@ -196,7 +262,7 @@ class SlipGenerator {
                 matchName,
                 'Player to Score',
                 'Anytime Goalscorer: $name',
-                (100 / prob).clamp(1.35, 6.50),
+                _impliedOdds(prob),
                 prob,
                 kickoffIso,
               ),
@@ -211,7 +277,7 @@ class SlipGenerator {
               matchName,
               'Player to Score',
               'Anytime Goalscorer: ${item.trim()}',
-              (100 / prob).clamp(1.35, 6.50),
+              _impliedOdds(prob),
               prob,
               kickoffIso,
             ),
@@ -223,27 +289,29 @@ class SlipGenerator {
 
     if (!addedExplicit) {
       if (homeProb >= 55.0) {
-        final double scorerProb = (homeProb * 0.62).clamp(28.0, 52.0);
+        final double scorerProb =
+            (homeProb * 0.62).clamp(28.0, 52.0).toDouble();
         candidates.add(
           _Candidate(
             safeKey,
             matchName,
             'Player to Score',
             'Anytime Goalscorer: ${fixture.homeTeam} Lead Attacker',
-            100 / scorerProb,
+            _impliedOdds(scorerProb),
             scorerProb,
             kickoffIso,
           ),
         );
       } else if (awayProb >= 55.0) {
-        final double scorerProb = (awayProb * 0.62).clamp(28.0, 52.0);
+        final double scorerProb =
+            (awayProb * 0.62).clamp(28.0, 52.0).toDouble();
         candidates.add(
           _Candidate(
             safeKey,
             matchName,
             'Player to Score',
             'Anytime Goalscorer: ${fixture.awayTeam} Lead Attacker',
-            100 / scorerProb,
+            _impliedOdds(scorerProb),
             scorerProb,
             kickoffIso,
           ),
@@ -253,14 +321,21 @@ class SlipGenerator {
   }
 
   static GeneratedSlip? generateTargetSlip(
-    List availableFixtures, {
+    List<dynamic> availableFixtures, {
     Set<String>? allowedMarkets,
   }) {
     final now = DateTime.now();
-    final List candidates = [];
+    final List<_Candidate> candidates = [];
 
-    bool allows(String market) =>
-        allowedMarkets == null || allowedMarkets.isEmpty || allowedMarkets.contains(market);
+    final Set<String>? normalizedAllowed =
+        (allowedMarkets == null || allowedMarkets.isEmpty)
+            ? null
+            : allowedMarkets.map(_normalizeMarket).toSet();
+
+    bool allows(String market) {
+      if (normalizedAllowed == null) return true;
+      return normalizedAllowed.contains(_normalizeMarket(market));
+    }
 
     for (final fixture in availableFixtures) {
       if (fixture is! FixtureModel) continue;
@@ -284,22 +359,19 @@ class SlipGenerator {
       final String safeKey = fixture.key ?? '';
       final String? kickoffIso = fixture.kickoff?.toIso8601String();
 
-      // 1. Existing primary tip & Double Chance
-      final num? tipProb = fixture.tipProb;
-      if (allows('1X2 / Tip') &&
-          fixture.topTip.isNotEmpty &&
-          tipProb != null &&
-          tipProb > 0) {
+      // 1. 1X2 / Tip
+      final double tipProb = fixture.tipProb.toDouble();
+      if (allows('1X2') && fixture.topTip.isNotEmpty && tipProb > 0) {
         final double odds =
             (fixture.odds > 0 && fixture.topTip.toLowerCase().contains('win'))
                 ? fixture.odds
-                : (100 / tipProb.toDouble());
+                : _impliedOdds(tipProb);
 
         candidates.add(
           _Candidate(
             safeKey,
             matchName,
-            '1X2 / Tip',
+            '1X2',
             fixture.topTip,
             odds,
             tipProb,
@@ -308,6 +380,7 @@ class SlipGenerator {
         );
       }
 
+      // 2. Double Chance
       if (allows('Double Chance')) {
         if (homeProb >= 55.0) {
           final double dcProb = homeProb + drawProb;
@@ -318,7 +391,7 @@ class SlipGenerator {
                 matchName,
                 'Double Chance',
                 'Double Chance: ${fixture.homeTeam} or Draw (1X)',
-                100 / dcProb,
+                _impliedOdds(dcProb),
                 dcProb,
                 kickoffIso,
               ),
@@ -333,7 +406,7 @@ class SlipGenerator {
                 matchName,
                 'Double Chance',
                 'Double Chance: Draw or ${fixture.awayTeam} (X2)',
-                100 / dcProb,
+                _impliedOdds(dcProb),
                 dcProb,
                 kickoffIso,
               ),
@@ -342,12 +415,15 @@ class SlipGenerator {
         }
       }
 
-      // 2. Over 1.5 Goals
+      // 3. Over 1.5 Goals
       final double? over25 = _percent(fixture.over25Goals);
       if (allows('Over 1.5')) {
-        final double? explicitOver15 = _percent(_readField(fixture, ['over15Goals']));
+        final double? explicitOver15 =
+            _percent(_readField(fixture, ['over15Goals']));
         final double? over15Prob = explicitOver15 ??
-            (over25 != null ? (over25 + 16.0).clamp(55.0, 88.0) : null);
+            (over25 != null
+                ? (over25 + 16.0).clamp(55.0, 88.0).toDouble()
+                : null);
         if (over15Prob != null && over15Prob >= 55.0) {
           candidates.add(
             _Candidate(
@@ -355,7 +431,7 @@ class SlipGenerator {
               matchName,
               'Over 1.5',
               'Over 1.5 Goals',
-              100 / over15Prob,
+              _impliedOdds(over15Prob),
               over15Prob,
               kickoffIso,
             ),
@@ -363,11 +439,14 @@ class SlipGenerator {
         }
       }
 
-      // 3. Under 3.5 Goals
+      // 4. Under 3.5 Goals
       if (allows('Under 3.5')) {
-        final double? explicitUnder35 = _percent(_readField(fixture, ['under35Goals']));
+        final double? explicitUnder35 =
+            _percent(_readField(fixture, ['under35Goals']));
         final double? under35Prob = explicitUnder35 ??
-            (over25 != null ? (100.0 - over25 + 22.0).clamp(55.0, 86.0) : null);
+            (over25 != null
+                ? (100.0 - over25 + 22.0).clamp(55.0, 86.0).toDouble()
+                : null);
         if (under35Prob != null && under35Prob >= 55.0) {
           candidates.add(
             _Candidate(
@@ -375,7 +454,7 @@ class SlipGenerator {
               matchName,
               'Under 3.5',
               'Under 3.5 Goals',
-              100 / under35Prob,
+              _impliedOdds(under35Prob),
               under35Prob,
               kickoffIso,
             ),
@@ -383,143 +462,156 @@ class SlipGenerator {
         }
       }
 
-      // 4. Over 2.5 Goals & BTTS
-      if (allows('Over 2.5') && over25 != null && over25 >= 55.0) {
+      // 5. Ov2.5 Goals
+      if (allows('Ov2.5') && over25 != null && over25 >= 55.0) {
         candidates.add(
           _Candidate(
             safeKey,
             matchName,
-            'Over 2.5',
+            'Ov2.5',
             'Over 2.5 Goals',
-            100 / over25,
+            _impliedOdds(over25),
             over25,
             kickoffIso,
           ),
         );
       }
 
+      // 6. GG (BTTS)
       final double? btts = _percent(fixture.btts);
-      if (allows('BTTS') && btts != null && btts >= 55.0) {
+      if (allows('GG') && btts != null && btts >= 55.0) {
         candidates.add(
           _Candidate(
             safeKey,
             matchName,
-            'BTTS',
+            'GG',
             'Both Teams To Score: Yes',
-            100 / btts,
+            _impliedOdds(btts),
             btts,
             kickoffIso,
           ),
         );
       }
 
-      // 5. Half with Most Goals
+      // 7. Half with Most Goals (only when half probabilities are present)
       if (allows('Half with Most Goals')) {
-        final double h1Prob =
-            _percent(_readField(fixture, ['firstHalfGoalsProb'])) ?? 42.0;
-        final double h2Prob =
-            _percent(_readField(fixture, ['secondHalfGoalsProb'])) ?? 56.0;
-        if (h2Prob >= h1Prob && h2Prob >= 50.0) {
-          candidates.add(
-            _Candidate(
-              safeKey,
-              matchName,
-              'Half with Most Goals',
-              'Half with Most Goals: 2nd Half',
-              100 / h2Prob,
-              h2Prob,
-              kickoffIso,
-            ),
-          );
-        } else if (h1Prob > h2Prob && h1Prob >= 50.0) {
-          candidates.add(
-            _Candidate(
-              safeKey,
-              matchName,
-              'Half with Most Goals',
-              'Half with Most Goals: 1st Half',
-              100 / h1Prob,
-              h1Prob,
-              kickoffIso,
-            ),
-          );
+        final double? h1Prob =
+            _percent(_readField(fixture, ['firstHalfGoalsProb']));
+        final double? h2Prob =
+            _percent(_readField(fixture, ['secondHalfGoalsProb']));
+        if (h1Prob != null || h2Prob != null) {
+          final double p1 = h1Prob ?? 0.0;
+          final double p2 = h2Prob ?? 0.0;
+          if (p2 >= p1 && p2 >= 50.0) {
+            candidates.add(
+              _Candidate(
+                safeKey,
+                matchName,
+                'Half with Most Goals',
+                'Half with Most Goals: 2nd Half',
+                _impliedOdds(p2),
+                p2,
+                kickoffIso,
+              ),
+            );
+          } else if (p1 > p2 && p1 >= 50.0) {
+            candidates.add(
+              _Candidate(
+                safeKey,
+                matchName,
+                'Half with Most Goals',
+                'Half with Most Goals: 1st Half',
+                _impliedOdds(p1),
+                p1,
+                kickoffIso,
+              ),
+            );
+          }
         }
       }
 
-      // 6. Cards 1X2
+      // 8. Cards 1X2 (only when card probabilities are present)
       if (allows('Cards 1X2')) {
-        final double homeCardsProb =
-            _percent(_readField(fixture, ['homeCardsProb'])) ?? 44.0;
-        final double awayCardsProb =
-            _percent(_readField(fixture, ['awayCardsProb'])) ?? 42.0;
-        final double drawCardsProb =
-            _percent(_readField(fixture, ['drawCardsProb'])) ?? 28.0;
+        final double? homeCardsProb =
+            _percent(_readField(fixture, ['homeCardsProb']));
+        final double? awayCardsProb =
+            _percent(_readField(fixture, ['awayCardsProb']));
+        final double? drawCardsProb =
+            _percent(_readField(fixture, ['drawCardsProb']));
 
-        if (homeCardsProb >= awayCardsProb &&
-            homeCardsProb >= drawCardsProb &&
-            homeCardsProb >= 40.0) {
-          candidates.add(
-            _Candidate(
-              safeKey,
-              matchName,
-              'Cards 1X2',
-              'Cards 1X2: ${fixture.homeTeam} (1)',
-              100 / homeCardsProb,
-              homeCardsProb,
-              kickoffIso,
-            ),
-          );
-        } else if (awayCardsProb > homeCardsProb &&
-            awayCardsProb >= drawCardsProb &&
-            awayCardsProb >= 40.0) {
-          candidates.add(
-            _Candidate(
-              safeKey,
-              matchName,
-              'Cards 1X2',
-              'Cards 1X2: ${fixture.awayTeam} (2)',
-              100 / awayCardsProb,
-              awayCardsProb,
-              kickoffIso,
-            ),
-          );
+        if (homeCardsProb != null ||
+            awayCardsProb != null ||
+            drawCardsProb != null) {
+          final double ph = homeCardsProb ?? 0.0;
+          final double pa = awayCardsProb ?? 0.0;
+          final double pd = drawCardsProb ?? 0.0;
+
+          if (ph >= pa && ph >= pd && ph >= 40.0) {
+            candidates.add(
+              _Candidate(
+                safeKey,
+                matchName,
+                'Cards 1X2',
+                'Cards 1X2: ${fixture.homeTeam} (1)',
+                _impliedOdds(ph),
+                ph,
+                kickoffIso,
+              ),
+            );
+          } else if (pa > ph && pa >= pd && pa >= 40.0) {
+            candidates.add(
+              _Candidate(
+                safeKey,
+                matchName,
+                'Cards 1X2',
+                'Cards 1X2: ${fixture.awayTeam} (2)',
+                _impliedOdds(pa),
+                pa,
+                kickoffIso,
+              ),
+            );
+          }
         }
       }
 
-      // 7. Half with Most Cards
+      // 9. Half with Most Cards (only when half card probabilities are present)
       if (allows('Half with Most Cards')) {
-        final double h1Cards =
-            _percent(_readField(fixture, ['firstHalfCardsProb'])) ?? 38.0;
-        final double h2Cards =
-            _percent(_readField(fixture, ['secondHalfCardsProb'])) ?? 58.0;
-        if (h2Cards >= h1Cards && h2Cards >= 50.0) {
-          candidates.add(
-            _Candidate(
-              safeKey,
-              matchName,
-              'Half with Most Cards',
-              'Half with Most Cards: 2nd Half',
-              100 / h2Cards,
-              h2Cards,
-              kickoffIso,
-            ),
-          );
-        } else if (h1Cards > h2Cards && h1Cards >= 50.0) {
-          candidates.add(
-            _Candidate(
-              safeKey,
-              matchName,
-              'Half with Most Cards',
-              'Half with Most Cards: 1st Half',
-              100 / h1Cards,
-              h1Cards,
-              kickoffIso,
-            ),
-          );
+        final double? h1Cards =
+            _percent(_readField(fixture, ['firstHalfCardsProb']));
+        final double? h2Cards =
+            _percent(_readField(fixture, ['secondHalfCardsProb']));
+        if (h1Cards != null || h2Cards != null) {
+          final double c1 = h1Cards ?? 0.0;
+          final double c2 = h2Cards ?? 0.0;
+          if (c2 >= c1 && c2 >= 50.0) {
+            candidates.add(
+              _Candidate(
+                safeKey,
+                matchName,
+                'Half with Most Cards',
+                'Half with Most Cards: 2nd Half',
+                _impliedOdds(c2),
+                c2,
+                kickoffIso,
+              ),
+            );
+          } else if (c1 > c2 && c1 >= 50.0) {
+            candidates.add(
+              _Candidate(
+                safeKey,
+                matchName,
+                'Half with Most Cards',
+                'Half with Most Cards: 1st Half',
+                _impliedOdds(c1),
+                c1,
+                kickoffIso,
+              ),
+            );
+          }
         }
       }
 
-      // 8. Anytime Goalscorer / Player to Score
+      // 10. Player to Score
       if (allows('Player to Score')) {
         _addPlayerScorerCandidates(
           fixture: fixture,
@@ -535,8 +627,8 @@ class SlipGenerator {
 
     candidates.sort((a, b) => b.prob.compareTo(a.prob));
 
-    final List selectedBets = [];
-    final Set usedMatches = {};
+    final List> selectedBets = [];
+    final Set<String> usedMatches = {};
     double cumulativeOdds = 1.0;
 
     for (final c in candidates) {
@@ -609,7 +701,7 @@ class SlipGenerator {
 
 class ProtectedSystemSlipCard extends StatefulWidget {
   final GeneratedSlip slip;
-  final List latestFixtures;
+  final List<dynamic> latestFixtures;
 
   const ProtectedSystemSlipCard({
     super.key,
@@ -754,14 +846,14 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              sel['match'] ?? '',
+                              sel['match']?.toString() ?? '',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                             Text(
-                              sel['prediction'] ?? '',
+                              sel['prediction']?.toString() ?? '',
                               style: const TextStyle(
                                 color: Color(0xFF008080),
                                 fontSize: 13,
@@ -843,7 +935,6 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
       ),
     );
   }
-
   Widget _badge(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
