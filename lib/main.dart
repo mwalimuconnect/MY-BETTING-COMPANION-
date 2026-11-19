@@ -210,6 +210,13 @@ Future<void> _safely(Future<void> Function() action) async {
 // ---------------------------------------------------------------------------
 // Home screen
 // ---------------------------------------------------------------------------
+class MainHomeScreen extends StatefulWidget {
+  const MainHomeScreen({super.key});
+
+  @override
+  State<MainHomeScreen> createState() => _MainHomeScreenState();
+}
+
 class _MainHomeScreenState extends State<MainHomeScreen> {
   int _currentIndex = 0; // Starts on Bankroll (leftmost tab)
 
@@ -274,10 +281,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Fixtures tab
-// ---------------------------------------------------------------------------
+            
 // ---------------------------------------------------------------------------
 // Fixtures tab
 // ---------------------------------------------------------------------------
