@@ -310,14 +310,96 @@ class _FixturesTabState extends State<FixturesTab> {
 
   // Optional market filters (empty = all supported markets)
   final Set<String> _selectedMarkets = {};
-  static const List<String> _marketOptions = [
+    static const List<String> _marketOptions = [
+    '1X2',
+    'Double Chance',
+    'GG',
     'Over 1.5',
+    'Ov2.5',
     'Under 3.5',
     'Half with Most Goals',
+    'Corner 1X2',
     'Cards 1X2',
     'Half with Most Cards',
     'Player to Score',
   ];
+
+  /// Returns a market-specific prediction string from server-backed fields
+  /// on [fixture], or null when data for that market is not available.
+  String? _predictionForMarket(FixtureModel fixture, String market) {
+    switch (market) {
+      case '1X2':
+        if (fixture.topTip.isNotEmpty) return fixture.topTip;
+        if (fixture.homeWinProb > 0 || fixture.drawProb > 0 || fixture.awayWinProb > 0) {
+          if (fixture.homeWinProb >= fixture.awayWinProb &&
+              fixture.homeWinProb >= fixture.drawProb) {
+            return '${fixture.homeTeam} (${fixture.homeWinProb.round()}%)';
+          }
+          if (fixture.awayWinProb >= fixture.homeWinProb &&
+              fixture.awayWinProb >= fixture.drawProb) {
+            return '${fixture.awayTeam} (${fixture.awayWinProb.round()}%)';
+          }
+          return 'Draw (${fixture.drawProb.round()}%)';
+        }
+        return null;
+
+      case 'Double Chance':
+        if (fixture.homeWinProb > 0 || fixture.drawProb > 0 || fixture.awayWinProb > 0) {
+          final homeDraw = fixture.homeWinProb + fixture.drawProb;
+          final awayDraw = fixture.awayWinProb + fixture.drawProb;
+          final homeAway = fixture.homeWinProb + fixture.awayWinProb;
+          if (homeDraw >= awayDraw && homeDraw >= homeAway) {
+            return '1X (${fixture.homeTeam} or Draw)';
+          }
+          if (awayDraw >= homeDraw && awayDraw >= homeAway) {
+            return 'X2 (${fixture.awayTeam} or Draw)';
+          }
+          return '12 (${fixture.homeTeam} or ${fixture.awayTeam})';
+        }
+        return null;
+
+      case 'GG':
+        if (fixture.btts.isNotEmpty && fixture.btts.toUpperCase() != 'N/A') {
+          return fixture.btts;
+        }
+        return null;
+
+      case 'Over 1.5':
+        return null;
+
+      case 'Ov2.5':
+        if (fixture.over25Goals.isNotEmpty &&
+            fixture.over25Goals.toUpperCase() != 'N/A') {
+          return fixture.over25Goals;
+        }
+        return null;
+
+      case 'Under 3.5':
+        return null;
+
+      case 'Half with Most Goals':
+        return null;
+
+      case 'Corner 1X2':
+        return null;
+
+      case 'Cards 1X2':
+        if (fixture.cardRisk.isNotEmpty &&
+            fixture.cardRisk.toUpperCase() != 'N/A') {
+          return fixture.cardRisk;
+        }
+        return null;
+
+      case 'Half with Most Cards':
+        return null;
+
+      case 'Player to Score':
+        return null;
+
+      default:
+        return null;
+    }
+  }
 
   @override
   void initState() {
