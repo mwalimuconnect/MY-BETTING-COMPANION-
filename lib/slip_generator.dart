@@ -61,7 +61,7 @@ class GeneratedSlip {
 
   factory GeneratedSlip.fromJson(Map<dynamic, dynamic> json) {
     final rawSelections = json['selections'] as List? ?? const [];
-    final List> parsedSelections = [];.
+    final List> parsedSelections = [];
     for (final item in rawSelections) {
       if (item is Map) {
         parsedSelections.add(Map<String, dynamic>.from(item));
