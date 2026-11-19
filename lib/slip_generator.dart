@@ -61,7 +61,7 @@ class GeneratedSlip {
 
   factory GeneratedSlip.fromJson(Map<dynamic, dynamic> json) {
     final rawSelections = json['selections'] as List? ?? const [];
-    final List> parsedSelections = [];
+    final parsedSelections = [];
     for (final item in rawSelections) {
       if (item is Map) {
         parsedSelections.add(Map<String, dynamic>.from(item));
@@ -626,7 +626,7 @@ class SlipGenerator {
 
     candidates.sort((a, b) => b.prob.compareTo(a.prob));
 
-    final List> selectedBets = [];
+    final selectedBets = [];
     final Set<String> usedMatches = {};
     double cumulativeOdds = 1.0;
 
