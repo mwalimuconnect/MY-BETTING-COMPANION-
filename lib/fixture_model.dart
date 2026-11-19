@@ -146,6 +146,41 @@ class FixtureModel {
     this.anytimeScorers = const [],
   });
 
+  /// True when the fixture has server prediction or extended market data.
+  bool get hasAnalysis {
+    if (hasPrediction || topTip.trim().isNotEmpty || tipProb > 0) {
+      return true;
+    }
+    if (over15Goals.toUpperCase() != 'N/A' && over15Goals.trim().isNotEmpty) {
+      return true;
+    }
+    if (over25Goals.toUpperCase() != 'N/A' && over25Goals.trim().isNotEmpty) {
+      return true;
+    }
+    if (under35Goals.toUpperCase() != 'N/A' && under35Goals.trim().isNotEmpty) {
+      return true;
+    }
+    if (btts.toUpperCase() != 'N/A' && btts.trim().isNotEmpty) {
+      return true;
+    }
+    if (cardRisk.toUpperCase() != 'N/A' && cardRisk.trim().isNotEmpty) {
+      return true;
+    }
+    if (firstHalfGoalsProb != null ||
+        secondHalfGoalsProb != null ||
+        homeCardsProb != null ||
+        drawCardsProb != null ||
+        awayCardsProb != null ||
+        firstHalfCardsProb != null ||
+        secondHalfCardsProb != null) {
+      return true;
+    }
+    if (anytimeScorers.isNotEmpty || h2h.isNotEmpty) {
+      return true;
+    }
+    return false;
+  }
+  
   /// Text such as "Thu 19 Nov, 01:30 EAT" (empty if the server sent no date).
   String get timeLabel {
     if (dateLabel.isEmpty) return kickoffTime;
