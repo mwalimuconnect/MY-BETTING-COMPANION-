@@ -181,7 +181,45 @@ class BankrollTab extends StatefulWidget {
   @override
   State<BankrollTab> createState() => _BankrollTabState();
 }
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _load();
+  }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _phoneSetupController.dispose();
+    _pinController.dispose();
+    _confirmPinController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    super.didChangeAppLifecycleState(state);
+    final prefs = await SharedPreferences.getInstance();
+
+    if (state == AppLifecycleState.paused) {
+      // Record exact time the app went to the background
+      await prefs.setInt('app_background_timestamp', DateTime.now().millisecondsSinceEpoch);
+    } else if (state == AppLifecycleState.resumed) {
+      // Check how long it was in the background
+      final int bgTime = prefs.getInt('app_background_timestamp') ?? 0;
+      if (bgTime > 0) {
+        final int diffMinutes = (DateTime.now().millisecondsSinceEpoch - bgTime) ~/ (1000 * 60);
+        if (diffMinutes >= 15) {
+          // If backgrounded for 15+ mins, lock the account automatically
+          setState(() {
+            _isUnlocked = false;
+          });
+        }
+      }
+    }
+  }
+  
 class _BankrollTabState extends State<BankrollTab> {
   static const String _dataKey = 'bankroll_v1';
   static const String _pinKey = 'bankroll_pin';
@@ -219,11 +257,8 @@ class _BankrollTabState extends State<BankrollTab> {
     _confirmPinController.dispose();
     super.dispose();
   }
-
-  // ---------------------------------------------------------------- storage
-  static const String _unlockTimeKey = 'bankroll_unlock_timestamp';
-  static const int _gracePeriodMinutes = 15;
-
+  
+    // ---------------------------------------------------------------- storage
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -232,15 +267,6 @@ class _BankrollTabState extends State<BankrollTab> {
       _profilePhone = prefs.getString(_phoneKey) ?? '';
       _phoneSetupController.text = _profilePhone;
 
-      // Check if within 15-minute unlock grace period
-      final int lastUnlockEpoch = prefs.getInt(_unlockTimeKey) ?? 0;
-      final int nowEpoch = DateTime.now().millisecondsSinceEpoch;
-      final int diffMinutes = (nowEpoch - lastUnlockEpoch) ~/ (1000 * 60);
-
-      if (lastUnlockEpoch > 0 && diffMinutes < _gracePeriodMinutes) {
-        _isUnlocked = true;
-      }
-
       if (_profilePhone.isNotEmpty) {
         final status = await SlipAccessManager.checkAccess();
         _isAdmin = status.isAdmin;
@@ -248,6 +274,7 @@ class _BankrollTabState extends State<BankrollTab> {
           _storedPin = status.serverPin;
         }
       }
+
       _todaySuggestedSlip = await SuggestedSlipStore.load();
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
@@ -288,11 +315,7 @@ class _BankrollTabState extends State<BankrollTab> {
       debugPrint('Could not save bankroll: $e');
     }
   }
-   // Helper to save current time as unlock timestamp
-  Future<void> _recordUnlockTime() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_unlockTimeKey, DateTime.now().millisecondsSinceEpoch);
-  }
+
   Future<void> _savePin(String pin) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -561,18 +584,7 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-  IconButton(
-  tooltip: 'Lock Account',
-  icon: const Icon(Icons.lock, color: _teal),
-  onPressed: () async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_unlockTimeKey); // Clear grace period
-    setState(() {
-      _isUnlocked = false;
-      _pinController.clear();
-    });
-  },
-),
+
 // ---------------------------------------------------------------- numbers
   double? _parse(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
 
