@@ -74,34 +74,84 @@ jobs:
 
       - name: Configure Release Signing in Gradle
         run: |
-          GRADLE_FILE="android/app/build.gradle"
-          [ -f "$GRADLE_FILE" ] || GRADLE_FILE="android/app/build.gradle.kts"
-          python3 -c "
-          path = '$GRADLE_FILE'
-          with open(path, 'r') as f:
+          python3 -c '
+          import os, re
+
+          gradle_path = "android/app/build.gradle" if os.path.exists("android/app/build.gradle") else "android/app/build.gradle.kts"
+          with open(gradle_path, "r") as f:
               s = f.read()
-          if 'key.properties' not in s:
-              loader = '''
+
+          if "keystoreProperties" not in s:
+              loader = """
+          val keystoreProperties = java.util.Properties()
+          val keystorePropertiesFile = rootProject.file("key.properties")
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+          }
+          """ if gradle_path.endswith(".kts") else """
           def keystoreProperties = new Properties()
-          def keystorePropertiesFile = rootProject.file('key.properties')
+          def keystorePropertiesFile = rootProject.file("key.properties")
           if (keystorePropertiesFile.exists()) {
               keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
-          '''
-              s = loader + s
-              s = s.replace(
-                  'release {',
-                  '''release {
-                      keyAlias keystoreProperties['keyAlias'] ?: 'auto_key'
-                      keyPassword keystoreProperties['keyPassword'] ?: 'password123'
-                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : file('auto_keystore.jks')
-                      storePassword keystoreProperties['storePassword'] ?: 'password123'
-                  '''
+          """
+
+              plugins_match = re.search(r"plugins\s*\{.*?\n\}", s, flags=re.DOTALL)
+              if plugins_match:
+                  insert_pos = plugins_match.end()
+                  s = s[:insert_pos] + "\n" + loader + s[insert_pos:]
+              else:
+                  s = loader + "\n" + s
+
+          if gradle_path.endswith(".kts"):
+              if "signingConfigs" not in s:
+                  s = re.sub(
+                      r"(android\s*\{)",
+                      r"""\1
+              signingConfigs {
+                  create("release") {
+                      keyAlias = keystoreProperties.getProperty("keyAlias") ?: "auto_key"
+                      keyPassword = keystoreProperties.getProperty("keyPassword") ?: "password123"
+                      storeFile = file(keystoreProperties.getProperty("storeFile") ?: "auto_keystore.jks")
+                      storePassword = keystoreProperties.getProperty("storePassword") ?: "password123"
+                  }
+              }""",
+                      s,
+                      count=1,
+                  )
+              s = re.sub(
+                  r"(getByName\(\"release\"\)\s*\{)",
+                  r"\1\n                signingConfig = signingConfigs.getByName(\"release\")",
+                  s,
+                  count=1,
               )
-              with open(path, 'w') as f:
-                  f.write(s)
-              print('Configured release signing in', path)
-          "
+          else:
+              if "signingConfigs" not in s:
+                  s = re.sub(
+                      r"(android\s*\{)",
+                      r"""\1
+              signingConfigs {
+                  release {
+                      keyAlias keystoreProperties["keyAlias"] ?: "auto_key"
+                      keyPassword keystoreProperties["keyPassword"] ?: "password123"
+                      storeFile keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : file("auto_keystore.jks")
+                      storePassword keystoreProperties["storePassword"] ?: "password123"
+                  }
+              }""",
+                      s,
+                      count=1,
+                  )
+              s = re.sub(
+                  r"(buildTypes\s*\{[\s\S]*?release\s*\{)",
+                  r"\1\n                signingConfig signingConfigs.release",
+                  s,
+                  count=1,
+              )
+
+          with open(gradle_path, "w") as f:
+              f.write(s)
+          print("Updated signing config in", gradle_path)
+          '
 
       - name: Install Dependencies
         run: flutter pub get
