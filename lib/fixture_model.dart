@@ -21,6 +21,34 @@ class H2HEntry {
   }
 }
 
+class PlayerScorerTip {
+  final String name;
+  final String team;
+  final double goalProb;
+  final double odds;
+
+  const PlayerScorerTip({
+    required this.name,
+    required this.team,
+    required this.goalProb,
+    this.odds = 0.0,
+  });
+
+  factory PlayerScorerTip.fromJson(Map<String, dynamic> json) {
+    final double prob = FixtureModel._d(
+      json['goalProb'] ?? json['prob'] ?? json['probability'],
+      0.0,
+    );
+    final double rawOdds = FixtureModel._d(json['odds'], 0.0);
+    return PlayerScorerTip(
+      name: json['name']?.toString() ?? json['player']?.toString() ?? '',
+      team: json['team']?.toString() ?? '',
+      goalProb: prob,
+      odds: rawOdds > 0 ? rawOdds : (prob > 0 ? (100 / prob) : 0.0),
+    );
+  }
+}
+
 class FixtureModel {
   final String? key;
   final String homeTeam;
@@ -59,6 +87,18 @@ class FixtureModel {
   final bool? predictionCorrect;
   bool isSaved;
 
+  // Extended market fields (parsed if sent by backend, otherwise null/empty)
+  final String over15Goals;
+  final String under35Goals;
+  final double? firstHalfGoalsProb;
+  final double? secondHalfGoalsProb;
+  final double? homeCardsProb;
+  final double? drawCardsProb;
+  final double? awayCardsProb;
+  final double? firstHalfCardsProb;
+  final double? secondHalfCardsProb;
+  final List<PlayerScorerTip> anytimeScorers;
+
   FixtureModel({
     required this.key,
     required this.homeTeam,
@@ -92,6 +132,16 @@ class FixtureModel {
     this.isEstimate = false,
     this.predictionCorrect,
     this.isSaved = false,
+    this.over15Goals = 'N/A',
+    this.under35Goals = 'N/A',
+    this.firstHalfGoalsProb,
+    this.secondHalfGoalsProb,
+    this.homeCardsProb,
+    this.drawCardsProb,
+    this.awayCardsProb,
+    this.firstHalfCardsProb,
+    this.secondHalfCardsProb,
+    this.anytimeScorers = const [],
   });
 
   /// Text such as "Thu 19 Nov, 01:30 EAT" (empty if the server sent no date).
@@ -111,8 +161,15 @@ class FixtureModel {
 
   static double _d(dynamic v, double fallback) {
     if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v) ?? fallback;
+    if (v is String) return double.tryParse(v.replaceAll('%', '').trim()) ?? fallback;
     return fallback;
+  }
+
+  static double? _dOpt(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.replaceAll('%', '').trim());
+    return null;
   }
 
   static List<String> _list(dynamic v) {
@@ -125,6 +182,18 @@ class FixtureModel {
     final out = <H2HEntry>[];
     for (final e in v) {
       if (e is Map) out.add(H2HEntry.fromJson(Map<String, dynamic>.from(e)));
+    }
+    return out;
+  }
+
+  static List<PlayerScorerTip> _scorers(dynamic v) {
+    if (v is! List) return const [];
+    final out = <PlayerScorerTip>[];
+    for (final e in v) {
+      if (e is Map) {
+        final tip = PlayerScorerTip.fromJson(Map<String, dynamic>.from(e));
+        if (tip.name.isNotEmpty) out.add(tip);
+      }
     }
     return out;
   }
@@ -173,28 +242,36 @@ class FixtureModel {
       isEstimate: j['isEstimate'] == true,
       predictionCorrect:
           j['predictionCorrect'] is bool ? j['predictionCorrect'] as bool : null,
+      over15Goals: j['over15Goals']?.toString() ?? 'N/A',
+      under35Goals: j['under35Goals']?.toString() ?? 'N/A',
+      firstHalfGoalsProb: _dOpt(j['firstHalfGoalsProb']),
+      secondHalfGoalsProb: _dOpt(j['secondHalfGoalsProb']),
+      homeCardsProb: _dOpt(j['homeCardsProb']),
+      drawCardsProb: _dOpt(j['drawCardsProb']),
+      awayCardsProb: _dOpt(j['awayCardsProb']),
+      firstHalfCardsProb: _dOpt(j['firstHalfCardsProb']),
+      secondHalfCardsProb: _dOpt(j['secondHalfCardsProb']),
+      anytimeScorers: _scorers(j['anytimeScorers']),
     );
   }
 
   /// Global filter helper method supporting status tabs and text search (teams & competitions)
   static List<FixtureModel> filterFixtures(List<FixtureModel> fixtures, String filter, {String searchQuery = ''}) {
-    // 1. Status Filter (All, Upcoming, Live, Finished)
     final statusQuery = filter.toLowerCase();
     var filtered = fixtures.where((f) {
       if (statusQuery == 'upcoming') return f.isUpcoming;
       if (statusQuery == 'live') return f.isLiveMatch;
       if (statusQuery == 'finished') return f.isFinishedMatch;
-      return true; // 'all'
+      return true;
     }).toList();
 
-    // 2. Text Search Filter (Team names, league name, or competition code)
     final textQuery = searchQuery.toLowerCase().trim();
     if (textQuery.isNotEmpty) {
       filtered = filtered.where((f) {
         return f.homeTeam.toLowerCase().contains(textQuery) ||
-               f.awayTeam.toLowerCase().contains(textQuery) ||
-               f.league.toLowerCase().contains(textQuery) ||
-               f.competitionCode.toLowerCase().contains(textQuery);
+            f.awayTeam.toLowerCase().contains(textQuery) ||
+            f.league.toLowerCase().contains(textQuery) ||
+            f.competitionCode.toLowerCase().contains(textQuery);
       }).toList();
     }
 
