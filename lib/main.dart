@@ -871,8 +871,8 @@ class _FixturesTabState extends State<FixturesTab> {
                 ],
               ),
             ),
-                    ),
-        if (fixture.hasAnalysis)
+          ),
+        fixture.hasAnalysis)
           Container(
             margin: const EdgeInsets.only(right: 6),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -890,7 +890,7 @@ class _FixturesTabState extends State<FixturesTab> {
               ),
             ),
           ),
-  
+        : const SizedBox.shrink(),
             IconButton(
               visualDensity: VisualDensity.compact,
               icon: Icon(
