@@ -221,6 +221,9 @@ class _BankrollTabState extends State<BankrollTab> {
   }
 
   // ---------------------------------------------------------------- storage
+  static const String _unlockTimeKey = 'bankroll_unlock_timestamp';
+  static const int _gracePeriodMinutes = 15;
+
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -229,6 +232,15 @@ class _BankrollTabState extends State<BankrollTab> {
       _profilePhone = prefs.getString(_phoneKey) ?? '';
       _phoneSetupController.text = _profilePhone;
 
+      // Check if within 15-minute unlock grace period
+      final int lastUnlockEpoch = prefs.getInt(_unlockTimeKey) ?? 0;
+      final int nowEpoch = DateTime.now().millisecondsSinceEpoch;
+      final int diffMinutes = (nowEpoch - lastUnlockEpoch) ~/ (1000 * 60);
+
+      if (lastUnlockEpoch > 0 && diffMinutes < _gracePeriodMinutes) {
+        _isUnlocked = true;
+      }
+
       if (_profilePhone.isNotEmpty) {
         final status = await SlipAccessManager.checkAccess();
         _isAdmin = status.isAdmin;
@@ -236,7 +248,6 @@ class _BankrollTabState extends State<BankrollTab> {
           _storedPin = status.serverPin;
         }
       }
-
       _todaySuggestedSlip = await SuggestedSlipStore.load();
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
@@ -277,7 +288,11 @@ class _BankrollTabState extends State<BankrollTab> {
       debugPrint('Could not save bankroll: $e');
     }
   }
-
+   // Helper to save current time as unlock timestamp
+  Future<void> _recordUnlockTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_unlockTimeKey, DateTime.now().millisecondsSinceEpoch);
+  }
   Future<void> _savePin(String pin) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -398,8 +413,9 @@ class _BankrollTabState extends State<BankrollTab> {
     _snack('Bankroll Account created and synced!');
   }
 
-  void _verifyPin() {
+ Future<void> _verifyPin() async {
     if (_pinController.text.trim() == _storedPin) {
+      await _recordUnlockTime(); // Save 15-min grace window
       setState(() {
         _isUnlocked = true;
         _pinController.clear();
@@ -408,7 +424,7 @@ class _BankrollTabState extends State<BankrollTab> {
       _pinController.clear();
       _snack('Incorrect PIN');
     }
-  }
+ } 
 
   void _forgotPinDialog() {
     final phoneCtl = TextEditingController();
@@ -545,7 +561,19 @@ class _BankrollTabState extends State<BankrollTab> {
     );
   }
 
-  // ---------------------------------------------------------------- numbers
+  IconButton(
+  tooltip: 'Lock Account',
+  icon: const Icon(Icons.lock, color: _teal),
+  onPressed: () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_unlockTimeKey); // Clear grace period
+    setState(() {
+      _isUnlocked = false;
+      _pinController.clear();
+    });
+  },
+),
+// ---------------------------------------------------------------- numbers
   double? _parse(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
 
   double get _settledProfit => _bets.fold(0.0, (sum, b) => sum + b.profit);
@@ -712,80 +740,97 @@ class _BankrollTabState extends State<BankrollTab> {
 }
     
   Future<void> _addBet() async {
-    final descCtl = TextEditingController();
+    final matchCtl = TextEditingController();
+    final betTypeCtl = TextEditingController();
     final stakeCtl = TextEditingController();
     final oddsCtl = TextEditingController();
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Bet'),
+        title: const Text('Add Bet & Prediction Type'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                controller: descCtl,
-                decoration:
-                    const InputDecoration(labelText: 'What did you bet on? (optional)'),
+                controller: matchCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Match (e.g., Arsenal vs Chelsea)',
+                  hintText: 'Home vs Away',
+                ),
               ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: betTypeCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Bet Type / Pick (e.g., GG, Over 2.5, Home Win)',
+                  hintText: 'e.g. GG or 1X or Over 2.5',
+                ),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: stakeCtl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'Stake (Ksh)'),
               ),
+              const SizedBox(height: 8),
               TextField(
                 controller: oddsCtl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration:
-                    const InputDecoration(labelText: 'Odds (decimal, e.g. 1.85)'),
+                decoration: const InputDecoration(labelText: 'Odds (decimal, e.g. 1.85)'),
               ),
             ],
           ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: _teal,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Add'),
+            child: const Text('Add & Track'),
           ),
         ],
       ),
     );
 
     if (ok != true) return;
+    final matchName = matchCtl.text.trim();
+    final betType = betTypeCtl.text.trim();
     final stake = _parse(stakeCtl.text);
     final odds = _parse(oddsCtl.text);
 
-    if (stake == null || stake <= 0 || odds == null || odds <= 1) {
+    if (matchName.isEmpty || stake == null || stake <= 0 || odds == null || odds <= 1) {
       if (!mounted) return;
-      _snack('Enter a stake above 0 and odds above 1.0');
+      _snack('Enter a valid match name, stake above 0, and odds above 1.0');
       return;
     }
 
+    final fullDescription = '$matchName [$betType]';
     final now = DateTime.now();
-    final desc = descCtl.text.trim();
+    
     setState(() {
       _bets.insert(
         0,
         Bet(
           id: now.millisecondsSinceEpoch,
           date: now.toIso8601String(),
-          description: desc.isEmpty ? 'Bet' : desc,
+          description: fullDescription,
           stake: stake,
           odds: odds,
+          status: 'pending', // Will auto-settle or can be matched against live scores
         ),
       );
     });
     await _saveData();
   }
-
+             
   Future<void> _onMenu(Bet bet, String action) async {
     setState(() {
       if (action == 'delete') {
