@@ -69,7 +69,7 @@ class ApiService {
   }
 
   /// Fetches team insights, injuries and squad news.
-  static Future> fetchTeamInsights(
+  static Future<Map<String, dynamic>> fetchTeamInsights(
     String teamName,
   ) async {
     final url =
@@ -153,6 +153,12 @@ class ApiService {
       throw Exception(
         'Invalid odds data format received from server',
       );
+    } on SocketException catch (e) {
+      debugPrint('Socket error: $e');
+      return [];
+    } on TimeoutException {
+      debugPrint('Odds request timed out');
+      return [];
     } catch (e) {
       debugPrint('Error fetching odds: $e');
       return [];
