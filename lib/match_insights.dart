@@ -173,6 +173,10 @@ class _InsightSheet extends StatelessWidget {
           'Goals outlook: ${fixture.over25Goals} chance of over 2.5 goals and ${fixture.btts} that both teams score.');
     }
 
+    if (fixture.cardRisk != 'N/A' && fixture.cardRisk.isNotEmpty) {
+      reasons.add('Discipline outlook: ${fixture.cardRisk} card risk for this fixture.');
+    }
+
     if (fixture.topTip.isEmpty) {
       reasons.add(
           'No tip is shown because neither side reaches the 45% confidence the app requires.');
@@ -184,6 +188,17 @@ class _InsightSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final int? tipPct = fixture.tipProbInt;
+    final bool hasGoalsSection = fixture.over25Goals != 'N/A' ||
+        fixture.over15Goals != 'N/A' ||
+        fixture.under35Goals != 'N/A' ||
+        fixture.firstHalfGoalsProb != null ||
+        fixture.secondHalfGoalsProb != null;
+
+    final bool hasCardsSection = (fixture.cardRisk != 'N/A' && fixture.cardRisk.isNotEmpty) ||
+        fixture.homeCardsProb != null ||
+        fixture.awayCardsProb != null ||
+        fixture.firstHalfCardsProb != null ||
+        fixture.secondHalfCardsProb != null;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -257,10 +272,54 @@ class _InsightSheet extends StatelessWidget {
               ],
 
               // Goals
-              if (fixture.over25Goals != 'N/A') ...[
-                _title('GOALS'),
-                _row('Over 2.5 goals', fixture.over25Goals),
-                _row('Both teams to score', fixture.btts),
+              if (hasGoalsSection) ...[
+                _title('GOALS & HALF MARKETS'),
+                if (fixture.over15Goals != 'N/A')
+                  _row('Over 1.5 goals', fixture.over15Goals),
+                if (fixture.over25Goals != 'N/A')
+                  _row('Over 2.5 goals', fixture.over25Goals),
+                if (fixture.under35Goals != 'N/A')
+                  _row('Under 3.5 goals', fixture.under35Goals),
+                if (fixture.btts != 'N/A')
+                  _row('Both teams to score', fixture.btts),
+                if (fixture.firstHalfGoalsProb != null || fixture.secondHalfGoalsProb != null)
+                  _row(
+                    'Half with most goals',
+                    (fixture.secondHalfGoalsProb ?? 0) >= (fixture.firstHalfGoalsProb ?? 0)
+                        ? '2nd Half (${(fixture.secondHalfGoalsProb ?? 0).round()}%)'
+                        : '1st Half (${(fixture.firstHalfGoalsProb ?? 0).round()}%)',
+                  ),
+              ],
+
+              // Cards & Discipline
+              if (hasCardsSection) ...[
+                _title('CARDS & DISCIPLINE'),
+                if (fixture.cardRisk != 'N/A' && fixture.cardRisk.isNotEmpty)
+                  _row('Overall card risk', fixture.cardRisk),
+                if (fixture.homeCardsProb != null && fixture.awayCardsProb != null)
+                  _row(
+                    'Cards 1X2 lean',
+                    fixture.homeCardsProb! >= fixture.awayCardsProb!
+                        ? '${fixture.homeTeam} (${fixture.homeCardsProb!.round()}%)'
+                        : '${fixture.awayTeam} (${fixture.awayCardsProb!.round()}%)',
+                  ),
+                if (fixture.firstHalfCardsProb != null || fixture.secondHalfCardsProb != null)
+                  _row(
+                    'Half with most cards',
+                    (fixture.secondHalfCardsProb ?? 0) >= (fixture.firstHalfCardsProb ?? 0)
+                        ? '2nd Half (${(fixture.secondHalfCardsProb ?? 0).round()}%)'
+                        : '1st Half (${(fixture.firstHalfCardsProb ?? 0).round()}%)',
+                  ),
+              ],
+
+              // Anytime Goalscorers (only shown when server provides real player data)
+              if (fixture.anytimeScorers.isNotEmpty) ...[
+                _title('ANYTIME GOALSCORER OUTLOOK'),
+                for (final scorer in fixture.anytimeScorers)
+                  _row(
+                    scorer.team.isEmpty ? scorer.name : '${scorer.name} (${scorer.team})',
+                    '${scorer.goalProb.round()}%',
+                  ),
               ],
 
               // How it works
