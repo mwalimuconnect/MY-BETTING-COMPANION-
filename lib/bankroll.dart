@@ -181,50 +181,15 @@ class BankrollTab extends StatefulWidget {
   @override
   State<BankrollTab> createState() => _BankrollTabState();
 }
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _load();
-  }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _phoneSetupController.dispose();
-    _pinController.dispose();
-    _confirmPinController.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) async {
-    super.didChangeAppLifecycleState(state);
-    final prefs = await SharedPreferences.getInstance();
-
-    if (state == AppLifecycleState.paused) {
-      // Record exact time the app went to the background
-      await prefs.setInt('app_background_timestamp', DateTime.now().millisecondsSinceEpoch);
-    } else if (state == AppLifecycleState.resumed) {
-      // Check how long it was in the background
-      final int bgTime = prefs.getInt('app_background_timestamp') ?? 0;
-      if (bgTime > 0) {
-        final int diffMinutes = (DateTime.now().millisecondsSinceEpoch - bgTime) ~/ (1000 * 60);
-        if (diffMinutes >= 15) {
-          // If backgrounded for 15+ mins, lock the account automatically
-          setState(() {
-            _isUnlocked = false;
-          });
-        }
-      }
-    }
-  }
-  
-class _BankrollTabState extends State<BankrollTab> {
+class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
   static const String _dataKey = 'bankroll_v1';
   static const String _pinKey = 'bankroll_pin';
   static const String _nameKey = 'profile_name';
   static const String _phoneKey = 'profile_phone';
+  static const String _unlockTimeKey = 'bankroll_unlock_timestamp';
+  static const String _bgTimeKey = 'app_background_timestamp';
+  static const int _gracePeriodMinutes = 15;
 
   bool _loading = true;
   bool _submittingAccount = false;
@@ -247,15 +212,47 @@ class _BankrollTabState extends State<BankrollTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _phoneSetupController.dispose();
     _pinController.dispose();
     _confirmPinController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    _handleLifecycleChange(state);
+  }
+
+  Future<void> _handleLifecycleChange(AppLifecycleState state) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (state == AppLifecycleState.paused) {
+      await prefs.setInt(_bgTimeKey, DateTime.now().millisecondsSinceEpoch);
+    } else if (state == AppLifecycleState.resumed) {
+      final int bgTime = prefs.getInt(_bgTimeKey) ?? 0;
+      if (bgTime > 0) {
+        final int diffMinutes =
+            (DateTime.now().millisecondsSinceEpoch - bgTime) ~/ (1000 * 60);
+        if (diffMinutes >= _gracePeriodMinutes && mounted) {
+          setState(() {
+            _isUnlocked = false;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _recordUnlockTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_unlockTimeKey, DateTime.now().millisecondsSinceEpoch);
   }
   
     // ---------------------------------------------------------------- storage
