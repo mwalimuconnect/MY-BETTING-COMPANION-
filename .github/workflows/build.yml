@@ -44,7 +44,6 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=my_betting_companion --org=com.example
 
-      # NEW: flutter create wipes the manifest, so add INTERNET back
       - name: Add INTERNET permission and app label
         run: |
           F=android/app/src/main/AndroidManifest.xml
@@ -73,14 +72,47 @@ jobs:
           storeFile=auto_keystore.jks
           EOF
 
+      - name: Configure Release Signing in Gradle
+        run: |
+          GRADLE_FILE="android/app/build.gradle"
+          [ -f "$GRADLE_FILE" ] || GRADLE_FILE="android/app/build.gradle.kts"
+          python3 -c "
+          path = '$GRADLE_FILE'
+          with open(path, 'r') as f:
+              s = f.read()
+          if 'key.properties' not in s:
+              loader = '''
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file('key.properties')
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+          '''
+              s = loader + s
+              s = s.replace(
+                  'release {',
+                  '''release {
+                      keyAlias keystoreProperties['keyAlias'] ?: 'auto_key'
+                      keyPassword keystoreProperties['keyPassword'] ?: 'password123'
+                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : file('auto_keystore.jks')
+                      storePassword keystoreProperties['storePassword'] ?: 'password123'
+                  '''
+              )
+              with open(path, 'w') as f:
+                  f.write(s)
+              print('Configured release signing in', path)
+          "
+
       - name: Install Dependencies
         run: flutter pub get
+
+      - name: Generate Launcher Icons
+        run: dart run flutter_launcher_icons
 
       - name: Build Release APK via Flutter CLI
         run: |
           flutter build apk --release --no-pub
 
-      # NEW: confirms the permission is really in the APK
       - name: Verify APK permissions
         run: |
           AAPT=$(ls -d $ANDROID_HOME/build-tools/*/ | tail -1)aapt
