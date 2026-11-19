@@ -69,7 +69,7 @@ class ApiService {
   }
 
   /// Fetches team insights, injuries and squad news.
-  static Future<Map<String, dynamic>> fetchTeamInsights(
+  static Future> fetchTeamInsights(
     String teamName,
   ) async {
     final url =
