@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'fixture_model.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
@@ -8,7 +7,7 @@ class GeneratedSlip {
   final String id;
   final String title;
   final double totalOdds;
-  final List> selections;
+  final List<dynamic> selections;
   final double stake;
   final double potentialPayout;
   final Color payoutColor;
@@ -32,7 +31,7 @@ class GeneratedSlip {
         potentialPayout = potentialPayout ??
             double.parse((totalOdds * stake).toStringAsFixed(2));
 
-  bool areAllMatchesSettled(List<dynamic> latestFixtures) {
+  bool areAllMatchesSettled(List latestFixtures) {
     if (selections.isEmpty) return false;
     final Map<String, dynamic> fixtureMap = {};
     for (final f in latestFixtures) {
