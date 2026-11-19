@@ -131,15 +131,37 @@ class PredictionInsightHelper {
 }
 
 /// Returns true if the tip won, false if it lost, or null if it cannot be
-/// judged (treated as void).
+/// judged from final score alone (treated as void).
 bool? evaluateTip(String tip, String home, String away, String score) {
   final parts = score.split('-');
   if (parts.length != 2) return null;
   final h = int.tryParse(parts[0].trim());
   final a = int.tryParse(parts[1].trim());
   if (h == null || a == null) return null;
-  if (tip == '$home Win') return h > a;
-  if (tip == '$away Win') return a > h;
+
+  final normalizedTip = tip.trim();
+  final totalGoals = h + a;
+
+  if (normalizedTip == '$home Win') return h > a;
+  if (normalizedTip == '$away Win') return a > h;
+  if (normalizedTip == 'Draw') return h == a;
+
+  if (normalizedTip == 'Double Chance: $home or Draw (1X)' ||
+      normalizedTip.endsWith('(1X)')) {
+    return h >= a;
+  }
+  if (normalizedTip == 'Double Chance: Draw or $away (X2)' ||
+      normalizedTip.endsWith('(X2)')) {
+    return a >= h;
+  }
+
+  if (normalizedTip == 'Over 1.5 Goals') return totalGoals >= 2;
+  if (normalizedTip == 'Over 2.5 Goals') return totalGoals >= 3;
+  if (normalizedTip == 'Under 3.5 Goals') return totalGoals <= 3;
+
+  if (normalizedTip == 'Both Teams To Score: Yes') return h > 0 && a > 0;
+  if (normalizedTip == 'Both Teams To Score: No') return h == 0 || a == 0;
+
   return null;
 }
 
