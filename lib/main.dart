@@ -210,22 +210,15 @@ Future<void> _safely(Future<void> Function() action) async {
 // ---------------------------------------------------------------------------
 // Home screen
 // ---------------------------------------------------------------------------
-class MainHomeScreen extends StatefulWidget {
-  const MainHomeScreen({super.key});
-
-  @override
-  State<MainHomeScreen> createState() => _MainHomeScreenState();
-}
-
 class _MainHomeScreenState extends State<MainHomeScreen> {
-  int _currentIndex = 4;
+  int _currentIndex = 0; // Starts on Bankroll (leftmost tab)
 
   final List<Widget> _screens = const [
-    FixturesTab(),
-    TablesScreen(),
-    SavedSlipsTab(),
-    PredictionLogTab(),
     BankrollTab(),
+    FixturesTab(),
+    PredictionLogTab(),
+    SavedSlipsTab(),
+    TablesScreen(),
   ];
 
   @override
@@ -234,7 +227,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Betting Companion', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: const Text(
+          'My Betting Companion',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         backgroundColor: isDark ? const Color(0xFF1E2228) : Colors.white,
         elevation: 1,
         actions: [
@@ -253,17 +249,35 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         type: BottomNavigationBarType.fixed,
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.sports_soccer), label: 'Fixtures'),
-          BottomNavigationBarItem(icon: Icon(Icons.leaderboard), label: 'Standings'),
-          BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: 'Slips'),
-          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
-          BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet), label: 'Bankroll Account'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance_wallet),
+            label: 'Bankroll',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.sports_soccer),
+            label: 'Fixtures',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history),
+            label: 'Prediction',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bookmark),
+            label: 'Saved Slips',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.leaderboard),
+            label: 'Standings',
+          ),
         ],
       ),
     );
   }
 }
 
+// ---------------------------------------------------------------------------
+// Fixtures tab
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Fixtures tab
 // ---------------------------------------------------------------------------
@@ -290,6 +304,17 @@ class _FixturesTabState extends State<FixturesTab> {
   int? _windowHours;
   static const List<int> _windowOptions = [3, 6, 12, 24, 72];
 
+  // Optional market filters (empty = all supported markets)
+  final Set<String> _selectedMarkets = {};
+  static const List<String> _marketOptions = [
+    'Over 1.5',
+    'Under 3.5',
+    'Half with Most Goals',
+    'Cards 1X2',
+    'Half with Most Cards',
+    'Player to Score',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -311,7 +336,7 @@ class _FixturesTabState extends State<FixturesTab> {
     });
   }
 
-    static const Map<String, String> _leagueToOddsSport = {
+  static const Map<String, String> _leagueToOddsSport = {
     'PL': 'soccer_epl',
     'ELC': 'soccer_efl_champ',
     'BL1': 'soccer_germany_bundesliga',
@@ -330,13 +355,11 @@ class _FixturesTabState extends State<FixturesTab> {
   void _loadFixtures() {
     setState(() {
       _fixturesFuture = ApiService.fetchFixtures().then((fixtures) async {
-        // 1. Determine which sport keys are present in the current fixtures list
         final activeSports = fixtures
             .map((f) => _leagueToOddsSport[f.competitionCode.toUpperCase()])
             .whereType<String>()
             .toSet();
 
-        // 2. Fetch odds for all active sports concurrently
         if (activeSports.isNotEmpty) {
           try {
             final oddsResponses = await Future.wait(
@@ -344,7 +367,6 @@ class _FixturesTabState extends State<FixturesTab> {
             );
             final allOdds = oddsResponses.expand((list) => list).toList();
 
-            // 3. Map the odds to matching fixtures based on team names
             for (final fixture in fixtures) {
               final fHome = fixture.homeTeam.toLowerCase();
               for (final item in allOdds) {
@@ -360,7 +382,8 @@ class _FixturesTabState extends State<FixturesTab> {
                         final outcomes = market['outcomes'] as List? ?? [];
                         for (var outcome in outcomes) {
                           if (outcome['name'].toString().toLowerCase() == oHome) {
-                            fixture.odds = (outcome['price'] as num?)?.toDouble() ?? 0.0;
+                            fixture.odds =
+                                (outcome['price'] as num?)?.toDouble() ?? 0.0;
                           }
                         }
                       }
@@ -393,7 +416,9 @@ class _FixturesTabState extends State<FixturesTab> {
     if (!mounted) return;
     final nowSaved = _savedKeys.contains(fixture.key);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(nowSaved ? 'Saved to slips' : 'Removed from saved slips')),
+      SnackBar(
+        content: Text(nowSaved ? 'Saved to slips' : 'Removed from saved slips'),
+      ),
     );
   }
 
@@ -452,6 +477,42 @@ class _FixturesTabState extends State<FixturesTab> {
     );
   }
 
+  Widget _buildMarketChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: _marketOptions.map((market) {
+          final isSelected = _selectedMarkets.contains(market);
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              label: Text(market),
+              selected: isSelected,
+              selectedColor: kTealGreen,
+              backgroundColor: cardBg(context),
+              labelStyle: TextStyle(
+                color: isSelected ? Colors.white : mutedText(context),
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 11,
+              ),
+              checkmarkColor: Colors.white,
+              onSelected: (selected) {
+                setState(() {
+                  if (selected) {
+                    _selectedMarkets.add(market);
+                  } else {
+                    _selectedMarkets.remove(market);
+                  }
+                });
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   // ---- league open/close/pin logic ----------------------------------------
 
   void _setAllLeagues(List<String> leagues, bool open) {
@@ -500,7 +561,8 @@ class _FixturesTabState extends State<FixturesTab> {
         children: [
           TextField(
             controller: _searchController,
-            onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+            onChanged: (val) =>
+                setState(() => _searchQuery = val.trim().toLowerCase()),
             decoration: InputDecoration(
               hintText: 'Search team or competition (e.g., Barcelona , EPL)...',
               hintStyle: TextStyle(fontSize: 13, color: mutedText(context)),
@@ -516,7 +578,8 @@ class _FixturesTabState extends State<FixturesTab> {
                   : null,
               filled: true,
               fillColor: cardBg(context),
-              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: BorderSide(color: kTealGreen.withOpacity(0.3)),
@@ -543,7 +606,7 @@ class _FixturesTabState extends State<FixturesTab> {
                     backgroundColor: cardBg(context),
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.white : mutedText(context),
-                      fontWeight: FontWeight.bold,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                       fontSize: 12,
                     ),
                     onSelected: (_) => setState(() => _selectedFilter = key),
@@ -553,6 +616,7 @@ class _FixturesTabState extends State<FixturesTab> {
             ),
           ),
           _buildTimeWindows(),
+          _buildMarketChips(),
         ],
       ),
     );
@@ -573,13 +637,17 @@ class _FixturesTabState extends State<FixturesTab> {
           TextButton.icon(
             onPressed:
                 disabled ? null : () => _setAllLeagues(leagues, !showCollapse),
-            icon: Icon(showCollapse ? Icons.unfold_less : Icons.unfold_more,
-                size: 18),
+            icon: Icon(
+              showCollapse ? Icons.unfold_less : Icons.unfold_more,
+              size: 18,
+            ),
             label: Text(showCollapse ? 'Collapse all' : 'Expand all'),
           ),
           const Spacer(),
-          Text('One at a time',
-              style: TextStyle(fontSize: 12, color: mutedText(context))),
+          Text(
+            'One at a time',
+            style: TextStyle(fontSize: 12, color: mutedText(context)),
+          ),
           Switch(
             value: _singleOpen,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -629,30 +697,37 @@ class _FixturesTabState extends State<FixturesTab> {
       child: Row(
         children: [
           Expanded(
-            child: Text(label,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12)),
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
           ),
           if (form.isEmpty)
             Text('N/A', style: TextStyle(fontSize: 12, color: mutedText(context)))
           else
             Row(
               children: form
-                  .map((r) => Container(
-                        width: 20,
-                        height: 20,
-                        margin: const EdgeInsets.only(left: 4),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: colorFor(r),
-                          shape: BoxShape.circle,
+                  .map(
+                    (r) => Container(
+                      width: 20,
+                      height: 20,
+                      margin: const EdgeInsets.only(left: 4),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: colorFor(r),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        r.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
                         ),
-                        child: Text(r.toUpperCase(),
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold)),
-                      ))
+                      ),
+                    ),
+                  )
                   .toList(),
             ),
         ],
@@ -697,18 +772,26 @@ class _FixturesTabState extends State<FixturesTab> {
                 children: [
                   Text(
                     '${fixture.homeTeam} vs ${fixture.awayTeam}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                   if (whenText.isNotEmpty)
-                    Text(whenText,
-                        style: TextStyle(fontSize: 11, color: mutedText(context))),
+                    Text(
+                      whenText,
+                      style: TextStyle(fontSize: 11, color: mutedText(context)),
+                    ),
                 ],
               ),
             ),
             IconButton(
               visualDensity: VisualDensity.compact,
-              icon: Icon(isSaved ? Icons.bookmark : Icons.bookmark_border,
-                  color: kPrimary, size: 22),
+              icon: Icon(
+                isSaved ? Icons.bookmark : Icons.bookmark_border,
+                color: kPrimary,
+                size: 22,
+              ),
               onPressed: () => _toggleSave(fixture),
               tooltip: 'Save to Slip',
             ),
@@ -719,23 +802,34 @@ class _FixturesTabState extends State<FixturesTab> {
           _sectionTitle('Prediction'),
           if (fixture.hasPrediction) ...[
             Text(
-              fixture.topTip.isEmpty ? 'No clear tip' : 'Top Tip: ${fixture.topTip}',
+              fixture.topTip.isEmpty
+                  ? 'No clear tip'
+                  : 'Top Tip: ${fixture.topTip}',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             ),
             const SizedBox(height: 4),
             Row(
               children: [
                 Expanded(
-                    child: Text('Home: ${fixture.homeWinProb.round()}%',
-                        style: const TextStyle(fontSize: 12))),
+                  child: Text(
+                    'Home: ${fixture.homeWinProb.round()}%',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
                 Expanded(
-                    child: Text('Draw: ${fixture.drawProb.round()}%',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12))),
+                  child: Text(
+                    'Draw: ${fixture.drawProb.round()}%',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
                 Expanded(
-                    child: Text('Away: ${fixture.awayWinProb.round()}%',
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontSize: 12))),
+                  child: Text(
+                    'Away: ${fixture.awayWinProb.round()}%',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
               ],
             ),
           ] else
@@ -744,9 +838,10 @@ class _FixturesTabState extends State<FixturesTab> {
                   ? 'Full time: ${fixture.actualScore}'
                   : 'Analysis pending or unavailable',
               style: TextStyle(
-                  fontStyle: FontStyle.italic,
-                  color: mutedText(context),
-                  fontSize: 12),
+                fontStyle: FontStyle.italic,
+                color: mutedText(context),
+                fontSize: 12,
+              ),
             ),
 
           // Odds
@@ -774,13 +869,19 @@ class _FixturesTabState extends State<FixturesTab> {
           _kv('Card risk', fixture.cardRisk),
           if (fixture.h2h.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text('Head to head',
-                style: TextStyle(fontSize: 12, color: mutedText(context))),
-            ...fixture.h2h.take(3).map((h) => Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text('${h.date}  ${h.home} ${h.score} ${h.away}',
-                      style: const TextStyle(fontSize: 12)),
-                )),
+            Text(
+              'Head to head',
+              style: TextStyle(fontSize: 12, color: mutedText(context)),
+            ),
+            ...fixture.h2h.take(3).map(
+                  (h) => Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '${h.date}  ${h.home} ${h.score} ${h.away}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
           ],
           Align(
             alignment: Alignment.centerRight,
@@ -820,7 +921,9 @@ class _FixturesTabState extends State<FixturesTab> {
                 child: Text(
                   '${league.toUpperCase()} (${matches.length})',
                   style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               IconButton(
@@ -862,15 +965,20 @@ class _FixturesTabState extends State<FixturesTab> {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: Colors.red),
                   const SizedBox(height: 12),
-                  Text('Failed to load fixtures',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: mutedText(context))),
+                  Text(
+                    'Failed to load fixtures',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: mutedText(context),
+                    ),
+                  ),
                   const SizedBox(height: 8),
-                  Text('${snapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: mutedText(context))),
+                  Text(
+                    '${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13, color: mutedText(context)),
+                  ),
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
                     onPressed: _loadFixtures,
@@ -885,7 +993,6 @@ class _FixturesTabState extends State<FixturesTab> {
           return const Center(child: Text('No fixtures available right now.'));
         }
 
-        // status + search filter, then time window
         final List<FixtureModel> fixtures = _applyTimeWindow(
           FixtureModel.filterFixtures(
             snapshot.data!,
@@ -899,7 +1006,6 @@ class _FixturesTabState extends State<FixturesTab> {
           byLeague.putIfAbsent(f.league, () => []).add(f);
         }
 
-        // Pinned leagues first, then the leagues with the most matches
         final leagues = byLeague.keys.toList()
           ..sort((a, b) {
             final pa = _pinnedLeagues.contains(a) ? 0 : 1;
@@ -935,7 +1041,9 @@ class _FixturesTabState extends State<FixturesTab> {
                         padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                         itemCount: leagues.length,
                         itemBuilder: (context, index) => _buildLeagueTile(
-                            leagues[index], byLeague[leagues[index]]!),
+                          leagues[index],
+                          byLeague[leagues[index]]!,
+                        ),
                       ),
               ),
             ),
@@ -944,8 +1052,8 @@ class _FixturesTabState extends State<FixturesTab> {
       },
     );
   }
-} 
-
+}
+                                                                    
 // ---------------------------------------------------------------------------
 // Slips tab (MY PICKS)
 // ---------------------------------------------------------------------------
