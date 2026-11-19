@@ -871,6 +871,26 @@ class _FixturesTabState extends State<FixturesTab> {
                 ],
               ),
             ),
+                    ),
+        if (fixture.hasAnalysis)
+          Container(
+            margin: const EdgeInsets.only(right: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0E6B58).withOpacity(0.14),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF0E6B58), width: 1),
+            ),
+            child: const Text(
+              'Analysed',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF0E6B58),
+              ),
+            ),
+          ),
+  
             IconButton(
               visualDensity: VisualDensity.compact,
               icon: Icon(
