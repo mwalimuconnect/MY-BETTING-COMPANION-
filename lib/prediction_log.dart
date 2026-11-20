@@ -140,13 +140,6 @@ bool? evaluateTip(String tip, String home, String away, String score) {
   if (h == null || a == null) return null;
   final lowerTip = normalizedTip.toLowerCase();
   final compactTip = lowerTip.replaceAll(RegExp(r'\s+'), '');
-
-  if (lowerTip.contains('most goals') ||
-    lowerTip.contains('card') ||
-    lowerTip.contains('scorer')) {
-  return null;
-  }
-  
   final normalizedTip = tip.trim();
   final lowerTip = normalizedTip.toLowerCase();
   final compactTip = lowerTip.replaceAll(RegExp(r'\s+'), '');
