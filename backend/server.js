@@ -231,18 +231,20 @@ function predictMatch(code, homeId, awayId, homeName, awayName) {
   const lambdaHome = r.avgHome * atk(h) * def(a);
   const lambdaAway = r.avgAway * atk(a) * def(h);
 
-  let pH = 0, pD = 0, pA = 0, pOver = 0, pBtts = 0, total = 0;
-  for (let i = 0; i <= MAX_GOALS; i++) {
-    for (let j = 0; j <= MAX_GOALS; j++) {
-      const p = poisson(i, lambdaHome) * poisson(j, lambdaAway);
-      total += p;
-      if (i > j) pH += p;
-      else if (i === j) pD += p;
-      else pA += p;
-      if (i + j >= 3) pOver += p;
-      if (i > 0 && j > 0) pBtts += p;
-    }
+  let pH = 0, pD = 0, pA = 0, pOver15 = 0, pOver = 0, pUnder35 = 0, pBtts = 0, total = 0;
+for (let i = 0; i <= MAX_GOALS; i++) {
+  for (let j = 0; j <= MAX_GOALS; j++) {
+    const p = poisson(i, lambdaHome) * poisson(j, lambdaAway);
+    total += p;
+    if (i > j) pH += p;
+    else if (i === j) pD += p;
+    else pA += p;
+    if (i + j >= 2) pOver15 += p;
+    if (i + j >= 3) pOver += p;
+    if (i + j <= 3) pUnder35 += p;
+    if (i > 0 && j > 0) pBtts += p;
   }
+}
 
   const homeWinProb = Math.round((pH / total) * 100);
   const awayWinProb = Math.round((pA / total) * 100);
@@ -272,7 +274,9 @@ function predictMatch(code, homeId, awayId, homeName, awayName) {
     homeWinProb,
     drawProb,
     awayWinProb,
+    over15Goals: `${Math.round((pOver15 / total) * 100)}%`,
     over25Goals: `${Math.round((pOver / total) * 100)}%`,
+    under35Goals: `${Math.round((pUnder35 / total) * 100)}%`,
     btts: `${Math.round((pBtts / total) * 100)}%`,
     topTip,
     tipProb,
@@ -280,7 +284,6 @@ function predictMatch(code, homeId, awayId, homeName, awayName) {
     awayForm: a.form.slice(-5),
     h2h,
   };
-}
 
 async function fetchCompetitionMatches(code) {
   const res = await axios.get(
@@ -357,15 +360,18 @@ function formatFixture(item, showDate = false) {
   const awayGoals = fullTime.away ?? 0;
 
   const code = item.competition && item.competition.code;
-  const pred = isFinished
-    ? null
-    : predictMatch(
-        code,
-        item.homeTeam && item.homeTeam.id,
-        item.awayTeam && item.awayTeam.id,
-        homeTeam,
-        awayTeam
-      );
+  let pred = null;
+try {
+  pred = predictMatch(
+    code,
+    item.homeTeam && item.homeTeam.id,
+    item.awayTeam && item.awayTeam.id,
+    homeTeam,
+    awayTeam
+  );
+} catch (e) {
+  pred = null;
+}
 
   let time;
   if (isLive) {
@@ -376,13 +382,13 @@ function formatFixture(item, showDate = false) {
     time = showDate ? formatEatDateTime(item.utcDate) : formatEatTime(item.utcDate);
   }
 
-  return {
+    return {
     key: String(item.id),
     utcDate: item.utcDate,
     competitionCode: code || '',
     dateLabel: formatEatDate(item.utcDate),
     kickoffTime: formatEatTime(item.utcDate),
-    league: (item.competition && item.competition.name) || 'Global Competition',
+    league: (item.competition && item.competition.name) || 'League',
     time,
     homeTeam,
     awayTeam,
@@ -392,21 +398,30 @@ function formatFixture(item, showDate = false) {
     homeWinProb: pred ? pred.homeWinProb : 0,
     drawProb: pred ? pred.drawProb : 0,
     awayWinProb: pred ? pred.awayWinProb : 0,
-    over25Goals: pred ? pred.over25Goals : 'N/A',
-    btts: pred ? pred.btts : 'N/A',
-    cardRisk: 'N/A',
+    over15Goals: pred && pred.over15Goals != null ? pred.over15Goals : 'N/A',
+    over25Goals: pred && pred.over25Goals != null ? pred.over25Goals : 'N/A',
+    under35Goals: pred && pred.under35Goals != null ? pred.under35Goals : 'N/A',
+    btts: pred && pred.btts != null ? pred.btts : 'N/A',
+    cardRisk: pred && pred.cardRisk != null ? pred.cardRisk : 'N/A',
+    firstHalfGoalsProb: pred ? pred.firstHalfGoalsProb ?? null : null,
+    secondHalfGoalsProb: pred ? pred.secondHalfGoalsProb ?? null : null,
+    homeCardsProb: pred ? pred.homeCardsProb ?? null : null,
+    drawCardsProb: pred ? pred.drawCardsProb ?? null : null,
+    awayCardsProb: pred ? pred.awayCardsProb ?? null : null,
+    firstHalfCardsProb: pred ? pred.firstHalfCardsProb ?? null : null,
+    secondHalfCardsProb: pred ? pred.secondHalfCardsProb ?? null : null,
+    anytimeScorers: pred && Array.isArray(pred.anytimeScorers) ? pred.anytimeScorers : [],
     topTip: pred ? pred.topTip : '',
     tipProb: pred ? pred.tipProb : null,
     odds: null,
     isLive,
     isFinished,
     actualScore: isFinished ? `${homeGoals}-${awayGoals}` : 'Pending',
-    predictionCorrect: null,
+    predictionCorrect,
     isProlific: prolific,
     isSample: false,
     isEstimate: false,
   };
-}
 
 // ---------- Extra Global Leagues via API-Football ----------
 let extraFixturesCache = { data: [], fetchedAt: 0 };
