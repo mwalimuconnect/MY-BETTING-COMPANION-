@@ -427,3 +427,37 @@ class FixtureModel {
     return filtered;
   }
 }
+class PredictionOutcomeBadge extends StatelessWidget {
+  final bool? won;
+
+  const PredictionOutcomeBadge({super.key, required this.won});
+
+  @override
+  Widget build(BuildContext context) {
+    if (won == null) return const SizedBox.shrink();
+
+    final bool isWon = won!;
+    final Color color = isWon ? Colors.green.shade700 : Colors.red.shade700;
+    final Color bgColor = isWon ? Colors.green.shade50 : Colors.red.shade50;
+    final Color borderColor =
+        isWon ? Colors.green.shade300 : Colors.red.shade300;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: Text(
+        isWon ? 'WON' : 'LOST',
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
