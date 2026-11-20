@@ -217,7 +217,7 @@ bool? evaluateTip(String tip, String home, String away, String score) {
   }
   
   return null;
-  
+}
   /// Helper widget to render the PROLIFIC \u{1F525} header in bold Teal Green capital letters
   Widget buildProlificHeader() {
   return const Padding(
