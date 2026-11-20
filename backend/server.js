@@ -427,8 +427,8 @@ try {
     isLive,
     isFinished,
     actualScore: isFinished ? `${homeGoals}-${awayGoals}` : 'Pending',
-    predictionCorrect,
-    isProlific: prolific,
+      predictionCorrect: null,
+      isProlific: prolific,
     isSample: false,
     isEstimate: false,
   };
