@@ -1096,19 +1096,20 @@ class _FixturesTabState extends State<FixturesTab> {
                     ),
                   ),
                 ),
-          ],
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => showMatchInsights(context, fixture),
-              icon: const Icon(Icons.insights, size: 16),
-              label: const Text('Full insights'),
+              ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => showMatchInsights(context, fixture),
+                  icon: const Icon(Icons.insights, size: 16),
+                  label: const Text('Full insights'),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
-    }
-  }
+           ),
+         } 
+       
+      
 
   // ---- one league flap ----------------------------------------------------
 
