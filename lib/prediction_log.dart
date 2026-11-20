@@ -138,8 +138,6 @@ bool? evaluateTip(String tip, String home, String away, String score) {
   final h = int.tryParse(parts[0].trim());
   final a = int.tryParse(parts[1].trim());
   if (h == null || a == null) return null;
-  final lowerTip = normalizedTip.toLowerCase();
-  final compactTip = lowerTip.replaceAll(RegExp(r'\s+'), '');
   final normalizedTip = tip.trim();
   final lowerTip = normalizedTip.toLowerCase();
   final compactTip = lowerTip.replaceAll(RegExp(r'\s+'), '');
