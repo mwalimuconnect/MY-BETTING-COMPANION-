@@ -180,7 +180,7 @@ class FixtureModel {
     }
     return false;
   }
-  
+
   /// Text such as "Thu 19 Nov, 01:30 EAT" (empty if the server sent no date).
   String get timeLabel {
     if (dateLabel.isEmpty) return kickoffTime;
@@ -188,13 +188,94 @@ class FixtureModel {
     return '$dateLabel, $kickoffTime';
   }
 
+  /// True when actualScore contains a scoreline like "2-1" or starts with "FT".
+  bool get hasFinalScore {
+    final String clean = actualScore.trim().toLowerCase();
+    if (clean.isEmpty || clean == 'pending' || clean == 'ns' || clean == 'tbd') {
+      return false;
+    }
+    return clean.contains('-') || clean.startsWith('ft');
+  }
+
+  bool get effectiveIsFinished => isFinished || hasFinalScore;
+  bool get effectiveIsLive => isLive && !effectiveIsFinished;
+  bool get effectiveIsUpcoming => !effectiveIsLive && !effectiveIsFinished;
+
+  /// Formats kickoff in device local time (EAT), falling back to timeLabel.
+  String get formattedLocalTime {
+    final DateTime? dt = kickoff;
+    if (dt == null) return timeLabel;
+
+    final DateTime local = dt.toLocal();
+    const List<String> weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const List<String> months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+
+    final String dayName = weekdays[local.weekday - 1];
+    final String monthName = months[local.month - 1];
+    final String dayNum = local.day.toString().padLeft(2, '0');
+    final String hour = local.hour.toString().padLeft(2, '0');
+    final String minute = local.minute.toString().padLeft(2, '0');
+
+    return '$dayName $dayNum $monthName, $hour:$minute EAT';
+  }
+
+  /// Returns true if prediction won, false if lost, or null if undetermined.
+  bool? get isPredictionWon {
+    if (!effectiveIsFinished) return null;
+    if (predictionCorrect != null) return predictionCorrect;
+
+    final String tip = topTip.trim().toLowerCase();
+    if (tip.isEmpty) return null;
+
+    final String scorePart = actualScore.replaceAll(RegExp(r'^ft\s*', caseSensitive: false), '').trim();
+    final List<String> parts = scorePart.split('-');
+    if (parts.length != 2) return null;
+
+    final int? homeGoals = int.tryParse(parts[0].trim());
+    final int? awayGoals = int.tryParse(parts[1].trim());
+    if (homeGoals == null || awayGoals == null) return null;
+
+    final int totalGoals = homeGoals + awayGoals;
+    final String homeName = homeTeam.trim().toLowerCase();
+    final String awayName = awayTeam.trim().toLowerCase();
+
+    if (tip == '1' || tip == 'home' || tip == 'home win' || tip == '$homeName win') {
+      return homeGoals > awayGoals;
+    }
+    if (tip == '2' || tip == 'away' || tip == 'away win' || tip == '$awayName win') {
+      return awayGoals > homeGoals;
+    }
+    if (tip == 'x' || tip == 'draw') {
+      return homeGoals == awayGoals;
+    }
+    if (tip == '1x' || tip == 'home or draw') return homeGoals >= awayGoals;
+    if (tip == 'x2' || tip == 'away or draw') return awayGoals >= homeGoals;
+    if (tip == '12' || tip == 'home or away') return homeGoals != awayGoals;
+
+    if (tip.contains('over 1.5') || tip == 'ov 1.5') return totalGoals > 1;
+    if (tip.contains('over 2.5') || tip == 'ov 2.5') return totalGoals > 2;
+    if (tip.contains('under 2.5') || tip == 'un 2.5') return totalGoals < 3;
+    if (tip.contains('under 3.5') || tip == 'un 3.5') return totalGoals < 4;
+    if (tip == 'gg' || tip == 'btts' || tip == 'btts yes') {
+      return homeGoals > 0 && awayGoals > 0;
+    }
+    if (tip == 'ng' || tip == 'btts no') {
+      return homeGoals == 0 || awayGoals == 0;
+    }
+
+    return null;
+  }
+
   /// Tip confidence as a whole number, or null when there is no tip.
   int? get tipProbInt => tipProb > 0 ? tipProb.round() : null;
 
   // Convenience filters for UI
-  bool get isUpcoming => !isLive && !isFinished;
-  bool get isLiveMatch => isLive;
-  bool get isFinishedMatch => isFinished;
+  bool get isUpcoming => effectiveIsUpcoming;
+  bool get isLiveMatch => effectiveIsLive;
+  bool get isFinishedMatch => effectiveIsFinished;
 
   static double _d(dynamic v, double fallback) {
     if (v is num) return v.toDouble();
@@ -216,7 +297,7 @@ class FixtureModel {
 
   static List<H2HEntry> _h2h(dynamic v) {
     if (v is! List) return const [];
-    final out = <H2HEntry>[];
+    final List<H2HEntry> out = [];
     for (final e in v) {
       if (e is Map) out.add(H2HEntry.fromJson(Map<String, dynamic>.from(e)));
     }
@@ -225,21 +306,31 @@ class FixtureModel {
 
   static List<PlayerScorerTip> _scorers(dynamic v) {
     if (v is! List) return const [];
-    final out = <PlayerScorerTip>[];
+    final List<PlayerScorerTip> out = [];
     for (final e in v) {
       if (e is Map) {
-        final tip = PlayerScorerTip.fromJson(Map<String, dynamic>.from(e));
+        final PlayerScorerTip tip = PlayerScorerTip.fromJson(Map<String, dynamic>.from(e));
         if (tip.name.isNotEmpty) out.add(tip);
       }
     }
     return out;
   }
 
+  static DateTime? _parseTimestamp(String raw) {
+    final String trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    final bool hasZone = trimmed.endsWith('Z') ||
+        trimmed.endsWith('z') ||
+        RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
+    final String normalized = hasZone ? trimmed : '${trimmed}Z';
+    return DateTime.tryParse(normalized) ?? DateTime.tryParse(trimmed);
+  }
+
   factory FixtureModel.fromJson(Map<String, dynamic> j) {
     final String utc = j['utcDate']?.toString() ?? '';
 
-    DateTime? parsedTime = DateTime.tryParse(utc);
-    parsedTime ??= j['kickoff'] != null ? DateTime.tryParse(j['kickoff'].toString()) : null;
+    DateTime? parsedTime = _parseTimestamp(utc);
+    parsedTime ??= j['kickoff'] != null ? _parseTimestamp(j['kickoff'].toString()) : null;
 
     final String tip = j['topTip']?.toString() ?? j['prediction']?.toString() ?? '';
     final double home = _d(j['homeWinProb'], 0);
@@ -293,16 +384,20 @@ class FixtureModel {
   }
 
   /// Global filter helper method supporting status tabs and text search (teams & competitions)
-  static List<FixtureModel> filterFixtures(List<FixtureModel> fixtures, String filter, {String searchQuery = ''}) {
-    final statusQuery = filter.toLowerCase();
+  static List<FixtureModel> filterFixtures(
+    List<FixtureModel> fixtures,
+    String filter, {
+    String searchQuery = '',
+  }) {
+    final String statusQuery = filter.toLowerCase();
     var filtered = fixtures.where((f) {
-      if (statusQuery == 'upcoming') return f.isUpcoming;
-      if (statusQuery == 'live') return f.isLiveMatch;
-      if (statusQuery == 'finished') return f.isFinishedMatch;
+      if (statusQuery == 'upcoming') return f.effectiveIsUpcoming;
+      if (statusQuery == 'live') return f.effectiveIsLive;
+      if (statusQuery == 'finished') return f.effectiveIsFinished;
       return true;
     }).toList();
 
-    final textQuery = searchQuery.toLowerCase().trim();
+    final String textQuery = searchQuery.toLowerCase().trim();
     if (textQuery.isNotEmpty) {
       filtered = filtered.where((f) {
         return f.homeTeam.toLowerCase().contains(textQuery) ||
