@@ -7,6 +7,7 @@ import 'app_settings.dart';
 import 'main.dart';
 import 'slip_access_manager.dart';
 import 'package:http/http.dart' as http;
+import 'fixture_model.dart';
 
 const Color _teal = Color(0xFF008080); // Teal Green
 
@@ -176,7 +177,8 @@ class Bet {
 }
 
 class BankrollTab extends StatefulWidget {
-  const BankrollTab({super.key});
+  final List<FixtureModel> fixtures;
+  const BankrollTab({super.key, this.fixtures = const []});
 
   @override
   State<BankrollTab> createState() => _BankrollTabState();
@@ -767,15 +769,96 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
     final betTypeCtl = TextEditingController();
     final stakeCtl = TextEditingController();
     final oddsCtl = TextEditingController();
-
+    bool isMultibet = false;
+    FixtureModel? selectedFixture;
+    String? selectedOutcome;
+    final List<String> multiLegs = [];
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+       builder: (ctx, setModalState) => AlertDialog(),
         title: const Text('Add Bet & Prediction Type'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+                Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Single'),
+                      selected: !isMultibet,
+                      onSelected: (_) =>
+                          setModalState(() => isMultibet = false),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('Multibet'),
+                      selected: isMultibet,
+                      onSelected: (_) =>
+                          setModalState(() => isMultibet = true),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (widget.fixtures.isNotEmpty) ...[
+                  DropdownButtonFormField<FixtureModel>(
+                    value: selectedFixture,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Fixture',
+                    ),
+                    hint: const Text('Choose fixture or type below'),
+                    items: [
+                      for (final f in widget.fixtures)
+                        DropdownMenuItem<FixtureModel>(
+                          value: f,
+                          child: Text(
+                            '${f.homeTeam} vs ${f.awayTeam}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (f) {
+                      setModalState(() {
+                        selectedFixture = f;
+                        if (f != null) {
+                          matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
+                          selectedOutcome = null;
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                DropdownButtonFormField<String>(
+                  value: selectedOutcome,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Possible Outcomes',
+                  ),
+                  hint: const Text('Choose outcome or type below'),
+                  items: [
+                    for (final o in _outcomeChoicesFor(selectedFixture))
+                      DropdownMenuItem<String>(
+                        value: o,
+                        child: Text(
+                          o,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (val) {
+                    setModalState(() {
+                      selectedOutcome = val;
+                      if (val != null && val != 'Custom...') {
+                        betTypeCtl.text = val;
+                      } else if (val == 'Custom...') {
+                        betTypeCtl.clear();
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
               TextField(
                 controller: matchCtl,
                 decoration: const InputDecoration(
@@ -797,6 +880,44 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'Stake (Ksh)'),
               ),
+                  if (isMultibet) ...[
+                  OutlinedButton.icon(
+                  onPressed: () {
+                    final m = matchCtl.text.trim();
+                    final p = betTypeCtl.text.trim();
+                    if (m.isEmpty || p.isEmpty) {
+                      _snack('Pick or enter a fixture and outcome first.');
+                      return;
+                    }
+                    setModalState(() {
+                      multiLegs.add('$m [$p]');
+                      selectedFixture = null;
+                      selectedOutcome = null;
+                      matchCtl.clear();
+                      betTypeCtl.clear();
+                    });
+                  },
+                  icon: const Icon(Icons.add),
+                  label: Text('Add Leg (${multiLegs.length})'),
+                ),
+                for (int i = 0; i < multiLegs.length; i++)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${i + 1}. ${multiLegs[i]}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 16),
+                        onPressed: () =>
+                            setModalState(() => multiLegs.removeAt(i)),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 8),
+              ],
               const SizedBox(height: 8),
               TextField(
                 controller: oddsCtl,
@@ -828,14 +949,30 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
     final betType = betTypeCtl.text.trim();
     final stake = _parse(stakeCtl.text);
     final odds = _parse(oddsCtl.text);
+    if (isMultibet && matchName.isNotEmpty && betType.isNotEmpty) {
+  multiLegs.add('$matchName [$betType]');
+}
+
+final hasValidPick = isMultibet
+    ? (multiLegs.isNotEmpty || matchName.isNotEmpty)
+    : matchName.isNotEmpty;
+
+if (!hasValidPick || stake == null || stake <= 0 || odds == null || odds <= 1.0) {
+  if (!mounted) return;
+  _snack('Enter a valid match or leg, stake above 0, and odds above 1.0');
+  return;
+}
+
+final fullDescription = isMultibet && multiLegs.isNotEmpty
+    ? 'Multi (${multiLegs.length} legs): ${multiLegs.join(' | ')}'
+    : (betType.isNotEmpty ? '$matchName [$betType]' : matchName);
 
     if (matchName.isEmpty || stake == null || stake <= 0 || odds == null || odds <= 1) {
       if (!mounted) return;
       _snack('Enter a valid match name, stake above 0, and odds above 1.0');
       return;
     }
-
-    final fullDescription = '$matchName [$betType]';
+    
     final now = DateTime.now();
     
     setState(() {
