@@ -858,14 +858,101 @@ class _FixturesTabState extends State<FixturesTab> {
       ),
     );
   }
+  
+  Widget _buildPredictionOutcomeBadge(FixtureModel fixture) {
+    final bool? won = fixture.isPredictionWon;
+    if (won == null) {
+      return const SizedBox.shrink();
+    }
+    final Color badgeColor = won
+        ? const Color(0xFF0E6B58)
+        : const Color(0xFFC62828);
+    final Color bgColor = won
+        ? const Color.fromARGB(36, 14, 107, 88)
+        : const Color.fromARGB(36, 198, 40, 40);
 
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: badgeColor, width: 1),
+      ),
+      child: Text(
+        won ? 'WON' : 'LOST',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: badgeColor,
+        ),
+      ),
+    );
+  }
+  
+  List<Widget> _buildExtendedInsightsWidgets(FixtureModel fixture) {
+    final List<Widget> items = [
+      _kv('Over 1.5 goals', fixture.over15Goals),
+      _kv('Over 2.5 goals', fixture.over25Goals),
+      _kv('Under 3.5 goals', fixture.under35Goals),
+      _kv('Both teams to score', fixture.btts),
+      _kv('Card risk', fixture.cardRisk),
+    ];
+
+    if (fixture.firstHalfGoalsProb != null) {
+      items.add(
+        _kv('1st half goals prob', '${fixture.firstHalfGoalsProb!.round()}%'),
+      );
+    }
+    if (fixture.secondHalfGoalsProb != null) {
+      items.add(
+        _kv('2nd half goals prob', '${fixture.secondHalfGoalsProb!.round()}%'),
+      );
+    }
+    if (fixture.homeCardsProb != null) {
+      items.add(
+        _kv('Home cards prob', '${fixture.homeCardsProb!.round()}%'),
+      );
+    }
+    if (fixture.drawCardsProb != null) {
+      items.add(
+        _kv('Draw cards prob', '${fixture.drawCardsProb!.round()}%'),
+      );
+    }
+    if (fixture.awayCardsProb != null) {
+      items.add(
+        _kv('Away cards prob', '${fixture.awayCardsProb!.round()}%'),
+      );
+    }
+    if (fixture.firstHalfCardsProb != null) {
+      items.add(
+        _kv('1st half cards prob', '${fixture.firstHalfCardsProb!.round()}%'),
+      );
+    }
+    if (fixture.secondHalfCardsProb != null) {
+      items.add(
+        _kv('2nd half cards prob', '${fixture.secondHalfCardsProb!.round()}%'),
+      );
+    }
+    if (fixture.anytimeScorers.isNotEmpty) {
+      items.add(
+        _kv(
+          'Anytime scorer',
+          '${fixture.anytimeScorers.first.name} (${fixture.anytimeScorers.first.goalProb.round()}%)',
+        ),
+      );
+    }
+
+    return items;
+    }
+  
   Widget _buildMatchTile(FixtureModel fixture, int index) {
     final isSaved = _savedKeys.contains(fixture.key);
 
-    final String whenText = fixture.isFinished
-        ? '${fixture.timeLabel.isNotEmpty ? '${fixture.timeLabel} · ' : ''}FT ${fixture.actualScore}'
-        : fixture.timeLabel;
-
+    final String label = fixture.formattedLocalTime;
+    final String whenText = fixture.effectiveIsFinished
+    ? '${label.isNotEmpty ? '$label · ' : ''}FT ${fixture.actualScore}'
+    : label;
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
@@ -908,14 +995,28 @@ class _FixturesTabState extends State<FixturesTab> {
           ],
         ),
         children: [
-          // PredictionhTile
+        // Prediction
           _sectionTitle('Prediction'),
           if (fixture.hasPrediction) ...[
-            Text(
-              fixture.topTip.isEmpty
-                  ? 'No clear tip'
-                  : 'Top Tip: ${fixture.topTip}',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            Row(
+              children: [
+                _buildPredictionOutcomeBadge(fixture),
+                Expanded(
+                  child: Text(
+                    fixture.effectiveIsFinished
+                        ? (fixture.topTip.isNotEmpty
+                            ? 'Top Tip: ${fixture.topTip} (FT ${fixture.actualScore})'
+                            : 'Full time: ${fixture.actualScore}')
+                        : (fixture.topTip.isEmpty
+                            ? 'No clear tip'
+                            : 'Top Tip: ${fixture.topTip}'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Row(
@@ -943,15 +1044,22 @@ class _FixturesTabState extends State<FixturesTab> {
               ],
             ),
           ] else
-            Text(
-              fixture.isFinished
-                  ? 'Full time: ${fixture.actualScore}'
-                  : 'Analysis pending or unavailable',
-              style: TextStyle(
-                fontStyle: FontStyle.italic,
-                color: mutedText(context),
-                fontSize: 12,
-              ),
+            Row(
+              children: [
+                _buildPredictionOutcomeBadge(fixture),
+                Expanded(
+                  child: Text(
+                    fixture.effectiveIsFinished
+                        ? 'Full time: ${fixture.actualScore}'
+                        : 'Analysis pending or unavailable',
+                    style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      color: mutedText(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
 
           // Odds
@@ -974,11 +1082,7 @@ class _FixturesTabState extends State<FixturesTab> {
 
           // Insights
           _sectionTitle('Insights'),
-          _kv('Over 2.5 goals', fixture.over25Goals),
-          _kv('Both teams to score', fixture.btts),
-          _kv('Card risk', fixture.cardRisk),
-          if (fixture.h2h.isNotEmpty) ...[
-            const SizedBox(height: 6),
+          ..._buildExtendedInsightsWidgets(fixture),
             Text(
               'Head to head',
               style: TextStyle(fontSize: 12, color: mutedText(context)),
@@ -1003,7 +1107,7 @@ class _FixturesTabState extends State<FixturesTab> {
           ),
         ],
       ),
-    );
+    }
   }
 
   // ---- one league flap ----------------------------------------------------
