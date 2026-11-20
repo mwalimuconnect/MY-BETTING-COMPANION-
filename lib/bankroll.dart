@@ -776,7 +776,7 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-       builder: (ctx, setModalState) => AlertDialog(),
+       builder: (ctx, setModalState) => AlertDialog(
         title: const Text('Add Bet & Prediction Type'),
         content: SingleChildScrollView(
           child: Column(
