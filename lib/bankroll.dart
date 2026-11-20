@@ -7,6 +7,7 @@ import 'app_settings.dart';
 import 'main.dart';
 import 'slip_access_manager.dart';
 import 'package:http/http.dart' as http;
+import 'api_service.dart';
 import 'fixture_model.dart';
 
 const Color _teal = Color(0xFF008080); // Teal Green
@@ -210,24 +211,126 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
   double _starting = 0;
   double _cap = 0;
   List<Bet> _bets = [];
+  List<FixtureModel> _fixtures = [];
   SuggestedSlip? _todaySuggestedSlip;
 
   String _profileName = '';
   String _profilePhone = '';
 
-  @override
+    @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _fixtures = List<FixtureModel>.from(widget.fixtures);
     _load();
+    _loadFixtures();
   }
 
+  Future<void> _loadFixtures() async {
+    try {
+      final loaded = await ApiService.fetchFixtures();
+      if (!mounted) return;
+      setState(() {
+        _fixtures = loaded;
+      });
+    } catch (_) {
+      // Keep any existing fixtures or fall back to manual typing in _addBet()
+    }
+  }
+bool? _evaluatePick(String pick, String homeTeam, String awayTeam, int hGoals, int aGoals) {
+  final p = pick.trim().toLowerCase();
+  final hName = homeTeam.trim().toLowerCase();
+  final aName = awayTeam.trim().toLowerCase();
+  final total = hGoals + aGoals;
+
+  bool mentionsTeam(String fullName) {
+    if (fullName.isEmpty) return false;
+    if (p == fullName || p == '$fullName win' || p.startsWith('$fullName ')) {
+      return true;
+    }
+    return fullName
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length >= 4 && !{'fc', 'sc', 'cf', 'cd', 'ca', 'cr'}.contains(w))
+        .any((w) => RegExp('\\b${RegExp.escape(w)}\\b').hasMatch(p));
+  }
+
+  if (p == '1' || p == 'home' || p == 'home win' || mentionsTeam(hName)) {
+    return hGoals > aGoals;
+  }
+  if (p == '2' || p == 'away' || p == 'away win' || mentionsTeam(aName)) {
+    return aGoals > hGoals;
+  }
+  if (p == 'x' || p == 'draw') return hGoals == aGoals;
+  if (p == '1x' || p.contains('or draw') && mentionsTeam(hName)) return hGoals >= aGoals;
+  if (p == 'x2' || p.contains('or draw') && mentionsTeam(aName)) return aGoals >= hGoals;
+  if (p == '12' || p == 'home or away') return hGoals != aGoals;
+
+  if (p.contains('over 1.5') || p == 'ov 1.5') return total > 1;
+  if (p.contains('over 2.5') || p == 'ov 2.5') return total > 2;
+  if (p.contains('under 2.5') || p == 'un 2.5') return total < 3;
+  if (p.contains('under 3.5') || p == 'un 3.5') return total < 4;
+  if (p == 'gg' || p == 'btts' || p.contains('btts: yes') || p == 'btts yes') {
+    return hGoals > 0 && aGoals > 0;
+  }
+  if (p == 'ng' || p == 'btts no' || p.contains('btts: no')) {
+    return hGoals == 0 || aGoals == 0;
+  }
+  return null;
+}
+
+Future<void> _autoSettleBets() async {
+  if (_bets.isEmpty || _fixtures.isEmpty) return;
+
+  bool changed = false;
+  for (final bet in _bets) {
+    if (bet.status != 'pending') continue;
+
+    // Skip multi-leg descriptions unless you parse each leg separately
+    if (bet.description.startsWith('Multi (')) continue;
+
+    final match = RegExp(r'^(.+?)\s*\[(.+)\]$').firstMatch(bet.description.trim());
+    if (match == null) continue;
+
+    final descMatch = match.group(1)!.trim().toLowerCase();
+    final pick = match.group(2)!.trim();
+
+    for (final f in _fixtures) {
+      if (!f.effectiveIsFinished) continue;
+      final labelA = '${f.homeTeam} vs ${f.awayTeam}'.toLowerCase();
+      final labelB = '${f.homeTeam} v ${f.awayTeam}'.toLowerCase();
+      if (descMatch != labelA && descMatch != labelB) continue;
+
+      final scoreRaw = f.actualScore
+          .replaceAll(RegExp(r'^ft\s*', caseSensitive: false), '')
+          .trim();
+      final parts = scoreRaw.split(RegExp(r'\s*-\s*'));
+      if (parts.length != 2) continue;
+
+      final hGoals = int.tryParse(parts[0].trim());
+      final aGoals = int.tryParse(parts[1].trim());
+      if (hGoals == null || aGoals == null) continue;
+
+      final won = _evaluatePick(pick, f.homeTeam, f.awayTeam, hGoals, aGoals);
+      if (won != null) {
+        bet.status = won ? 'won' : 'lost';
+        changed = true;
+      }
+      break;
+    }
+  }
+
+  if (changed && mounted) {
+    setState(() {});
+    await _saveData();
+  }
+}
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _phoneSetupController.dispose();
     _pinController.dispose();
     _confirmPinController.dispose();
+    _loadFixtures();
     super.dispose();
   }
 
