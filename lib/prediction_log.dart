@@ -138,7 +138,14 @@ bool? evaluateTip(String tip, String home, String away, String score) {
   final h = int.tryParse(parts[0].trim());
   final a = int.tryParse(parts[1].trim());
   if (h == null || a == null) return null;
+  final lowerTip = normalizedTip.toLowerCase();
+  final compactTip = lowerTip.replaceAll(RegExp(r'\s+'), '');
 
+  if (lowerTip.contains('most goals') ||
+    lowerTip.contains('card') ||
+    lowerTip.contains('scorer')) {
+  return null;
+  }
   final normalizedTip = tip.trim();
   final totalGoals = h + a;
 
@@ -161,12 +168,48 @@ bool? evaluateTip(String tip, String home, String away, String score) {
 
   if (normalizedTip == 'Both Teams To Score: Yes') return h > 0 && a > 0;
   if (normalizedTip == 'Both Teams To Score: No') return h == 0 || a == 0;
+  if (lowerTip == '1' || lowerTip == 'home') return h > a;
+  if (lowerTip == '2' || lowerTip == 'away') return a > h;
+  if (lowerTip == 'x') return h == a;
+  if (lowerTip == '12' || lowerTip == 'home or away') return h != a;
 
-  return null;
+  if (lowerTip == 'gg' || lowerTip == 'btts' || lowerTip == 'btts yes') {
+  return h > 0 && a > 0;
+  }
+  if (lowerTip == 'ng' || lowerTip == 'btts no' || lowerTip == 'no gg') {
+  return h == 0 || a == 0;
+  }
+
+ if (compactTip.contains('un1.5') || compactTip.contains('under1.5')) {
+  return totalGoals < 2;
+}
+if (lowerTip.contains('over 1.5') || compactTip.contains('ov1.5')) {
+  return totalGoals >= 2;
+}
+if (compactTip.contains('un2.5') || compactTip.contains('under2.5')) {
+  return totalGoals < 3;
+}
+if (lowerTip.contains('over 2.5') || compactTip.contains('ov2.5')) {
+  return totalGoals >= 3;
+}
+if (compactTip.contains('un3.5') || compactTip.contains('under3.5')) {
+  return totalGoals <= 3;
 }
 
-/// Helper widget to render the PROLIFIC \u{1F525} header in bold Teal Green capital letters
-Widget buildProlificHeader() {
+final RegExpMatch? scoreTipMatch =
+    RegExp(r'\b(\d+)\s*-\s*(\d+)\b').firstMatch(lowerTip);
+if (scoreTipMatch != null) {
+  final int? tipH = int.tryParse(scoreTipMatch.group(1)!);
+  final int? tipA = int.tryParse(scoreTipMatch.group(2)!);
+  if (tipH != null && tipA != null) {
+    return h == tipH && a == tipA;
+  }
+}
+return null;
+  }
+
+  /// Helper widget to render the PROLIFIC \u{1F525} header in bold Teal Green capital letters
+  Widget buildProlificHeader() {
   return const Padding(
     padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
     child: Text(
