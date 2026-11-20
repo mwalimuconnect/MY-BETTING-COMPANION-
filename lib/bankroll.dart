@@ -716,7 +716,7 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
             setState(() => _isAdmin = true);
             if (!dialogContext.mounted) return;
             Navigator.pop(dialogContext);
-            _snack('Admin privileges unlocked successfully!');
+            
             return;
           } else {
             setDialogState(() => pinError = 'Server error (${response.statusCode})');
@@ -1465,29 +1465,7 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
                   isAdmin: _isAdmin,
                   onEdit: _editProfile,
                 ),
-                if (_isAdmin) ...[
-                  const SizedBox(height: 8),
-                  Card(
-                    color: Colors.orange.shade50,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(color: Colors.orange.shade300, width: 0.8),
-                    ),
-                    child: ListTile(
-                      leading: Icon(Icons.admin_panel_settings, color: Colors.orange.shade800),
-                      title: Text(
-                        'Admin Panel Active',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: Colors.orange.shade900),
-                      ),
-                      subtitle: const Text('You have administrative privileges unlocked.',
-                          style: TextStyle(fontSize: 11)),
-                    ),
-                  ),
-                ],
+                
                 const SizedBox(height: 12),
                 _summaryCard(),
                 const SizedBox(height: 12),
