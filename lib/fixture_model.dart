@@ -222,7 +222,7 @@ class FixtureModel {
     return '$dayName $dayNum $monthName, $hour:$minute EAT';
   }
 
-  /// Returns true if prediction won, false if lost, or null if undetermined.
+    /// Returns true if prediction won, false if lost, or null if undetermined.
   bool? get isPredictionWon {
     if (!effectiveIsFinished) return null;
     if (predictionCorrect != null) return predictionCorrect;
@@ -230,8 +230,10 @@ class FixtureModel {
     final String tip = topTip.trim().toLowerCase();
     if (tip.isEmpty) return null;
 
-    final String scorePart = actualScore.replaceAll(RegExp(r'^ft\s*', caseSensitive: false), '').trim();
-    final List<String> parts = scorePart.split('-');
+    final String scorePart = actualScore
+        .replaceAll(RegExp(r'^ft\s*', caseSensitive: false), '')
+        .trim();
+    final List<String> parts = scorePart.split(RegExp(r'\s*-\s*'));
     if (parts.length != 2) return null;
 
     final int? homeGoals = int.tryParse(parts[0].trim());
@@ -242,10 +244,30 @@ class FixtureModel {
     final String homeName = homeTeam.trim().toLowerCase();
     final String awayName = awayTeam.trim().toLowerCase();
 
-    if (tip == '1' || tip == 'home' || tip == 'home win' || tip == '$homeName win') {
+    bool matchesTeam(String fullName) {
+      if (fullName.isEmpty) return false;
+      if (tip == fullName ||
+          tip == '$fullName win' ||
+          tip.startsWith('$fullName ')) {
+        return true;
+      }
+      final List<String> tokens = fullName
+          .split(RegExp(r'\s+'))
+          .where((t) => t.length >= 4 && !{'fc', 'sc', 'cf', 'cd', 'ca', 'cr'}.contains(t))
+          .toList();
+      return tokens.any((token) => RegExp('\\b${RegExp.escape(token)}\\b').hasMatch(tip));
+    }
+
+    if (tip == '1' ||
+        tip == 'home' ||
+        tip == 'home win' ||
+        matchesTeam(homeName)) {
       return homeGoals > awayGoals;
     }
-    if (tip == '2' || tip == 'away' || tip == 'away win' || tip == '$awayName win') {
+    if (tip == '2' ||
+        tip == 'away' ||
+        tip == 'away win' ||
+        matchesTeam(awayName)) {
       return awayGoals > homeGoals;
     }
     if (tip == 'x' || tip == 'draw') {
