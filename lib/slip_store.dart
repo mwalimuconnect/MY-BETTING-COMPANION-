@@ -109,8 +109,29 @@ Widget buildBrightDayHeader(String dateStr) {
   final dt = DateTime.tryParse(dateStr);
   String formatted = dateStr;
   if (dt != null) {
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+    const months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC'
+    ];
+    const days = [
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+      'SUNDAY'
+    ];
     final dayName = days[dt.weekday - 1];
     final monthName = months[dt.month - 1];
     formatted = '$dayName, ${dt.day} $monthName ${dt.year}';
@@ -130,8 +151,54 @@ Widget buildBrightDayHeader(String dateStr) {
   );
 }
 
+Widget _statusPill(String label, Color fg, Color bg) {
+  return Container(
+    margin: const EdgeInsets.only(right: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: fg),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: fg,
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  );
+}
+
+Widget _buildLegStatusChip(String status) {
+  switch (status) {
+    case 'won':
+      return _statusPill(
+        'WON',
+        Colors.green.shade400,
+        Colors.green.shade900.withOpacity(0.35),
+      );
+    case 'lost':
+      return _statusPill(
+        'LOST',
+        Colors.red.shade400,
+        Colors.red.shade900.withOpacity(0.35),
+      );
+    case 'void':
+      return _statusPill(
+        'VOID',
+        Colors.amber.shade300,
+        Colors.amber.shade900.withOpacity(0.35),
+      );
+    default:
+      return const SizedBox.shrink();
+  }
+}
+
 /// Helper builder to render saved picks grouped per day with bright day/date headers
-Widget buildGroupedSlipList(List<SlipLeg> legs, Function(String key) onDelete) {
+Widget buildGroupedSlipList(
+    List<SlipLeg> legs, Function(String key) onDelete) {
   if (legs.isEmpty) {
     return const Padding(
       padding: EdgeInsets.all(24),
@@ -183,9 +250,15 @@ Widget buildGroupedSlipList(List<SlipLeg> legs, Function(String key) onDelete) {
                   'Score: ${dayLegs[i].score.isNotEmpty ? dayLegs[i].score : "Pending"}',
                 ),
                 isThreeLine: true,
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: () => onDelete(dayLegs[i].key),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildLegStatusChip(dayLegs[i].status),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () => onDelete(dayLegs[i].key),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -285,11 +358,16 @@ class SlipStore {
       if (leg.status != 'pending') continue;
       final f = byKey[leg.key];
 
-      if (f != null && f.isFinished) {
-        final result = evaluateTip(leg.tip, leg.home, leg.away, f.actualScore);
+      if (f != null && f.effectiveIsFinished) {
         leg.score = f.actualScore;
-        leg.status = result == null ? 'void' : (result ? 'won' : 'lost');
-        if (result != null) newly.add(leg);
+        if (leg.tip.trim().isEmpty) {
+          leg.status = 'none';
+        } else {
+          final result =
+              evaluateTip(leg.tip, leg.home, leg.away, f.actualScore);
+          leg.status = result == null ? 'void' : (result ? 'won' : 'lost');
+          if (result != null) newly.add(leg);
+        }
         changed = true;
       } else {
         final ko = DateTime.tryParse(leg.utcDate);
