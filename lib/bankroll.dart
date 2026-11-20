@@ -178,7 +178,11 @@ class Bet {
 
 class BankrollTab extends StatefulWidget {
   final List<FixtureModel> fixtures;
-  const BankrollTab({super.key, this.fixtures = const []});
+
+  const BankrollTab({
+    super.key,
+    this.fixtures = const [],
+  });
 
   @override
   State<BankrollTab> createState() => _BankrollTabState();
