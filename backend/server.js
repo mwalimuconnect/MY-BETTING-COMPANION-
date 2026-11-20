@@ -432,7 +432,7 @@ try {
     isSample: false,
     isEstimate: false,
   };
-
+}
 // ---------- Extra Global Leagues via API-Football ----------
 let extraFixturesCache = { data: [], fetchedAt: 0 };
 let extraLastFailAt = 0;
