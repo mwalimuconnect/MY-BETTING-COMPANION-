@@ -1100,7 +1100,7 @@ app.post('/api/access/make-admin', async (req, res) => {
     res.status(500).json({ error: 'Server error upgrading user' });
   }
 });
-const PORT = process.env.PORT || 10000;
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server active on port ${PORT}`);
 });
