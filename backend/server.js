@@ -294,7 +294,7 @@ for (let i = 0; i <= MAX_GOALS; i++) {
     awayForm: a.form.slice(-5),
     h2h,
   };
-
+  }
 async function fetchCompetitionMatches(code) {
   const res = await axios.get(
     `https://api.football-data.org/v4/competitions/${code}/matches`,
