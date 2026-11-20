@@ -433,6 +433,18 @@ try {
     isEstimate: false,
   };
 }
+app.get('/api/fixtures', async (req, res) => {
+  try {
+    await ensureRatings();
+    const allMatches = await fetchMatchWindow();
+    const fixtures = pickFixtures(allMatches);
+    return res.json(fixtures);
+  } catch (err) {
+    console.error('Error serving /api/fixtures:', err.message);
+    return res.status(500).json({ error: 'Failed to load fixtures' });
+  }
+});
+
 // ---------- Extra Global Leagues via API-Football ----------
 let extraFixturesCache = { data: [], fetchedAt: 0 };
 let extraLastFailAt = 0;
