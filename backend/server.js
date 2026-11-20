@@ -10,6 +10,16 @@ const PORT = process.env.PORT || 10000;
 const FOOTBALL_DATA_TOKEN = (process.env.FOOTBALL_DATA_TOKEN || '').trim();
 const API_FOOTBALL_KEY = (process.env.API_FOOTBALL_KEY || '').trim();
 const ODDS_API_KEY = (process.env.ODDS_API_KEY || '').trim();
+const MONGO_URI = (process.env.MONGO_URI || process.env.MONGODB_URI || '').trim();
+
+if (!MONGO_URI) {
+  console.error('MongoDB connection error: MONGO_URI / MONGODB_URI is not set');
+} else {
+  mongoose
+    .connect(MONGO_URI)
+    .then(() => console.log('Connected to MongoDB Atlas'))
+    .catch((err) => console.error('MongoDB connection error:', err.message));
+}
 
 const TIMEZONE = 'Africa/Nairobi';
 const CACHE_TTL_MS = 60 * 1000;
@@ -916,7 +926,7 @@ const userAccessSchema = new mongoose.Schema({
 
 const UserAccess = mongoose.model('UserAccess', userAccessSchema);
 
-const ADMIN_PHONES = ['254712345678'];
+const ADMIN_PHONES = ['254712489816'];
 
 function normalizePhone(phone) {
   let cleaned = String(phone).replace(/\s+/g, '').replace(/^\+/, '');
