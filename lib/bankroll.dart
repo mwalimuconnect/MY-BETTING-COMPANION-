@@ -692,26 +692,41 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
               final inputVal = pinCtl.text.trim();
 
               // Check if they entered the admin secret key '775067'
-              if (inputVal == '775067') {
-                try {
-                  final response = await http.post(
-                    Uri.parse('https://my-betting-companion.onrender.com/api/access/make-admin'),
-                    headers: {'Content-Type': 'application/json'},
-                    body: jsonEncode({
-                      'phone': _profilePhone,
-                      'secretKey': '775067',
-                    }),
-                  );
-
-                          if (response.statusCode == 200) {
-          setState(() => _isAdmin = true);
-          if (!dialogContext.mounted) return;
-          Navigator.pop(dialogContext);
-          _snack('Admin privileges unlocked successfully!');
+                    if (inputVal == '775067') {
+        if (_profilePhone.trim().isEmpty) {
+          setDialogState(() => pinError = 'Set your phone number in profile first');
           return;
         }
-      } catch (_) {}
+        _snack('Activating admin access...');
+        try {
+          final response = await http
+              .post(
+                Uri.parse('https://my-betting-companion.onrender.com/api/access/make-admin'),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({
+                  'phone': _profilePhone.trim(),
+                  'secretKey': '775067',
+                }),
+              )
+              .timeout(const Duration(seconds: 45));
 
+          if (response.statusCode == 200) {
+            await SlipAccessManager.checkAccess();
+            if (!mounted) return;
+            setState(() => _isAdmin = true);
+            if (!dialogContext.mounted) return;
+            Navigator.pop(dialogContext);
+            _snack('Admin privileges unlocked successfully!');
+            return;
+          } else {
+            setDialogState(() => pinError = 'Server error (${response.statusCode})');
+            return;
+          }
+        } catch (e) {
+          setDialogState(() => pinError = 'Network timeout. Try again.');
+          return;
+        }
+      }
       setState(() => _isAdmin = true);
       if (!dialogContext.mounted) return;
       Navigator.pop(dialogContext);
