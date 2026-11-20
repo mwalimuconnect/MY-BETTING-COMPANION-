@@ -304,19 +304,16 @@ class FixtureModel {
     if (v is String) return double.tryParse(v.replaceAll('%', '').trim()) ?? fallback;
     return fallback;
   }
-
   static double? _dOpt(dynamic v) {
     if (v == null) return null;
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v.replaceAll('%', '').trim());
     return null;
   }
-
   static List<String> _list(dynamic v) {
     if (v is List) return v.map((e) => e.toString()).toList();
     return <String>[];
   }
-
   static List<H2HEntry> _h2h(dynamic v) {
     if (v is! List) return const [];
     final List<H2HEntry> out = [];
@@ -325,7 +322,6 @@ class FixtureModel {
     }
     return out;
   }
-
   static List<PlayerScorerTip> _scorers(dynamic v) {
     if (v is! List) return const [];
     final List<PlayerScorerTip> out = [];
@@ -337,7 +333,6 @@ class FixtureModel {
     }
     return out;
   }
-
   static DateTime? _parseTimestamp(String raw) {
     final String trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
