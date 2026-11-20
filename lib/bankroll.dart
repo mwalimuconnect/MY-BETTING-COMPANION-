@@ -727,13 +727,7 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
           return;
         }
       }
-      setState(() => _isAdmin = true);
-      if (!dialogContext.mounted) return;
-      Navigator.pop(dialogContext);
-      _snack('Admin mode enabled locally');
-      return;
-
-              // Standard PIN validation (allows 4 to 6 digits)
+          // Standard PIN validation (allows 4 to 6 digits)
               if (inputVal.isNotEmpty && (inputVal.length < 4 || inputVal.length > 6)) {
                 setDialogState(() => pinError = 'PIN must be 4 to 6 digits');
                 return;
