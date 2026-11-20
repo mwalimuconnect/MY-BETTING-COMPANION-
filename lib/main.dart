@@ -1105,7 +1105,7 @@ class _FixturesTabState extends State<FixturesTab> {
               label: const Text('Full insights'),
             ),
           ),
-        ],
+        ),
       ),
     }
   }
