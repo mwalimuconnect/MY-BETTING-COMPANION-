@@ -917,70 +917,76 @@ Future<void> _autoSettleBets() async {
   );
 }
     
-  Future<void> _addBet() async {
-    final matchCtl = TextEditingController();
-    final betTypeCtl = TextEditingController();
-    final stakeCtl = TextEditingController();
-    final oddsCtl = TextEditingController();
-    bool isMultibet = false;
-    FixtureModel? selectedFixture;
-    String? selectedOutcome;
-    final List<String> multiLegs = [];
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-       builder: (ctx, setModalState) => AlertDialog(
+Future<void> _addBet() async {
+  final matchCtl = TextEditingController();
+  final betTypeCtl = TextEditingController();
+  final stakeCtl = TextEditingController();
+  final oddsCtl = TextEditingController();
+  bool isMultibet = false;
+  FixtureModel? selectedFixture;
+  String? selectedOutcome;
+  final List<String> multiLegs = [];
+
+  if (_fixtures.isEmpty) {
+    _loadFixtures();
+  }
+
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setModalState) => AlertDialog(
         title: const Text('Add Bet & Prediction Type'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-                Row(
-                  children: [
-                    ChoiceChip(
-                      label: const Text('Single'),
-                      selected: !isMultibet,
-                      onSelected: (_) =>
-                          setModalState(() => isMultibet = false),
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: const Text('Multibet'),
-                      selected: isMultibet,
-                      onSelected: (_) =>
-                          setModalState(() => isMultibet = true),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (widget.fixtures.isNotEmpty) ...[
-                  DropdownButtonFormField<FixtureModel>(
-                    value: selectedFixture,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Select Fixture',
-                    ),
-                    hint: const Text('Choose fixture or type below'),
-                    items: [
-                      for (final f in widget.fixtures)
-                        DropdownMenuItem<FixtureModel>(
-                          value: f,
-                          child: Text(
-                            '${f.homeTeam} vs ${f.awayTeam}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    onChanged: (f) {
-                      setModalState(() {
-                        selectedFixture = f;
-                        if (f != null) {
-                          matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
-                          selectedOutcome = null;
-                        }
-                      });
-                    },
+              Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('Single'),
+                    selected: !isMultibet,
+                    onSelected: (_) =>
+                        setModalState(() => isMultibet = false),
                   ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Multibet'),
+                    selected: isMultibet,
+                    onSelected: (_) =>
+                        setModalState(() => isMultibet = true),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_fixtures.isNotEmpty) ...[
+                DropdownButtonFormField<FixtureModel>(
+                  value: selectedFixture,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Select Fixture',
+                  ),
+                  hint: const Text('Choose fixture or type below'),
+                  items: [
+                    for (final f in _fixtures)
+                      DropdownMenuItem<FixtureModel>(
+                        value: f,
+                        child: Text(
+                          '${f.homeTeam} vs ${f.awayTeam}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (f) {
+                    setModalState(() {
+                      selectedFixture = f;
+                      if (f != null) {
+                        matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
+                        selectedOutcome = null;
+                      }
+                    });
+                  },
+                ),
+  
                   const SizedBox(height: 8),
                 ],
                 DropdownButtonFormField<String>(
