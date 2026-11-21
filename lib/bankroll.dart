@@ -916,7 +916,34 @@ Future<void> _autoSettleBets() async {
     ),
   );
 }
-    
+bool _isFixtureFinished(FixtureModel f) {
+  final status = (f.status ?? '').toString().trim().toUpperCase();
+  const finishedStatuses = {
+    'FINISHED',
+    'FT',
+    'AET',
+    'PEN',
+    'AWD',
+    'WO',
+    'CANC',
+    'CANCELLED',
+    'PST',
+    'POSTPONED',
+    'ABD',
+    'ABANDONED',
+  };
+  if (finishedStatuses.contains(status)) return true;
+
+  final kickoff = f.utcDate;
+  if (kickoff != null) {
+    final dt = kickoff is DateTime ? kickoff : DateTime.tryParse(kickoff.toString());
+    const liveStatuses = {'IN_PLAY', 'LIVE', '1H', '2H', 'HT', 'ET', 'BT', 'P'};
+    if (dt != null && dt.toUtc().isBefore(DateTime.now().toUtc()) && !liveStatuses.contains(status)) {
+      return true;
+    }
+  }
+  return false;
+}   
 Future<void> _addBet() async {
   final matchCtl = TextEditingController();
   final betTypeCtl = TextEditingController();
@@ -967,8 +994,17 @@ Future<void> _addBet() async {
                   ),
                   hint: const Text('Choose fixture or type below'),
                   items: [
-                    for (final f in _fixtures)
-                      DropdownMenuItem<FixtureModel>(
+            items: [
+            for (final f in _fixtures.where((item) => !_isFixtureFinished(item)))
+            DropdownMenuItem<FixtureModel>(
+              value: f,
+              child: Text(
+                '${f.homeTeam} vs ${f.awayTeam}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        DropdownMenuItem<FixtureModel>(
                         value: f,
                         child: Text(
                           '${f.homeTeam} vs ${f.awayTeam}',
