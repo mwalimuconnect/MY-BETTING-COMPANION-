@@ -33,6 +33,24 @@ const DAYS_BACK = 7;
 const DAYS_AHEAD = 8;
 const MAX_UPCOMING = 50;
 const MAX_FINISHED = 50;
+const ODDS_CACHE_TTL_MS = 45 * 60 * 1000; // 45 minutes
+const responseCache = new Map();
+
+async function getCached(cacheKey, ttlMs, fetcher) {
+  const now = Date.now();
+  const existing = responseCache.get(cacheKey);
+
+  if (existing && existing.expiresAt > now) {
+    return existing.data;
+  }
+
+  const freshData = await fetcher();
+  responseCache.set(cacheKey, {
+    data: freshData,
+    expiresAt: now + ttlMs,
+  });
+  return freshData;
+}
 
 // ---------- 12 Core Competitions (football-data.org free tier) ----------
 const CORE_COMPETITIONS = ['PL', 'ELC', 'BL1', 'SA', 'PD', 'FL1', 'DED', 'PPL', 'BSA', 'CL', 'WC', 'EC'];
@@ -848,22 +866,30 @@ app.get('/api/scorers/:code', async (req, res) => {
     return sendTableError(res, `Scorers ${code}`, err);
   }
 });
-// ---------- Real Odds via The Odds API ----------
+
 app.get('/api/odds/:sport', async (req, res) => {
   const sport = req.params.sport || 'soccer_epl';
-  if (!ODDS_API_KEY) return res.status(503).json({ error: 'Odds API key not configured on server' });
+  if (!ODDS_API_KEY) {
+    return res.status(503).json({ error: 'Odds API key not configured on server' });
+  }
+
+  const cacheKey = `odds:${sport}`;
 
   try {
-    const response = await axios.get(`https://api.the-odds-api.com/v4/sports/${sport}/odds/`, {
-      params: {
-        apiKey: ODDS_API_KEY,
-        regions: 'eu,uk',
-        markets: 'h2h',
-        oddsFormat: 'decimal',
-      },
-      timeout: 15000,
+    const data = await getCached(cacheKey, ODDS_CACHE_TTL_MS, async () => {
+      const response = await axios.get(`https://api.the-odds-api.com/v4/sports/${sport}/odds/`, {
+        params: {
+          apiKey: ODDS_API_KEY,
+          regions: 'eu,uk',
+          markets: 'h2h',
+          oddsFormat: 'decimal',
+        },
+        timeout: 15000,
+      });
+      return response.data;
     });
-    return res.json(response.data);
+
+    return res.json(data);
   } catch (err) {
     console.error('Failed to fetch odds:', err.message);
     return res.status(502).json({ error: 'Could not fetch odds from provider' });
