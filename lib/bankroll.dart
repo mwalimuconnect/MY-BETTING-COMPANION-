@@ -1100,7 +1100,7 @@ Future<void> _addBet() async {
                     if (m.isEmpty || p.isEmpty) {
                     _snack('Pick or enter a fixture and outcome first.');
                      return;
-                    },
+                    }
                     setModalState(() {
                     multiLegs.add('$m [$p]');
                     selectedFixture = null;
