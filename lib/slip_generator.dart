@@ -723,7 +723,7 @@ class SlipGenerator {
 
     return null;
     }
-                          
+  }                 
 class ProtectedSystemSlipCard extends StatefulWidget {
   final GeneratedSlip slip;
   final List<dynamic> latestFixtures;
