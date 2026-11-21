@@ -280,7 +280,6 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
         choices.add(m);
       }
     }
-
     return choices;
     }
 bool? _evaluatePick(String pick, String homeTeam, String awayTeam, int hGoals, int aGoals) {
