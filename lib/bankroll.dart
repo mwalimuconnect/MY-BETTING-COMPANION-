@@ -934,10 +934,10 @@ bool _isFixtureFinished(FixtureModel f) {
   };
   if (finishedStatuses.contains(status)) return true;
 
-  final kickoff = f.utcDate; // Adjust if FixtureModel uses another date field name
+  final kickoff = f.utcDate; 
   if (kickoff != null) {
-    final DateTime? dt =
-        kickoff is DateTime ? kickoff : DateTime.tryParse(kickoff.toString());
+  final DateTime? dt =
+    kickoff is DateTime ? kickoff as DateTime : DateTime.tryParse(kickoff.toString());
     const liveStatuses = {'IN_PLAY', 'LIVE', '1H', '2H', 'HT', 'ET', 'BT', 'P'};
     if (dt != null &&
         dt.toUtc().isBefore(DateTime.now().toUtc()) &&
@@ -1120,26 +1120,27 @@ Future<void> _addBet() async {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'Stake (Ksh)'),
               ),
-                  if (isMultibet) ...[
+              if (isMultibet) ...[
                   OutlinedButton.icon(
                   onPressed: () {
                     final m = matchCtl.text.trim();
                     final p = betTypeCtl.text.trim();
                     if (m.isEmpty || p.isEmpty) {
-                      _snack('Pick or enter a fixture and outcome first.');
-                      return;
+                    _snack('Pick or enter a fixture and outcome first.');
+                     return;
                     }
                     setModalState(() {
-      multiLegs.add('$m [$p]'); 
-      selectedFixture = null; 
-      selectedOutcome = null; 
-      selectedBetType = null;
-      matchCtl.clear(); 
-      betTypeCtl.clear(); 
-    }); 
-                  icon: const Icon(Icons.add),
-                  label: Text('Add Leg (${multiLegs.length})'),
-                ),
+                    multiLegs.add('$m [$p]');
+                    selectedFixture = null;
+                    selectedOutcome = null;
+                    selectedBetType = null;
+                    matchCtl.clear();
+                    betTypeCtl.clear();
+                   });
+                 },
+                icon: const Icon(Icons.add),
+                label: Text('Add Leg (${multiLegs.length})'),
+                )
                 for (int i = 0; i < multiLegs.length; i++)
                   Row(
                     children: [
