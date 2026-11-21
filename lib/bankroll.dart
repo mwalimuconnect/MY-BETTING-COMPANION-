@@ -1054,13 +1054,7 @@ Future<void> _addBet() async {
                   hintText: 'e.g. GG or 1X or Over 2.5',
                 ),
               ),
-          TextField(
-          controller: betTypeCtl,
-          decoration: const InputDecoration(
-            labelText: 'Bet Type / Pick (e.g., GG, Over 2.5, Home',
-            hintText: 'e.g. GG or 1X or Over 2.5',
-          ),
-        ), 
+          
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: selectedBetType,
