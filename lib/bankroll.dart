@@ -213,6 +213,8 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
   List<Bet> _bets = [];
   List<FixtureModel> _fixtures = [];
   SuggestedSlip? _todaySuggestedSlip;
+  final GlobalKey<FormFieldState<String>> outcomeFieldKey =
+      GlobalKey<FormFieldState<String>>();
 
   String _profileName = '';
   String _profilePhone = '';
