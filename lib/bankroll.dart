@@ -916,48 +916,17 @@ Future<void> _autoSettleBets() async {
   );
 }
 bool _isFixtureFinished(FixtureModel f) {
-  final rawStatus = ''; // Replace with f.<yourStatusField> if FixtureModel has one
-  final status = rawStatus.trim().toUpperCase();
-  const finishedStatuses = {
-    'FINISHED',
-    'FT',
-    'AET',
-    'PEN',
-    'AWD',
-    'WO',
-    'CANC',
-    'CANCELLED',
-    'PST',
-    'POSTPONED',
-    'ABD',
-    'ABANDONED',
-  };
-  if (finishedStatuses.contains(status)) return true;
+  if (f.effectiveIsFinished) return true;
 
-  final kickoff = f.utcDate; 
-  if (kickoff != null) {
-  final DateTime? dt =
-    kickoff is DateTime ? kickoff as DateTime : DateTime.tryParse(kickoff.toString());
-    const liveStatuses = {'IN_PLAY', 'LIVE', '1H', '2H', 'HT', 'ET', 'BT', 'P'};
-    if (dt != null &&
-        dt.toUtc().isBefore(DateTime.now().toUtc()) &&
-        !liveStatuses.contains(status)) {
-      return true;
-    }
+  final DateTime? dt = f.kickoff ?? DateTime.tryParse(f.utcDate);
+  if (dt != null &&
+      dt.toUtc().isBefore(DateTime.now().toUtc()) &&
+      !f.effectiveIsLive) {
+    return true;
   }
   return false;
 }
-bool _isFixtureFinished(FixtureModel f) {
-    if (f.effectiveIsFinished) return true;
 
-    final DateTime? dt = f.kickoff ?? FixtureModel._parseTimestamp(f.utcDate);
-    if (dt != null &&
-        dt.toUtc().isBefore(DateTime.now().toUtc()) &&
-        !f.effectiveIsLive) {
-      return true;
-    }
-    return false;
-    }
 Future<void> _addBet() async {
   final matchCtl = TextEditingController();
   final betTypeCtl = TextEditingController();
@@ -1016,8 +985,7 @@ Future<void> _addBet() async {
                   decoration: const InputDecoration(
                     labelText: 'Select Fixture',
                   ),
-                  hint: const Text('Choose fixture or type below'),
-                  items: [
+                  hint: const Text('Choose fixture or type below'),   
             items: [
             for (final f in _fixtures.where((item) => !_isFixtureFinished(item)))
             DropdownMenuItem<FixtureModel>(
