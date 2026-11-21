@@ -1054,32 +1054,6 @@ Future<void> _addBet() async {
                   hintText: 'e.g. GG or 1X or Over 2.5',
                 ),
               ),
-          
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          value: selectedBetType,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Bet Type'),
-          hint: const Text('Select bet type'),
-          items: [
-            for (final bt in betTypes)
-              DropdownMenuItem<String>(
-                value: bt,
-                child: Text(bt, overflow: TextOverflow.ellipsis),
-              ),
-          ],
-          onChanged: (val) {
-            setModalState(() {
-              selectedBetType = val;
-              if (val != null && val != 'Custom') {
-                betTypeCtl.text = val;
-              } else if (val == 'Custom') {
-                betTypeCtl.clear();
-              }
-            });
-          },
-        ),
-        const SizedBox(height: 8), 
               const SizedBox(height: 8),
               TextField(
                 controller: stakeCtl,
@@ -1126,14 +1100,14 @@ Future<void> _addBet() async {
                 const SizedBox(height: 8),
               ],
               const SizedBox(height: 8),
-              TextField(
-                controller: oddsCtl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Odds (decimal, e.g. 1.85)'),
-              ),
-            ],
+          TextField(
+            controller: oddsCtl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Odds (decimal, e.g. 1.85)'),
           ),
-        ),
+        ],
+      ),
+    ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -1174,12 +1148,6 @@ if (!hasValidPick || stake == null || stake <= 0 || odds == null || odds <= 1.0)
 final fullDescription = isMultibet && multiLegs.isNotEmpty
     ? 'Multi (${multiLegs.length} legs): ${multiLegs.join(' | ')}'
     : (betType.isNotEmpty ? '$matchName [$betType]' : matchName);
-
-    if (matchName.isEmpty || stake == null || stake <= 0 || odds == null || odds <= 1) {
-      if (!mounted) return;
-      _snack('Enter a valid match name, stake above 0, and odds above 1.0');
-      return;
-    }
     
     final now = DateTime.now();
     
