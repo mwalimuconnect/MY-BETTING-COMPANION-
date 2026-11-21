@@ -947,6 +947,17 @@ bool _isFixtureFinished(FixtureModel f) {
   }
   return false;
 }
+bool _isFixtureFinished(FixtureModel f) {
+    if (f.effectiveIsFinished) return true;
+
+    final DateTime? dt = f.kickoff ?? FixtureModel._parseTimestamp(f.utcDate);
+    if (dt != null &&
+        dt.toUtc().isBefore(DateTime.now().toUtc()) &&
+        !f.effectiveIsLive) {
+      return true;
+    }
+    return false;
+    }
 Future<void> _addBet() async {
   final matchCtl = TextEditingController();
   final betTypeCtl = TextEditingController();
