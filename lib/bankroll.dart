@@ -237,6 +237,52 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
       // Keep any existing fixtures or fall back to manual typing in _addBet()
     }
   }
+
+  List<String> _outcomeChoicesFor(FixtureModel? fixture) {
+    final List<String> choices = [];
+
+    if (fixture != null) {
+      if (fixture.topTip.trim().isNotEmpty) {
+        choices.add(fixture.topTip.trim());
+      }
+      if (fixture.btts.trim().isNotEmpty &&
+          fixture.btts.trim().toUpperCase() != 'N/A') {
+        choices.add('BTTS: ${fixture.btts.trim()}');
+      }
+      if (fixture.over25Goals.trim().isNotEmpty &&
+          fixture.over25Goals.trim().toUpperCase() != 'N/A') {
+        choices.add('O/U 2.5: ${fixture.over25Goals.trim()}');
+      }
+      if (fixture.over15Goals.trim().isNotEmpty &&
+          fixture.over15Goals.trim().toUpperCase() != 'N/A') {
+        choices.add('Over 1.5 (${fixture.over15Goals.trim()})');
+      }
+    }
+
+    const standardMarkets = [
+      'Home Win (1)',
+      'Draw (X)',
+      'Away Win (2)',
+      '1X (Home or Draw)',
+      'X2 (Away or Draw)',
+      '12 (Home or Away)',
+      'GG (BTTS Yes)',
+      'NG (BTTS No)',
+      'Over 1.5 Goals',
+      'Over 2.5 Goals',
+      'Under 2.5 Goals',
+      'Under 3.5 Goals',
+      'Custom...',
+    ];
+
+    for (final m in standardMarkets) {
+      if (!choices.contains(m)) {
+        choices.add(m);
+      }
+    }
+
+    return choices;
+    }
 bool? _evaluatePick(String pick, String homeTeam, String awayTeam, int hGoals, int aGoals) {
   final p = pick.trim().toLowerCase();
   final hName = homeTeam.trim().toLowerCase();
@@ -1049,7 +1095,8 @@ Future<void> _autoSettleBets() async {
           ),
         ],
       ),
-    );
+    ),
+  );
 
     if (ok != true) return;
     final matchName = matchCtl.text.trim();
