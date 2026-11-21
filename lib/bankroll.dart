@@ -916,7 +916,8 @@ Future<void> _autoSettleBets() async {
   );
 }
 bool _isFixtureFinished(FixtureModel f) {
-  final status = (f.status ?? '').toString().trim().toUpperCase();
+  final rawStatus = ''; // Replace with f.<yourStatusField> if FixtureModel has one
+  final status = rawStatus.trim().toUpperCase();
   const finishedStatuses = {
     'FINISHED',
     'FT',
@@ -933,23 +934,25 @@ bool _isFixtureFinished(FixtureModel f) {
   };
   if (finishedStatuses.contains(status)) return true;
 
-  final kickoff = f.utcDate;
+  final kickoff = f.utcDate; // Adjust if FixtureModel uses another date field name
   if (kickoff != null) {
-    final dt = kickoff is DateTime ? kickoff : DateTime.tryParse(kickoff.toString());
+    final DateTime? dt =
+        kickoff is DateTime ? kickoff : DateTime.tryParse(kickoff.toString());
     const liveStatuses = {'IN_PLAY', 'LIVE', '1H', '2H', 'HT', 'ET', 'BT', 'P'};
-    if (dt != null && dt.toUtc().isBefore(DateTime.now().toUtc()) && !liveStatuses.contains(status)) {
+    if (dt != null &&
+        dt.toUtc().isBefore(DateTime.now().toUtc()) &&
+        !liveStatuses.contains(status)) {
       return true;
     }
   }
   return false;
-}   
+}
 Future<void> _addBet() async {
   final matchCtl = TextEditingController();
   final betTypeCtl = TextEditingController();
   final stakeCtl = TextEditingController();
   final oddsCtl = TextEditingController();
   bool isMultibet = false;
-  FixtureModel? selectedFixture;
   FixtureModel? selectedFixture;
     String? selectedOutcome;
     String? selectedBetType;
@@ -964,9 +967,6 @@ Future<void> _addBet() async {
       'Cards',
       'Custom',
     ];
-
-  final List<String> multiLegs = [];
-
   if (_fixtures.isEmpty) {
     _loadFixtures();
   }
@@ -1129,7 +1129,7 @@ Future<void> _addBet() async {
                       _snack('Pick or enter a fixture and outcome first.');
                       return;
                     }
-                        setModalState(() {
+                    setModalState(() {
       multiLegs.add('$m [$p]'); 
       selectedFixture = null; 
       selectedOutcome = null; 
