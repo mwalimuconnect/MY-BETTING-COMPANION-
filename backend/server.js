@@ -608,14 +608,19 @@ async function fetchMatchWindow() {
   const matches = Array.from(byId.values());
 
   const anyOk =
-    pastR.status === 'fulfilled' || futureR.status === 'fulfilled' || extraR.status === 'fulfilled';
+  pastR.status === 'fulfilled' ||
+  futureR.status === 'fulfilled' ||
+  extraR.status === 'fulfilled';
 
-  if (!anyOk && cache.data) return cache.data;
-
-  cache = { data: matches, fetchedAt: now };
-  return matches;
+if ((!anyOk || matches.length === 0) && cache.data && cache.data.length > 0) {
+  return cache.data;
 }
 
+if (anyOk) {
+  cache = { data: matches, fetchedAt: now };
+}
+return matches;
+  
 function pickFixtures(allMatches) {
   const today = todayInNairobi();
   const now = new Date();
