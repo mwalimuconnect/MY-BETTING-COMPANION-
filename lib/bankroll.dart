@@ -926,27 +926,30 @@ bool _isFixtureFinished(FixtureModel f) {
   }
   return false;
 }
-
+  
 Future<void> _addBet() async {
   final matchCtl = TextEditingController();
   final betTypeCtl = TextEditingController();
   final stakeCtl = TextEditingController();
   final oddsCtl = TextEditingController();
   bool isMultibet = false;
+  bool editMatchManually = false;
+  bool editPickManually = false;
   FixtureModel? selectedFixture;
-    String? selectedOutcome;
-    String? selectedBetType;
-    final List<String> multiLegs = [];
-    const betTypes = [
-      '1X2 (Match Result)',
-      'Both Teams to Score (GG / BTTS)',
-      'Over / Under Goals',
-      'Double Chance (1X / 12 / X2)',
-      'Draw No Bet',
-      'Corners',
-      'Cards',
-      'Custom',
-    ];
+  String? selectedOutcome;
+  String? selectedBetType;
+  final List<String> multiLegs = [];
+  const betTypes = [
+    '1X2 (Match Result)',
+    'Both Teams to Score (GG / BTTS)',
+    'Over / Under Goals',
+    'Double Chance (1X / 12 / X2)',
+    'Draw No Bet',
+    'Corners',
+    'Cards',
+    'Custom',
+  ];
+
   if (_fixtures.isEmpty) {
     _loadFixtures();
   }
@@ -954,80 +957,92 @@ Future<void> _addBet() async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setModalState) => AlertDialog(
-        title: const Text('Add Bet & Prediction Type'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  ChoiceChip(
-                    label: const Text('Single'),
-                    selected: !isMultibet,
-                    onSelected: (_) =>
-                        setModalState(() => isMultibet = false),
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('Multibet'),
-                    selected: isMultibet,
-                    onSelected: (_) =>
-                        setModalState(() => isMultibet = true),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (_fixtures.isNotEmpty) ...[
-                DropdownButtonFormField<FixtureModel>(
-                  value: selectedFixture,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Select Fixture',
-                  ),
-                  hint: const Text('Choose fixture or type below'),   
-            items: [
-            for (final f in _fixtures.where((item) => !_isFixtureFinished(item)))
-            DropdownMenuItem<FixtureModel>(
-              value: f,
-              child: Text(
-                '${f.homeTeam} vs ${f.awayTeam}',
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-        ],
-      
-  onChanged: (f) {
-  setModalState(() {
-    selectedFixture = f;
-    if (f != null) {
-      matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
-      selectedOutcome = null;
-      betTypeCtl.clear();
-    }
-  });
-  if (f != null) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = outcomeFieldKey.currentContext;
-      if (ctx != null) {
-        GestureDetector? detector;
-        void findDetector(Element e) {
-          if (e.widget is GestureDetector) {
-            detector = e.widget as GestureDetector;
-            return;
-          }
-          e.visitChildren(findDetector);
-        }
-        ctx.visitChildElements(findDetector);
-        detector?.onTap?.call();
-      }
-    });
-  }
-},
+      builder: (ctx, setModalState) {
+        final showMatchField = selectedFixture == null || editMatchManually;
+        final showPickField =
+            selectedOutcome == null ||
+            selectedOutcome == 'Custom...' ||
+            editPickManually;
 
-              const SizedBox(height: 8),
+        return AlertDialog(
+          title: const Text('Add Bet & Prediction Type'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Single'),
+                      selected: !isMultibet,
+                      onSelected: (_) =>
+                          setModalState(() => isMultibet = false),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('Multibet'),
+                      selected: isMultibet,
+                      onSelected: (_) =>
+                          setModalState(() => isMultibet = true),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (_fixtures.isNotEmpty) ...[
+                  DropdownButtonFormField<FixtureModel>(
+                    value: selectedFixture,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Fixture',
+                    ),
+                    hint: const Text('Choose fixture or type below'),
+                    items: [
+                      for (final f in _fixtures.where(
+                        (item) => !_isFixtureFinished(item),
+                      ))
+                        DropdownMenuItem<FixtureModel>(
+                          value: f,
+                          child: Text(
+                            '${f.homeTeam} vs ${f.awayTeam}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (f) {
+                      setModalState(() {
+                        selectedFixture = f;
+                        editMatchManually = false;
+                        editPickManually = false;
+                        if (f != null) {
+                          matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
+                          selectedOutcome = null;
+                          betTypeCtl.clear();
+                        }
+                      });
+                      if (f != null) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          final ctx = outcomeFieldKey.currentContext;
+                          if (ctx != null) {
+                            GestureDetector? detector;
+                            void findDetector(Element e) {
+                              if (e.widget is GestureDetector) {
+                                detector = e.widget as GestureDetector;
+                                return;
+                              }
+                              e.visitChildren(findDetector);
+                            }
+
+                            ctx.visitChildElements(findDetector);
+                            detector?.onTap?.call();
+                          }
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
                 ],
                 DropdownButtonFormField<String>(
+                  key: outcomeFieldKey,
                   value: selectedOutcome,
                   isExpanded: true,
                   decoration: const InputDecoration(
@@ -1049,141 +1064,181 @@ Future<void> _addBet() async {
                       selectedOutcome = val;
                       if (val != null && val != 'Custom...') {
                         betTypeCtl.text = val;
+                        editPickManually = false;
                       } else if (val == 'Custom...') {
                         betTypeCtl.clear();
+                        editPickManually = true;
                       }
                     });
                   },
                 ),
-                const SizedBox(height: 8),
-              TextField(
-                controller: matchCtl,
-                decoration: const InputDecoration(
-                  labelText: 'Match (e.g., Arsenal vs Chelsea)',
-                  hintText: 'Home vs Away',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: betTypeCtl,
-                decoration: const InputDecoration(
-                  labelText: 'Bet Type / Pick (e.g., GG, Over 2.5, Home Win)',
-                  hintText: 'e.g. GG or 1X or Over 2.5',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: stakeCtl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Stake (Ksh)'),
-              ),
-              if (isMultibet) ...[
-                  OutlinedButton.icon(
-                  onPressed: () {
-                    final m = matchCtl.text.trim();
-                    final p = betTypeCtl.text.trim();
-                    if (m.isEmpty || p.isEmpty) {
-                    _snack('Pick or enter a fixture and outcome first.');
-                     return;
-                    }
-                    setModalState(() {
-                    multiLegs.add('$m [$p]');
-                    selectedFixture = null;
-                    selectedOutcome = null;
-                    selectedBetType = null;
-                    matchCtl.clear();
-                    betTypeCtl.clear();
-                   });
-                 },
-                icon: const Icon(Icons.add),
-                label: Text('Add Leg (${multiLegs.length})'),
-                ),
-                for (int i = 0; i < multiLegs.length; i++)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${i + 1}. ${multiLegs[i]}',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 16),
-                        onPressed: () =>
-                            setModalState(() => multiLegs.removeAt(i)),
-                      ),
-                    ],
+                if (selectedFixture != null && !editMatchManually)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () =>
+                          setModalState(() => editMatchManually = true),
+                      child: const Text('Edit match manually'),
+                    ),
                   ),
-               
+                if (showMatchField) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: matchCtl,
+                    decoration: const InputDecoration(
+                      labelText: 'Match (e.g., Arsenal vs Chelsea)',
+                      hintText: 'Home vs Away',
+                    ),
+                  ),
+                ],
+                if (selectedOutcome != null &&
+                    selectedOutcome != 'Custom...' &&
+                    !editPickManually)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () =>
+                          setModalState(() => editPickManually = true),
+                      child: const Text('Edit pick manually'),
+                    ),
+                  ),
+                if (showPickField) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: betTypeCtl,
+                    decoration: const InputDecoration(
+                      labelText: 'Bet Type / Pick (e.g., GG, Over 2.5, Home Win)',
+                      hintText: 'e.g. GG or 1X or Over 2.5',
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: stakeCtl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Stake (Ksh)'),
+                ),
+                if (isMultibet) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      final m = matchCtl.text.trim();
+                      final p = betTypeCtl.text.trim();
+                      if (m.isEmpty || p.isEmpty) {
+                        _snack('Pick or enter a fixture and outcome first.');
+                        return;
+                      }
+                      setModalState(() {
+                        multiLegs.add('$m [$p]');
+                        selectedFixture = null;
+                        selectedOutcome = null;
+                        selectedBetType = null;
+                        editMatchManually = false;
+                        editPickManually = false;
+                        matchCtl.clear();
+                        betTypeCtl.clear();
+                      });
+                    },
+                    icon: const Icon(Icons.add),
+                    label: Text('Add Leg (${multiLegs.length})'),
+                  ),
+                  for (int i = 0; i < multiLegs.length; i++)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${i + 1}. ${multiLegs[i]}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          onPressed: () =>
+                              setModalState(() => multiLegs.removeAt(i)),
+                        ),
+                      ],
+                    ),
+                ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: oddsCtl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Odds (decimal, e.g. 1.85)',
+                  ),
+                ),
               ],
-              const SizedBox(height: 8),
-          TextField(
-            controller: oddsCtl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Odds (decimal, e.g. 1.85)'),
-          ),
-        ],
-      ),
-    ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _teal,
-              foregroundColor: Colors.white,
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Add & Track'),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _teal,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Add & Track'),
+            ),
+          ],
+        );
+      },
     ),
   );
 
-    if (ok != true) return;
-    final matchName = matchCtl.text.trim();
-    final betType = betTypeCtl.text.trim();
-    final stake = _parse(stakeCtl.text);
-    final odds = _parse(oddsCtl.text);
-    if (isMultibet && matchName.isNotEmpty && betType.isNotEmpty) {
-  multiLegs.add('$matchName [$betType]');
-}
+  if (ok != true) return;
 
-final hasValidPick = isMultibet
-    ? (multiLegs.isNotEmpty || matchName.isNotEmpty)
-    : matchName.isNotEmpty;
+  final matchName = matchCtl.text.trim();
+  final betType = betTypeCtl.text.trim();
+  final stake = _parse(stakeCtl.text);
+  final odds = _parse(oddsCtl.text);
 
-if (!hasValidPick || stake == null || stake <= 0 || odds == null || odds <= 1.0) {
-  if (!mounted) return;
-  _snack('Enter a valid match or leg, stake above 0, and odds above 1.0');
-  return;
-}
-
-final fullDescription = isMultibet && multiLegs.isNotEmpty
-    ? 'Multi (${multiLegs.length} legs): ${multiLegs.join(' | ')}'
-    : (betType.isNotEmpty ? '$matchName [$betType]' : matchName);
-    
-    final now = DateTime.now();
-    
-    setState(() {
-      _bets.insert(
-        0,
-        Bet(
-          id: now.millisecondsSinceEpoch,
-          date: now.toIso8601String(),
-          description: fullDescription,
-          stake: stake,
-          odds: odds,
-          status: 'pending', // Will auto-settle or can be matched against live scores
-        ),
-      );
-    });
-    await _saveData();
+  if (isMultibet && matchName.isNotEmpty && betType.isNotEmpty) {
+    multiLegs.add('$matchName [$betType]');
   }
-             
+
+  final hasValidPick = isMultibet
+      ? (multiLegs.isNotEmpty || matchName.isNotEmpty)
+      : matchName.isNotEmpty;
+
+  if (!hasValidPick ||
+      stake == null ||
+      stake <= 0 ||
+      odds == null ||
+      odds <= 1.0) {
+    if (!mounted) return;
+    _snack('Enter a valid match or leg, stake above 0, and odds above 1.0');
+    return;
+  }
+
+  final fullDescription = isMultibet && multiLegs.isNotEmpty
+      ? 'Multi (${multiLegs.length} legs): ${multiLegs.join(' | ')}'
+      : (betType.isNotEmpty ? '$matchName [$betType]' : matchName);
+
+  final now = DateTime.now();
+
+  setState(() {
+    _bets.insert(
+      0,
+      Bet(
+        id: now.millisecondsSinceEpoch,
+        date: now.toIso8601String(),
+        description: fullDescription,
+        stake: stake,
+        odds: odds,
+        status: 'pending', // Will auto-settle or can be matched against live scores
+      ),
+    );
+  });
+
+  await _saveData();
+}
+
   Future<void> _onMenu(Bet bet, String action) async {
     setState(() {
       if (action == 'delete') {
