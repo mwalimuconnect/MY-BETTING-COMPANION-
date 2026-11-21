@@ -996,15 +996,8 @@ Future<void> _addBet() async {
               ),
             ),
         ],
-        DropdownMenuItem<FixtureModel>(
-                        value: f,
-                        child: Text(
-                          '${f.homeTeam} vs ${f.awayTeam}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: (f) {
+      
+            onChanged: (f) {
                     setModalState(() {
                       selectedFixture = f;
                       if (f != null) {
