@@ -997,18 +997,35 @@ Future<void> _addBet() async {
             ),
         ],
       
-            onChanged: (f) {
-                    setModalState(() {
-                      selectedFixture = f;
-                      if (f != null) {
-                        matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
-                        selectedOutcome = null;
-                      }
-                    });
-                  },
-                ),
-  
-                  const SizedBox(height: 8),
+  onChanged: (f) {
+  setModalState(() {
+    selectedFixture = f;
+    if (f != null) {
+      matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
+      selectedOutcome = null;
+      betTypeCtl.clear();
+    }
+  });
+  if (f != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = outcomeFieldKey.currentContext;
+      if (ctx != null) {
+        GestureDetector? detector;
+        void findDetector(Element e) {
+          if (e.widget is GestureDetector) {
+            detector = e.widget as GestureDetector;
+            return;
+          }
+          e.visitChildren(findDetector);
+        }
+        ctx.visitChildElements(findDetector);
+        detector?.onTap?.call();
+      }
+    });
+  }
+},
+
+              const SizedBox(height: 8),
                 ],
                 DropdownButtonFormField<String>(
                   value: selectedOutcome,
@@ -1097,7 +1114,7 @@ Future<void> _addBet() async {
                       ),
                     ],
                   ),
-                const SizedBox(height: 8),
+               
               ],
               const SizedBox(height: 8),
           TextField(
