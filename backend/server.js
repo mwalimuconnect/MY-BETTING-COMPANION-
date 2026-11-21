@@ -588,11 +588,10 @@ async function fetchMatchWindow() {
   }
      
   const [pastR, futureR, extraR] = await Promise.allSettled([
-    FOOTBALL_DATA_TOKEN ? requestMatches(utcDateOffset(-DAYS_BACK), utcDateOffset(0)) : Promise.reject(new Error('no football-data token')),
-    FOOTBALL_DATA_TOKEN ? requestMatches(utcDateOffset(1), utcDateOffset(DAYS_AHEAD)) : Promise.reject(new Error('no football-data token')),
-    fetchExtraLeagueFixtures(),
-  ]);
-
+  FOOTBALL_DATA_TOKEN ? requestMatches(utcDateOffset(-DAYS_BACK), utcDateOffset(0)) : Promise.reject(new Error('no football-data token')),
+  FOOTBALL_DATA_TOKEN ? requestMatches(utcDateOffset(0), utcDateOffset(DAYS_AHEAD + 1)) : Promise.reject(new Error('no football-data token')),
+  fetchExtraLeagueFixtures(),
+]);
   if (pastR.status === 'rejected') console.error('football-data (past) failed:', pastR.reason && pastR.reason.message);
   if (futureR.status === 'rejected') console.error('football-data (future) failed:', futureR.reason && futureR.reason.message);
   if (extraR.status === 'rejected') console.error('API-Football failed:', extraR.reason && extraR.reason.message);
