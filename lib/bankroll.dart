@@ -951,7 +951,21 @@ Future<void> _addBet() async {
   final oddsCtl = TextEditingController();
   bool isMultibet = false;
   FixtureModel? selectedFixture;
-  String? selectedOutcome;
+  FixtureModel? selectedFixture;
+    String? selectedOutcome;
+    String? selectedBetType;
+    final List<String> multiLegs = [];
+    const betTypes = [
+      '1X2 (Match Result)',
+      'Both Teams to Score (GG / BTTS)',
+      'Over / Under Goals',
+      'Double Chance (1X / 12 / X2)',
+      'Draw No Bet',
+      'Corners',
+      'Cards',
+      'Custom',
+    ];
+
   final List<String> multiLegs = [];
 
   if (_fixtures.isEmpty) {
@@ -1069,6 +1083,38 @@ Future<void> _addBet() async {
                   hintText: 'e.g. GG or 1X or Over 2.5',
                 ),
               ),
+          TextField(
+          controller: betTypeCtl,
+          decoration: const InputDecoration(
+            labelText: 'Bet Type / Pick (e.g., GG, Over 2.5, Home',
+            hintText: 'e.g. GG or 1X or Over 2.5',
+          ),
+        ), 
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: selectedBetType,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Bet Type'),
+          hint: const Text('Select bet type'),
+          items: [
+            for (final bt in betTypes)
+              DropdownMenuItem<String>(
+                value: bt,
+                child: Text(bt, overflow: TextOverflow.ellipsis),
+              ),
+          ],
+          onChanged: (val) {
+            setModalState(() {
+              selectedBetType = val;
+              if (val != null && val != 'Custom') {
+                betTypeCtl.text = val;
+              } else if (val == 'Custom') {
+                betTypeCtl.clear();
+              }
+            });
+          },
+        ),
+        const SizedBox(height: 8), 
               const SizedBox(height: 8),
               TextField(
                 controller: stakeCtl,
@@ -1084,14 +1130,14 @@ Future<void> _addBet() async {
                       _snack('Pick or enter a fixture and outcome first.');
                       return;
                     }
-                    setModalState(() {
-                      multiLegs.add('$m [$p]');
-                      selectedFixture = null;
-                      selectedOutcome = null;
-                      matchCtl.clear();
-                      betTypeCtl.clear();
-                    });
-                  },
+                        setModalState(() {
+      multiLegs.add('$m [$p]'); 
+      selectedFixture = null; 
+      selectedOutcome = null; 
+      selectedBetType = null;
+      matchCtl.clear(); 
+      betTypeCtl.clear(); 
+    }); 
                   icon: const Icon(Icons.add),
                   label: Text('Add Leg (${multiLegs.length})'),
                 ),
