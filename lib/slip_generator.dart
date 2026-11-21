@@ -319,9 +319,10 @@ class SlipGenerator {
     }
   }
 
-  static GeneratedSlip? generateTargetSlip(
+    static GeneratedSlip? generateTargetSlip(
     List<dynamic> availableFixtures, {
     Set<String>? allowedMarkets,
+    int maxLegs = 7,
   }) {
     final now = DateTime.now();
     final List<_Candidate> candidates = [];
@@ -358,6 +359,15 @@ class SlipGenerator {
       final String safeKey = fixture.key ?? '';
       final String? kickoffIso = fixture.kickoff?.toIso8601String();
 
+      final double? over25 = _percent(fixture.over25Goals);
+      final double? explicitOver15 =
+          _percent(_readField(fixture, ['over15Goals']));
+      final double? over15Prob = explicitOver15 ??
+          (over25 != null
+              ? (over25 + 16.0).clamp(55.0, 88.0).toDouble()
+              : null);
+      final double? btts = _percent(fixture.btts);
+
       // 1. 1X2 / Tip
       final double tipProb = fixture.tipProb.toDouble();
       if (allows('1X2') && fixture.topTip.isNotEmpty && tipProb > 0) {
@@ -379,7 +389,7 @@ class SlipGenerator {
         );
       }
 
-      // 2. Double Chance
+      // 2. Double Chance (preferred draw-cushion market)
       if (allows('Double Chance')) {
         if (homeProb >= 55.0) {
           final double dcProb = homeProb + drawProb;
@@ -414,31 +424,22 @@ class SlipGenerator {
         }
       }
 
-      // 3. Over 1.5 Goals
-      final double? over25 = _percent(fixture.over25Goals);
-      if (allows('Over 1.5')) {
-        final double? explicitOver15 =
-            _percent(_readField(fixture, ['over15Goals']));
-        final double? over15Prob = explicitOver15 ??
-            (over25 != null
-                ? (over25 + 16.0).clamp(55.0, 88.0).toDouble()
-                : null);
-        if (over15Prob != null && over15Prob >= 55.0) {
-          candidates.add(
-            _Candidate(
-              safeKey,
-              matchName,
-              'Over 1.5',
-              'Over 1.5 Goals',
-              _impliedOdds(over15Prob),
-              over15Prob,
-              kickoffIso,
-            ),
-          );
-        }
+      // 3. Over 1.5 Goals (prioritize >= 73% as core baseline)
+      if (allows('Over 1.5') && over15Prob != null && over15Prob >= 73.0) {
+        candidates.add(
+          _Candidate(
+            safeKey,
+            matchName,
+            'Over 1.5',
+            'Over 1.5 Goals',
+            _impliedOdds(over15Prob),
+            over15Prob,
+            kickoffIso,
+          ),
+        );
       }
 
-      // 4. Under 3.5 Goals
+      // 4. Under 3.5 Goals (skip when Over 1.5 >= 70% or BTTS >= 50%)
       if (allows('Under 3.5')) {
         final double? explicitUnder35 =
             _percent(_readField(fixture, ['under35Goals']));
@@ -446,7 +447,14 @@ class SlipGenerator {
             (over25 != null
                 ? (100.0 - over25 + 22.0).clamp(55.0, 86.0).toDouble()
                 : null);
-        if (under35Prob != null && under35Prob >= 55.0) {
+
+        final bool highOver15Risk = (over15Prob ?? 0.0) >= 70.0;
+        final bool highBttsRisk = (btts ?? 0.0) >= 50.0;
+
+        if (!highOver15Risk &&
+            !highBttsRisk &&
+            under35Prob != null &&
+            under35Prob >= 75.0) {
           candidates.add(
             _Candidate(
               safeKey,
@@ -477,16 +485,16 @@ class SlipGenerator {
       }
 
       // 6. GG (BTTS)
-      final double? btts = _percent(fixture.btts);
-      if (allows('GG') && btts != null && btts >= 55.0) {
+      final double? bttsProb = btts;
+      if (allows('GG') && bttsProb != null && bttsProb >= 55.0) {
         candidates.add(
           _Candidate(
             safeKey,
             matchName,
             'GG',
             'Both Teams To Score: Yes',
-            _impliedOdds(btts),
-            btts,
+            _impliedOdds(bttsProb),
+            bttsProb,
             kickoffIso,
           ),
         );
@@ -624,13 +632,31 @@ class SlipGenerator {
       }
     }
 
-    candidates.sort((a, b) => b.prob.compareTo(a.prob));
+    double marketPriorityBonus(String market) {
+      switch (_normalizeMarket(market)) {
+        case 'Over 1.5':
+          return 4.0;
+        case 'Double Chance':
+          return 3.0;
+        case '1X2':
+          return 1.0;
+        default:
+          return 0.0;
+      }
+    }
+
+    candidates.sort((a, b) {
+      final scoreA = a.prob + marketPriorityBonus(a.market);
+      final scoreB = b.prob + marketPriorityBonus(b.market);
+      return scoreB.compareTo(scoreA);
+    });
 
     final selectedBets = [];
     final Set<String> usedMatches = {};
     double cumulativeOdds = 1.0;
 
     for (final c in candidates) {
+      if (selectedBets.length >= maxLegs) break;
       if (usedMatches.contains(c.match)) continue;
       if ((cumulativeOdds * c.odds) > 14.0) continue;
 
@@ -656,6 +682,7 @@ class SlipGenerator {
     }
 
     for (final c in candidates) {
+      if (selectedBets.length >= maxLegs) break;
       bool alreadyUsed = false;
       for (final s in selectedBets) {
         if (s['match'] == c.match && s['prediction'] == c.prediction) {
@@ -695,9 +722,8 @@ class SlipGenerator {
     }
 
     return null;
-  }
-}
-
+    }
+                          
 class ProtectedSystemSlipCard extends StatefulWidget {
   final GeneratedSlip slip;
   final List<dynamic> latestFixtures;
