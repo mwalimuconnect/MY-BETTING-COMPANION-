@@ -586,7 +586,7 @@ async function fetchMatchWindow() {
   if (cache.data && now - cache.fetchedAt < CACHE_TTL_MS) {
     return cache.data;
   }
-
+     
   const [pastR, futureR, extraR] = await Promise.allSettled([
     FOOTBALL_DATA_TOKEN ? requestMatches(utcDateOffset(-DAYS_BACK), utcDateOffset(0)) : Promise.reject(new Error('no football-data token')),
     FOOTBALL_DATA_TOKEN ? requestMatches(utcDateOffset(1), utcDateOffset(DAYS_AHEAD)) : Promise.reject(new Error('no football-data token')),
@@ -620,7 +620,7 @@ if (anyOk) {
   cache = { data: matches, fetchedAt: now };
 }
 return matches;
-  
+}
 function pickFixtures(allMatches) {
   const today = todayInNairobi();
   const now = new Date();
