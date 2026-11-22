@@ -9,7 +9,7 @@ import 'slip_access_manager.dart';
 import 'package:http/http.dart' as http;
 import 'api_service.dart';
 import 'fixture_model.dart';
-
+import 'slip_generator.dart';
 
 const Color _teal = Color(0xFF008080); // Teal Green
 
