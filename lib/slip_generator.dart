@@ -111,23 +111,28 @@ class _LeagueRule {
 //====================
 class _Candidate {
   final String fixtureKey;
+  final String league;
   final String match;
   final String market;
   final String prediction;
   final double odds;
   final double prob;
+  final double score;
   final String? kickoffIso;
 
-  const _Candidate(
-    this.fixtureKey,
-    this.match,
-    this.market,
-    this.prediction,
-    this.odds,
-    this.prob,
+  const _Candidate({
+    required this.fixtureKey,
+    this.league = '',
+    required this.match,
+    required this.market,
+    required this.prediction,
+    required this.odds,
+    required this.prob,
+    this.score = 0.0,
     this.kickoffIso,
-  );
+  });
 }
+
 //=================
 // SlipGenerator
 //=================
@@ -352,20 +357,18 @@ class SlipGenerator {
 
         final double bonus = rule.marketBonuses[normMarket] ?? 0.0;
         candidates.add(
-          _Candidate(
-            fixtureKey: safeKey,
-            league: league,
-            match: matchName,
-            market: normMarket,
-            prediction: prediction,
-            odds: odds,
-            prob: prob,
-            score: prob + bonus,
-            kickoffIso: kickoffIso,
-          ),
-        );
-      }
-
+        _Candidate(
+          fixtureKey: safeKey,
+          league: league,
+          match: matchName,
+          market: normMarket,
+          prediction: prediction,
+          odds: odds,
+          prob: prob,
+          score: prob + bonus,
+          kickoffIso: kickoffIso,
+        ),
+      );
       // 1. Over 1.5 Goals
       if (over15Prob != null && over15Prob >= rule.minOver15Prob) {
         addCandidateIfValid(
@@ -474,6 +477,9 @@ class SlipGenerator {
         'odds': double.parse(c.odds.toStringAsFixed(2)),
         'kickoff': c.kickoffIso,
       });
+
+      usedMatches.add(c.match);
+      leagueCounts[c.league] = (leagueCounts[c.league] ?? 0) + 1;
 
       usedMatches.add(c.match);
       leagueCounts[c.league] = (leagueCounts[c.league] ?? 0) + 1;
