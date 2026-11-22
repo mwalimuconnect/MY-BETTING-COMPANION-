@@ -29,7 +29,7 @@ class GeneratedSlip {
   final Color payoutColor;
   final DateTime createdAt;
   final String note;
-  
+
   GeneratedSlip({
     String? id,
     required this.title,
@@ -75,9 +75,9 @@ class GeneratedSlip {
         'createdAt': createdAt.toIso8601String(),
       };
 
-  factory GeneratedSlip.fromJson(Map<dynamic, dynamic> json) {
+  factory GeneratedSlip.fromJson(Map<String, dynamic> json) {
     final rawSelections = json['selections'] as List? ?? const [];
-    final parsedSelections = [];
+    final parsedSelections = >[];
     for (final item in rawSelections) {
       if (item is Map) {
         parsedSelections.add(Map<String, dynamic>.from(item));
@@ -88,8 +88,7 @@ class GeneratedSlip {
     final double stake = (json['stake'] as num?)?.toDouble() ?? 200.0;
 
     return GeneratedSlip(
-          return GeneratedSlip(
-            id: (json['id'] == null || json['id'].toString().isEmpty)
+      id: (json['id'] == null || json['id'].toString().isEmpty)
           ? null
           : json['id'].toString(),
       title: json['title']?.toString() ?? '🔥 Prolific Value Accumulator',
@@ -138,6 +137,8 @@ class GeneratedSlip {
     // Wire your market/prediction evaluation logic here once fixture fields are checked
     return false;
   }
+}
+
 //=================
 // class _LeagueRule
 //=================
