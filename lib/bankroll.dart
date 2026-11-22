@@ -12,6 +12,9 @@ import 'fixture_model.dart';
 
 const Color _teal = Color(0xFF008080); // Teal Green
 
+//=======================
+// class UserProfileCard
+//=======================
 class UserProfileCard extends StatelessWidget {
   final String name;
   final String phoneNumber;
@@ -131,8 +134,9 @@ class UserProfileCard extends StatelessWidget {
     );
   }
 }
-
+//=============================================
 /// One bet. status: pending, won, lost, void.
+//=============================================
 class Bet {
   final int id;
   final String date; // ISO string
@@ -177,6 +181,70 @@ class Bet {
   }
 }
 
+//======================
+// class SystemAutoStats
+//======================
+class SystemAutoStats {
+  final double totalStaked;
+  final double amountWon;
+  final double profitLoss;
+  final int wins;
+  final int losses;
+  final int pending;
+
+  const SystemAutoStats({
+    required this.totalStaked,
+    required this.amountWon,
+    required this.profitLoss,
+    required this.wins,
+    required this.losses,
+    required this.pending,
+  });
+
+  String get recordLabel => '$wins - $losses';
+}
+
+SystemAutoStats _computeSystemAutoStats(
+  List<GeneratedSlip> slips,
+  List<dynamic> latestFixtures,
+) {
+  double staked = 0.0;
+  double wonAmount = 0.0;
+  double profit = 0.0;
+  int wins = 0;
+  int losses = 0;
+  int pending = 0;
+
+  for (final slip in slips) {
+    final eval = slip.evaluateOutcome(latestFixtures);
+    if (eval.isWon) {
+      wins++;
+      staked += slip.stake;
+      final double payout = slip.potentialPayout;
+      wonAmount += payout;
+      profit += (payout - slip.stake);
+    } else if (eval.isLost) {
+      losses++;
+      staked += slip.stake;
+      profit -= slip.stake;
+    } else {
+      pending++;
+    }
+  }
+
+  return SystemAutoStats(
+    totalStaked: staked,
+    amountWon: wonAmount,
+    profitLoss: profit,
+    wins: wins,
+    losses: losses,
+    pending: pending,
+  );
+}
+
+//=========================
+// class BankrollTab 
+//=========================
 class BankrollTab extends StatefulWidget {
   final List<FixtureModel> fixtures;
 
@@ -1390,9 +1458,19 @@ Future<void> _addBet() async {
     );
   }
 
-  Widget _comparisonTableCard() {
-    final systemBets = _bets.where((b) => b.description.contains('Accumulator')).toList();
-    final manualBets = _bets.where((b) => !b.description.contains('Accumulator')).toList();
+    Widget _comparisonTableCard() {
+    final systemBets =
+        _bets.where((b) => b.description.contains('Accumulator')).toList();
+    final manualBets =
+        _bets.where((b) => !b.description.contains('Accumulator')).toList();
+
+    final fixturesForEval =
+        widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
+    final List<GeneratedSlip> trackedSlips = [
+      ..._historicalSlips,
+      if (_todaySuggestedSlip != null) _todaySuggestedSlip!,
+    ];
+    final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
 
     double totalStaked(List<Bet> list) =>
         list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
@@ -1403,23 +1481,24 @@ Future<void> _addBet() async {
           .fold(0.0, (s, b) => s + b.stake + b.profit);
     }
 
-    double totalProfit(List<Bet> list) => list.fold(0.0, (s, b) => s + b.profit);
+    double totalProfit(List<Bet> list) =>
+        list.fold(0.0, (s, b) => s + b.profit);
     int countStatus(List<Bet> list, String status) =>
         list.where((b) => b.status == status).length;
 
-    final sysStaked = totalStaked(systemBets);
-    final sysWonAmount = totalWon(systemBets);
-    final sysProfit = totalProfit(systemBets);
-    final sysWins = countStatus(systemBets, 'won');
-    final sysLosses = countStatus(systemBets, 'lost');
+    final sysStaked = totalStaked(systemBets) + autoStats.totalStaked;
+    final sysWonAmount = totalWon(systemBets) + autoStats.amountWon;
+    final sysProfit = totalProfit(systemBets) + autoStats.profitLoss;
+    final sysWins = countStatus(systemBets, 'won') + autoStats.wins;
+    final sysLosses = countStatus(systemBets, 'lost') + autoStats.losses;
 
     final manStaked = totalStaked(manualBets);
     final manWonAmount = totalWon(manualBets);
     final manProfit = totalProfit(manualBets);
     final manWins = countStatus(manualBets, 'won');
     final manLosses = countStatus(manualBets, 'lost');
-
-    return Card(
+    
+      return Card(
       color: cardBg(context),
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
