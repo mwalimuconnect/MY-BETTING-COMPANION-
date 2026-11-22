@@ -351,16 +351,24 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
     _load();
     _loadFixtures();
   }
-
+  
+GeneratedSlip? _asGeneratedSlip(SuggestedSlip? s) {
+  if (s == null) return null;
+  return GeneratedSlip(
+    title: s.title,
+    totalOdds: s.totalOdds,
+    selections: s.selections,
+  );
+}
   Future<void> _loadFixtures() async {
     try {
       final loaded = await ApiService.fetchFixtures();
       if (!mounted) return;
-      setState(() {
-        _fixtures = loaded;
-      });
-      await _syncDailySystemSlips(_todaySuggestedSlip);
-    } catch (_) {
+          setState(() {
+      _fixtures = loaded;
+    });
+    await _syncDailySystemSlips(_asGeneratedSlip(_todaySuggestedSlip));
+  } catch (_) {
       // Keep any existing fixtures or fall back to manual typing in _addBet()
     }
   }
@@ -1548,7 +1556,7 @@ Future<void> _addBet() async {
       widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
   final List<GeneratedSlip> trackedSlips = [
     ..._historicalSlips,
-    if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip!)!,
+if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
   ];
   final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
 
