@@ -224,7 +224,7 @@ SystemAutoStats _computeSystemAutoStats(
       final double payout = slip.potentialPayout;
       wonAmount += payout;
       profit += (payout - slip.stake);
-    } else if (eval.isLost) {
+    } else if (eval.isWon) {
       losses++;
       staked += slip.stake;
       profit -= slip.stake;
@@ -253,7 +253,7 @@ class SystemSlipHistoryStore {
     return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
   }
 
-  static Future> loadByDay() async {
+  static Future< loadByDay() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefsKey);
