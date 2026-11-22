@@ -339,7 +339,7 @@ class SlipGenerator {
           localKickoff.day != now.day) {
         continue;
       }
-
+    
       final double homeProb = fixture.homeWinProb.toDouble();
       final double drawProb = fixture.drawProb.toDouble();
       final double awayProb = fixture.awayWinProb.toDouble();
@@ -564,7 +564,7 @@ class SlipGenerator {
     return null;
   }
  }
-
+}
   
 //=================================
 // class ProtectedSystemSlipCard
