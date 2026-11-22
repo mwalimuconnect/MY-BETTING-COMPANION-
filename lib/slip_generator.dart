@@ -3,22 +3,16 @@ import 'fixture_model.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
 
-//======================
-// class SlipEvaluation
-//======================
-  class SlipEvaluation {
-  final bool isSettled;
-  final bool isWon;
-
-  const SlipEvaluation({
-    required this.isSettled,
-    required this.isWon,
-  });
-  }
-
 //==================
 // GeneratedSlip
 //==================
+
+class SlipEvaluation {
+  final bool isSettled;
+  final bool isWon;
+  const SlipEvaluation({required this.isSettled, required this.isWon});
+}
+
 class GeneratedSlip {
   final String id;
   final String title;
@@ -41,7 +35,7 @@ class GeneratedSlip {
     DateTime? createdAt,
     this.note =
         'Includes available bookmaker odds where live, otherwise model-implied.',
-  }) : createdAt = createdAt ?? DateTime.now(),
+  })  : createdAt = createdAt ?? DateTime.now(),
         id = id ??
             'sys_${DateTime.now().year}_${DateTime.now().month}_${DateTime.now().day}',
         potentialPayout = potentialPayout ??
@@ -53,14 +47,11 @@ class GeneratedSlip {
     for (final f in latestFixtures) {
       if (f.key != null) fixtureMap[f.key.toString()] = f;
     }
-
     for (final sel in selections) {
       final key = sel['fixtureKey']?.toString() ?? '';
       if (key.isEmpty) return false;
       final match = fixtureMap[key];
-      if (match == null || match.isFinished != true) {
-        return false;
-      }
+      if (match == null || match.isFinished != true) return false;
     }
     return true;
   }
@@ -77,7 +68,7 @@ class GeneratedSlip {
 
   factory GeneratedSlip.fromJson(Map<String, dynamic> json) {
     final rawSelections = json['selections'] as List? ?? const [];
-    final parsedSelections = >[];
+    final parsedSelections = <Map<String, dynamic>>[];
     for (final item in rawSelections) {
       if (item is Map) {
         parsedSelections.add(Map<String, dynamic>.from(item));
@@ -88,21 +79,18 @@ class GeneratedSlip {
           ? null
           : json['id'].toString(),
       title: json['title']?.toString() ?? '🔥 Prolific Value Accumulator',
-      totalOdds: totalOdds,
+      totalOdds: (json['totalOdds'] as num?)?.toDouble() ?? 0.0,
       selections: parsedSelections,
-      stake: stake,
+      stake: (json['stake'] as num?)?.toDouble() ?? 200.0,
       potentialPayout: (json['potentialPayout'] as num?)?.toDouble(),
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
     );
-    
-  SlipEvaluation evaluateOutcome(List<dynamic> latestFixtures) {
-    if (selections.isEmpty) {
-      return const SlipEvaluation(isSettled: false, isWon: false);
-    }
+  }
 
-    if (!areAllMatchesSettled(latestFixtures)) {
+  SlipEvaluation evaluateOutcome(List<dynamic> latestFixtures) {
+    if (selections.isEmpty || !areAllMatchesSettled(latestFixtures)) {
       return const SlipEvaluation(isSettled: false, isWon: false);
     }
 
@@ -117,23 +105,19 @@ class GeneratedSlip {
       if (match == null) {
         return const SlipEvaluation(isSettled: false, isWon: false);
       }
-
-      // Replace with your fixture score/result check per market & prediction
-      final bool legWon = _isSelectionWon(sel, match);
-      if (!legWon) {
+      if (!_isSelectionWon(sel, match)) {
         return const SlipEvaluation(isSettled: true, isWon: false);
       }
     }
-
     return const SlipEvaluation(isSettled: true, isWon: true);
   }
 
   bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
-    // Wire your market/prediction evaluation logic here once fixture fields are checked
+    // TODO: wire market/prediction logic here
     return false;
   }
 }
-
+   
 //=================
 // class _LeagueRule
 //=================
