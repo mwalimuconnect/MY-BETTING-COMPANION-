@@ -487,7 +487,7 @@ class SlipGenerator {
 
     candidates.sort((a, b) => b.score.compareTo(a.score));
 
-    final List>  selectedBets = [];
+    final List> selectedBets = [];
     final Set<String> usedMatches = {};
     final Map<String, int> leagueCounts = {};
     double cumulativeOdds = 1.0;
