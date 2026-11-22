@@ -241,6 +241,60 @@ SystemAutoStats _computeSystemAutoStats(
     pending: pending,
   );
 }
+//==============================
+// class SystemSlipHistoryStore
+//==============================
+class SystemSlipHistoryStore {
+  static const String _prefsKey = 'system_generated_slips_by_day_v1';
+
+  static String _dayKey(DateTime dt) {
+    final local = dt.toLocal();
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+  }
+
+  static Future> loadByDay() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefsKey);
+      if (raw == null || raw.isEmpty) return {};
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+
+      final Map<String, GeneratedSlip> result = {};
+      decoded.forEach((dayKey, value) {
+        if (value is Map) {
+          result[dayKey.toString()] = GeneratedSlip.fromJson(
+            Map<String, dynamic>.from(value),
+          );
+        }
+      });
+      return result;
+    } catch (e) {
+      debugPrint('Failed to load historical system slips: $e');
+      return {};
+    }
+  }
+
+  static Future<void> saveSlipForDay(
+    GeneratedSlip slip, {
+    DateTime? date,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final existing = await loadByDay();
+      final String key = _dayKey(date ?? DateTime.now());
+      existing[key] = slip;
+
+      final Map<String, dynamic> serialized = {
+        for (final entry in existing.entries) entry.key: entry.value.toJson(),
+      };
+      await prefs.setString(_prefsKey, jsonEncode(serialized));
+    } catch (e) {
+      debugPrint('Failed to save daily system slip: $e');
+    }
+  }
+}
 
 //=========================
 // class BankrollTab 
@@ -283,11 +337,12 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
   SuggestedSlip? _todaySuggestedSlip;
   final GlobalKey<FormFieldState<String>> outcomeFieldKey =
       GlobalKey<FormFieldState<String>>();
-
+  final List<GeneratedSlip> _historicalSlips = [];
+  
   String _profileName = '';
   String _profilePhone = '';
 
-    @override
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
@@ -303,11 +358,35 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
       setState(() {
         _fixtures = loaded;
       });
+      await _syncDailySystemSlips(_todaySuggestedSlip);
     } catch (_) {
       // Keep any existing fixtures or fall back to manual typing in _addBet()
     }
   }
 
+  Future<void> _syncDailySystemSlips(GeneratedSlip? todaySlip) async {
+    if (todaySlip != null) {
+      await SystemSlipHistoryStore.saveSlipForDay(todaySlip);
+    }
+
+    final byDay = await SystemSlipHistoryStore.loadByDay();
+    final String todayKey = SystemSlipHistoryStore.dayKey(DateTime.now());
+
+    final List<GeneratedSlip> pastSlips = [];
+    byDay.forEach((dayKey, slip) {
+      if (dayKey != todayKey) {
+        pastSlips.add(slip);
+      }
+    });
+
+    if (!mounted) return;
+    setState(() {
+      _historicalSlips
+        ..clear()
+        ..addAll(pastSlips);
+    });
+  }
+  
   List<String> _outcomeChoicesFor(FixtureModel? fixture) {
     final List<String> choices = [];
 
@@ -497,6 +576,7 @@ Future<void> _autoSettleBets() async {
       }
 
       _todaySuggestedSlip = await SuggestedSlipStore.load();
+    await _syncDailySystemSlips(_todaySuggestedSlip);
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
