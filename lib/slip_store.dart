@@ -86,6 +86,10 @@ class SlipSummary {
     required this.noTip,
     required this.status,
   });
+
+  bool get isWon => status == 'Won';
+  bool get isLost => status == 'Lost';
+  bool get isSettled => isWon || isLost;
 }
 
 /// Header widget rendering MY PICKS in bold Teal Green capital letters
@@ -271,6 +275,9 @@ Widget buildGroupedSlipList(
 class SlipStore {
   static const String _prefsKey = 'saved_slips_v1';
 
+  static String _matchSignature(String home, String away) =>
+      '${home.trim().toLowerCase()} vs ${away.trim().toLowerCase()}';
+
   static Future<List<SlipLeg>> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -345,9 +352,11 @@ class SlipStore {
   static Future<List<SlipLeg>> settle(List<FixtureModel> fixtures) async {
     final legs = await load();
     final byKey = <String, FixtureModel>{};
+    final byMatch = <String, FixtureModel>{};
     for (final f in fixtures) {
       final k = f.key;
-      if (k != null) byKey[k] = f;
+      if (k != null && k.isNotEmpty) byKey[k] = f;
+      byMatch[_matchSignature(f.homeTeam, f.awayTeam)] = f;
     }
 
     final now = DateTime.now().toUtc();
@@ -356,7 +365,7 @@ class SlipStore {
 
     for (final leg in legs) {
       if (leg.status != 'pending') continue;
-      final f = byKey[leg.key];
+      final f = byKey[leg.key] ?? byMatch[_matchSignature(leg.home, leg.away)];
 
       if (f != null && f.effectiveIsFinished) {
         leg.score = f.actualScore;
@@ -364,7 +373,8 @@ class SlipStore {
           leg.status = 'none';
         } else {
           final result =
-              evaluateTip(leg.tip, leg.home, leg.away, f.actualScore);
+              f.evaluateMarketOutcome(predictionText: leg.tip) ??
+                  evaluateTip(leg.tip, leg.home, leg.away, f.actualScore);
           leg.status = result == null ? 'void' : (result ? 'won' : 'lost');
           if (result != null) newly.add(leg);
         }
@@ -380,6 +390,17 @@ class SlipStore {
 
     if (changed) await _save(legs);
     return newly;
+  }
+
+  /// Groups legs by YYYY-MM-DD dayKey and computes each day's SlipSummary.
+  static Map<String, SlipSummary> summariesByDay(List<SlipLeg> legs) {
+    final grouped = <String, List<SlipLeg>>{};
+    for (final leg in legs) {
+      grouped.putIfAbsent(leg.dayKey, () => []).add(leg);
+    }
+    return {
+      for (final entry in grouped.entries) entry.key: summary(entry.value),
+    };
   }
 
   static SlipSummary summary(List<SlipLeg> legs) {
