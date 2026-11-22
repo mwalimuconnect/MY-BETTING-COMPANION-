@@ -10,7 +10,15 @@ import 'slip_subscription_sheet.dart';
 class SlipEvaluation {
   final bool isSettled;
   final bool isWon;
-  const SlipEvaluation({required this.isSettled, required this.isWon});
+  final List<dynamic> legs;
+
+  const SlipEvaluation({
+    required this.isSettled,
+    required this.isWon,
+    this.legs = const [],
+  });
+
+  bool get isLost => isSettled && !isWon;
 }
 
 class GeneratedSlip {
@@ -111,7 +119,7 @@ class GeneratedSlip {
     }
     return const SlipEvaluation(isSettled: true, isWon: true);
   }
-  bool get isLost => isSettled && !isWon;
+  
   bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
     // TODO: wire market/prediction logic here
     return false;
