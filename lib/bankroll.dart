@@ -528,7 +528,6 @@ Future<void> _autoSettleBets() async {
     _loadFixtures();
     super.dispose();
   }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
