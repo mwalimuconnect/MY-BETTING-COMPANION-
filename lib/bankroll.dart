@@ -371,8 +371,8 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
     }
 
     final byDay = await SystemSlipHistoryStore.loadByDay();
-    final String todayKey = SystemSlipHistoryStore.dayKey(DateTime.now());
-
+    final now = DateTime.now();
+    final String todayKey = '${now.year}_${now.month}_${now.day}';
     final List<GeneratedSlip> pastSlips = [];
     byDay.forEach((dayKey, slip) {
       if (dayKey != todayKey) {
@@ -576,7 +576,7 @@ Future<void> _autoSettleBets() async {
       }
 
       _todaySuggestedSlip = await SuggestedSlipStore.load();
-    await _syncDailySystemSlips(_todaySuggestedSlip);
+    await _syncDailySystemSlips(_asGeneratedSlip(_todaySuggestedSlip));
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
@@ -1542,13 +1542,12 @@ Future<void> _addBet() async {
     final systemBets =
         _bets.where((b) => b.description.contains('Accumulator')).toList();
     final manualBets =
-        _bets.where((b) => !b.description.contains('Accumulator')).toList();
 
     final fixturesForEval =
         widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
     final List<GeneratedSlip> trackedSlips = [
       ..._historicalSlips,
-      if (_todaySuggestedSlip != null) _todaySuggestedSlip!,
+    if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip!)!,
     ];
     final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
 
