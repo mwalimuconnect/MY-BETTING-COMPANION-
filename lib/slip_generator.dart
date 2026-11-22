@@ -111,7 +111,7 @@ class GeneratedSlip {
     }
     return const SlipEvaluation(isSettled: true, isWon: true);
   }
-
+  bool get isLost => isSettled && !isWon;
   bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
     // TODO: wire market/prediction logic here
     return false;
@@ -487,7 +487,7 @@ class SlipGenerator {
 
     candidates.sort((a, b) => b.score.compareTo(a.score));
 
-    final List> selectedBets = [];
+    final List<Map<String, dynamic>> selectedBets = [];
     final Set<String> usedMatches = {};
     final Map<String, int> leagueCounts = {};
     double cumulativeOdds = 1.0;
