@@ -1539,27 +1539,27 @@ Future<void> _addBet() async {
   }
 
     Widget _comparisonTableCard() {
-    final systemBets =
-        _bets.where((b) => b.description.contains('Accumulator')).toList();
-    final manualBets =
+  final systemBets =
+      _bets.where((b) => b.description.contains('Accumulator')).toList();
+  final manualBets =
+      _bets.where((b) => !b.description.contains('Accumulator')).toList();
 
-    final fixturesForEval =
-        widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
-    final List<GeneratedSlip> trackedSlips = [
-      ..._historicalSlips,
+  final fixturesForEval =
+      widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
+  final List<GeneratedSlip> trackedSlips = [
+    ..._historicalSlips,
     if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip!)!,
-    ];
-    final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
+  ];
+  final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
 
-    double totalStaked(List<Bet> list) =>
-        list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
+  double totalStaked(List<Bet> list) =>
+      list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
 
-    double totalWon(List<Bet> list) {
-      return list
-          .where((b) => b.status == 'won')
-          .fold(0.0, (s, b) => s + b.stake + b.profit);
-    }
-
+  double totalWon(List<Bet> list) {
+    return list
+        .where((b) => b.status == 'won')
+        .fold(0.0, (s, b) => s + b.stake + b.profit);
+  }
     double totalProfit(List<Bet> list) =>
         list.fold(0.0, (s, b) => s + b.profit);
     int countStatus(List<Bet> list, String status) =>
