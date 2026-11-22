@@ -41,7 +41,7 @@ class GeneratedSlip {
     DateTime? createdAt,
     this.note =
         'Includes available bookmaker odds where live, otherwise model-implied.',
-  })  : createdAt = createdAt ?? DateTime.now(),
+  }) : createdAt = createdAt ?? DateTime.now(),
         id = id ??
             'sys_${DateTime.now().year}_${DateTime.now().month}_${DateTime.now().day}',
         potentialPayout = potentialPayout ??
@@ -83,10 +83,6 @@ class GeneratedSlip {
         parsedSelections.add(Map<String, dynamic>.from(item));
       }
     }
-
-    final double totalOdds = (json['totalOdds'] as num?)?.toDouble() ?? 1.0;
-    final double stake = (json['stake'] as num?)?.toDouble() ?? 200.0;
-
     return GeneratedSlip(
       id: (json['id'] == null || json['id'].toString().isEmpty)
           ? null
@@ -100,8 +96,7 @@ class GeneratedSlip {
           ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
     );
-  }
-
+    
   SlipEvaluation evaluateOutcome(List<dynamic> latestFixtures) {
     if (selections.isEmpty) {
       return const SlipEvaluation(isSettled: false, isWon: false);
@@ -584,8 +579,8 @@ class SlipGenerator {
 
     return null;
   }
-}
-   
+ }
+
   
 //=================================
 // class ProtectedSystemSlipCard
