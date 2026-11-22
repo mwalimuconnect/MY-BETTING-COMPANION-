@@ -75,7 +75,10 @@ class GeneratedSlip {
     final double stake = (json['stake'] as num?)?.toDouble() ?? 200.0;
 
     return GeneratedSlip(
-      id: json['id']?.toString(),
+          return GeneratedSlip(
+            id: (json['id'] == null || json['id'].toString().isEmpty)
+          ? null
+          : json['id'].toString(),
       title: json['title']?.toString() ?? '🔥 Prolific Value Accumulator',
       totalOdds: totalOdds,
       selections: parsedSelections,
@@ -86,7 +89,42 @@ class GeneratedSlip {
           : DateTime.now(),
     );
   }
-}
+
+  SlipEvaluation evaluateOutcome(List<dynamic> latestFixtures) {
+    if (selections.isEmpty) {
+      return const SlipEvaluation(isSettled: false, isWon: false);
+    }
+
+    if (!areAllMatchesSettled(latestFixtures)) {
+      return const SlipEvaluation(isSettled: false, isWon: false);
+    }
+
+    final Map<String, dynamic> fixtureMap = {};
+    for (final f in latestFixtures) {
+      if (f.key != null) fixtureMap[f.key.toString()] = f;
+    }
+
+    for (final sel in selections) {
+      final key = (sel['fixtureKey'] ?? '').toString();
+      final match = fixtureMap[key];
+      if (match == null) {
+        return const SlipEvaluation(isSettled: false, isWon: false);
+      }
+
+      // Replace with your fixture score/result check per market & prediction
+      final bool legWon = _isSelectionWon(sel, match);
+      if (!legWon) {
+        return const SlipEvaluation(isSettled: true, isWon: false);
+      }
+    }
+
+    return const SlipEvaluation(isSettled: true, isWon: true);
+  }
+
+  bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
+    // Wire your market/prediction evaluation logic here once fixture fields are checked
+    return false;
+  }
 //=================
 // class _LeagueRule
 //=================
@@ -533,7 +571,8 @@ class SlipGenerator {
     return null;
   }
 }
-                           
+   
+  
 //=================================
 // class ProtectedSystemSlipCard
 //=================================
@@ -809,3 +848,15 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
     );
   }
 }
+  //======================
+  // class SlipEvaluation
+  //======================
+  class SlipEvaluation {
+  final bool isSettled;
+  final bool isWon;
+
+  const SlipEvaluation({
+    required this.isSettled,
+    required this.isWon,
+  });
+  }
