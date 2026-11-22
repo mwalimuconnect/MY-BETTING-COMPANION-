@@ -3,6 +3,19 @@ import 'fixture_model.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
 
+//======================
+// class SlipEvaluation
+//======================
+  class SlipEvaluation {
+  final bool isSettled;
+  final bool isWon;
+
+  const SlipEvaluation({
+    required this.isSettled,
+    required this.isWon,
+  });
+  }
+
 //==================
 // GeneratedSlip
 //==================
@@ -848,15 +861,4 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
     );
   }
 }
-  //======================
-  // class SlipEvaluation
-  //======================
-  class SlipEvaluation {
-  final bool isSettled;
-  final bool isWon;
-
-  const SlipEvaluation({
-    required this.isSettled,
-    required this.isWon,
-  });
-  }
+  
