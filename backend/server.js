@@ -1,7 +1,6 @@
 const express = require('express');
 const axios = require('axios');
 const mongoose = require('mongoose');
-
 const app = express();
 const footballRoutes = require('./routes/football');
 
