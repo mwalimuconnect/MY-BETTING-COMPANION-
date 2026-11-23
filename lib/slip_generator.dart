@@ -49,17 +49,28 @@ class GeneratedSlip {
         potentialPayout = potentialPayout ??
             double.parse((totalOdds * stake).toStringAsFixed(2));
 
+    bool _isMatchFinished(dynamic match) {
+    try {
+      if (match.effectiveIsFinished == true) return true;
+    } catch (_) {}
+    try {
+      if (match.isFinished == true) return true;
+    } catch (_) {}
+    return false;
+  }
+
   bool areAllMatchesSettled(List latestFixtures) {
     if (selections.isEmpty) return false;
     final Map<String, dynamic> fixtureMap = {};
     for (final f in latestFixtures) {
       if (f.key != null) fixtureMap[f.key.toString()] = f;
     }
+
     for (final sel in selections) {
       final key = sel['fixtureKey']?.toString() ?? '';
       if (key.isEmpty) return false;
       final match = fixtureMap[key];
-      if (match == null || match.isFinished != true) return false;
+      if (match == null || !_isMatchFinished(match)) return false;
     }
     return true;
   }
@@ -120,11 +131,94 @@ class GeneratedSlip {
     return const SlipEvaluation(isSettled: true, isWon: true);
   }
   
-  bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
-    // TODO: wire market/prediction logic here
+    bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
+    final String rawScore = (match.actualScore ?? '')
+        .toString()
+        .replaceAll(RegExp(r'\s*ft\s*', caseSensitive: false), '')
+        .trim();
+    final parts = rawScore.split(RegExp(r'\s*[-:]\s*'));
+    if (parts.length != 2) return false;
+
+    final int? hGoals = int.tryParse(parts[0].trim());
+    final int? aGoals = int.tryParse(parts[1].trim());
+    if (hGoals == null || aGoals == null) return false;
+
+    final int total = hGoals + aGoals;
+    final String homeName = (match.homeTeam ?? '').toString().trim().toLowerCase();
+    final String awayName = (match.awayTeam ?? '').toString().trim().toLowerCase();
+    final String pick = (sel['prediction'] ?? sel['pick'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    if (pick.isEmpty) return false;
+
+    bool mentionsTeam(String fullName) {
+      if (fullName.isEmpty) return false;
+      if (pick == fullName ||
+          pick == '$fullName win' ||
+          pick.startsWith('$fullName ')) {
+        return true;
+      }
+      return fullName
+          .split(RegExp(r'\s+'))
+          .where((w) =>
+              w.length >= 4 &&
+              !{'fc', 'sc', 'cf', 'cd', 'ca', 'cr'}.contains(w))
+          .any((w) => RegExp('\\b${RegExp.escape(w)}\\b').hasMatch(pick));
+    }
+
+    // Double Chance (check before 1X2 so "Home or Draw (1X)" / "(12)" matches properly)
+    if (pick.contains('(12)') ||
+        pick == '12' ||
+        pick.contains('home or away')) {
+      return hGoals != aGoals;
+    }
+    if (pick.contains('(1x)') ||
+        pick == '1x' ||
+        (pick.contains('or draw') && mentionsTeam(homeName))) {
+      return hGoals >= aGoals;
+    }
+    if (pick.contains('(x2)') ||
+        pick == 'x2' ||
+        (pick.contains('or draw') && mentionsTeam(awayName))) {
+      return aGoals >= hGoals;
+    }
+
+    // Goals & BTTS
+    if (pick.contains('over 1.5') || pick == 'ov 1.5') return total >= 2;
+    if (pick.contains('over 2.5') || pick == 'ov 2.5') return total >= 3;
+    if (pick.contains('under 2.5') || pick == 'un 2.5') return total <= 2;
+    if (pick.contains('under 3.5') || pick == 'un 3.5') return total <= 3;
+    if (pick == 'gg' ||
+        pick == 'btts' ||
+        pick.contains('btts: yes') ||
+        pick == 'btts yes') {
+      return hGoals > 0 && aGoals > 0;
+    }
+    if (pick == 'ng' ||
+        pick == 'btts no' ||
+        pick.contains('btts: no')) {
+      return hGoals == 0 || aGoals == 0;
+    }
+
+    // 1X2
+    if (pick == 'x' || pick == 'draw') return hGoals == aGoals;
+    if (pick == '1' ||
+        pick == 'home' ||
+        pick == 'home win' ||
+        mentionsTeam(homeName)) {
+      return hGoals > aGoals;
+    }
+    if (pick == '2' ||
+        pick == 'away' ||
+        pick == 'away win' ||
+        mentionsTeam(awayName)) {
+      return aGoals > hGoals;
+    }
+
     return false;
-  }
-}
+    }
    
 //=================
 // class _LeagueRule
