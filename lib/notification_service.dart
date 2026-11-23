@@ -6,11 +6,16 @@ import 'fixture_model.dart';
 
 /// Local (on-device) notifications. Kickoff reminders are scheduled whenever
 /// the app loads fixtures. There is no background server push, so result
-/// alerts only appear when the app is opened.
+/// alerts only appear when the app is opened, with optional phone-number
+/// tagging and an outbound callback hook for `_profilePhone`.
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static bool _ready = false;
+
+  static final Set<String> _notifiedTipIds = {};
+  static final Set<String> _notifiedAutoSlipKeys = {};
+  static final Set<String> _notifiedSlipStates = {};
 
   static const NotificationDetails _details = NotificationDetails(
     android: AndroidNotificationDetails(
@@ -45,6 +50,20 @@ class NotificationService {
       debugPrint('Notification permission failed: $e');
       return false;
     }
+  }
+
+  /// Normalizes phone numbers (e.g. `0712345678` -> `+254712345678`).
+  static String normalizePhone(String? raw) {
+    final cleaned = (raw ?? '').replaceAll(RegExp(r'[^0-9+]'), '').trim();
+    if (cleaned.isEmpty) return '';
+    if (cleaned.startsWith('+')) return cleaned;
+    if (cleaned.startsWith('0') && cleaned.length == 10) {
+      return '+254${cleaned.substring(1)}';
+    }
+    if (cleaned.startsWith('254') && cleaned.length == 12) {
+      return '+$cleaned';
+    }
+    return cleaned;
   }
 
   /// Replaces all scheduled reminders with fresh ones: 15 minutes before
@@ -98,9 +117,13 @@ class NotificationService {
     }
   }
 
-  /// Scans fixtures and sends an immediate notification if an accumulator 
+  /// Scans fixtures and sends an immediate notification if an accumulator
   /// slip targeting 5.00 - 10.00 odds is successfully generated.
-  static Future<void> checkAndNotifyAutoSlip(List<dynamic> fixtures) async {
+  static Future<void> checkAndNotifyAutoSlip(
+    List<dynamic> fixtures, {
+    String? phoneNumber,
+    Future<void> Function(String phone, String message)? onSendPhoneAlert,
+  }) async {
     if (!_ready) return;
 
     double cumulativeOdds = 1.0;
@@ -123,28 +146,77 @@ class NotificationService {
 
       // Check if cumulative odds fall inside the target [5.00 - 10.00] window
       if (cumulativeOdds >= 5.00 && cumulativeOdds <= 10.00) {
-        await showNow(
-          '🔥 Prolific Slip Ready!',
-          'Your accumulator slip with total odds of ${cumulativeOdds.toStringAsFixed(2)}x ($selectionCount matches) is ready!',
-        );
-        break; 
+        final formattedOdds = cumulativeOdds.toStringAsFixed(2);
+        final slipKey = 'autoslip_${formattedOdds}_$selectionCount';
+        if (_notifiedAutoSlipKeys.contains(slipKey)) break;
+        _notifiedAutoSlipKeys.add(slipKey);
+
+        final title = '🔥 Prolific Slip Ready!';
+        final body =
+            'Your accumulator slip with total odds of ${formattedOdds}x ($selectionCount matches) is ready!';
+
+        await showNow(title, body);
+
+        final formattedPhone = normalizePhone(phoneNumber);
+        if (formattedPhone.isNotEmpty && onSendPhoneAlert != null) {
+          try {
+            await onSendPhoneAlert(formattedPhone, '$title - $body');
+          } catch (e) {
+            debugPrint('Auto-slip phone alert failed for $formattedPhone: $e');
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  /// Notifies on-device when a system slip settles as Won or Lost,
+  /// and optionally forwards the message to [onSendPhoneAlert] using [phoneNumber].
+  static Future<void> notifySlipSettled({
+    required String slipId,
+    required String title,
+    required bool isWon,
+    required double stake,
+    required double payoutOrLoss,
+    String? phoneNumber,
+    Future<void> Function(String phone, String message)? onSendPhoneAlert,
+  }) async {
+    if (!_ready) return;
+    final stateKey = '${slipId}_${isWon ? 'won' : 'lost'}';
+    if (_notifiedSlipStates.contains(stateKey)) return;
+    _notifiedSlipStates.add(stateKey);
+
+    final headline =
+        isWon ? '🏆 System Slip Won!' : '📉 System Slip Settled (Lost)';
+    final summary = isWon
+        ? '$title won Ksh ${payoutOrLoss.toStringAsFixed(2)} (Stake: Ksh ${stake.toStringAsFixed(0)}).'
+        : '$title lost Ksh ${stake.toStringAsFixed(0)}.';
+
+    await showNow(headline, summary);
+
+    final formattedPhone = normalizePhone(phoneNumber);
+    if (formattedPhone.isNotEmpty && onSendPhoneAlert != null) {
+      try {
+        await onSendPhoneAlert(formattedPhone, '$headline - $summary');
+      } catch (e) {
+        debugPrint('Slip settlement phone alert failed for $formattedPhone: $e');
       }
     }
   }
 
   /// Scans fixtures and sends an immediate notification if a high-confidence tip (>= 75%) drops.
-  static final Set<String> _notifiedTipIds = {};
-
   static Future<void> checkTipsForAlerts(List<FixtureModel> fixtures) async {
     if (!_ready) return;
 
     for (final fixture in fixtures) {
-      if (fixture.tipProb >= 75 && !fixture.isFinished && fixture.topTip.isNotEmpty) {
+      if (fixture.tipProb >= 75 &&
+          !fixture.isFinished &&
+          fixture.topTip.isNotEmpty) {
         final tipKey = 'tip_${fixture.key}_${fixture.topTip}';
-        
+
         if (!_notifiedTipIds.contains(tipKey)) {
           _notifiedTipIds.add(tipKey);
-          
+
           await showNow(
             '💡 Prolific Tip Alert!',
             '${fixture.topTip} (${fixture.tipProb.round()}% confidence) for ${fixture.homeTeam} vs ${fixture.awayTeam}',
