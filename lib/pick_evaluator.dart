@@ -70,7 +70,7 @@ bool? evaluatePick({
 
   // Markets that can't be judged from the final score.
   // (\bcards?\b so teams like "Cardiff" are not mistaken for a card market)
-  if (RegExp(r'most goals|\bcards?\b|scorer').hasMatch(p)) return null;
+  if (RegExp(r'most goals|\bcards?\b|\bcorners?\b|scorer').hasMatch(p)) return null;
 
   final int side = _teamSide(p, homeName, awayName);
 
