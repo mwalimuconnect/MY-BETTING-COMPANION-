@@ -554,18 +554,14 @@ class _FixturesTabState extends State<FixturesTab> {
           }
         }
 
-        await _safely(() => PredictionLog.update(fixtures));
-        await _safely(() => SlipStore.settle(fixtures));
-        await SuggestedSlipStore.refresh(fixtures);
-        await _safely(() => NotificationService.scheduleKickoffReminders(
-              fixtures,
-              _savedKeys,
-              AppSettings.favorites.value,
-            ));
-        return fixtures;
-      });
-    });
+        Future<void> _safely(Future<void> Function() action) async {
+  try {
+    await action();
+  } catch (e) {
+    debugPrint('Ignored background error: $e');
   }
+}
+
 
   Future<void> _toggleSave(FixtureModel fixture) async {
     await SlipStore.toggle(fixture);
@@ -1346,9 +1342,11 @@ class _FixturesTabState extends State<FixturesTab> {
 class _SlipsData {
   final List<SlipLeg> legs;
   final SuggestedSlip? suggested;
+  final Map<String, SuggestedSlip> history7Days;
 
-  const _SlipsData(this.legs, this.suggested);
+  const _SlipsData(this.legs, this.suggested, [this.history7Days = const {}]);
 }
+
 
 class SavedSlipsTab extends StatefulWidget {
   const SavedSlipsTab({super.key});
