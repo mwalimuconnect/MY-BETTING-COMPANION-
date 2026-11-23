@@ -1,12 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import 'fixture_model.dart';
+import 'notification_service.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
 
-//==================
-// GeneratedSlip
-//==================
-
+//=================
+// SlipEvaluation
+//=================
 class SlipEvaluation {
   final bool isSettled;
   final bool isWon;
@@ -21,6 +23,18 @@ class SlipEvaluation {
   bool get isLost => isSettled && !isWon;
 }
 
+/// Index fixtures by their key for fast lookup.
+Map<String, dynamic> _indexFixtures(List<dynamic> fixtures) {
+  final Map<String, dynamic> map = {};
+  for (final f in fixtures) {
+    if (f.key != null) map[f.key.toString()] = f;
+  }
+  return map;
+}
+
+//=================
+// GeneratedSlip
+//=================
 class GeneratedSlip {
   final String id;
   final String title;
@@ -44,35 +58,14 @@ class GeneratedSlip {
     this.note =
         'Includes available bookmaker odds where live, otherwise model-implied.',
   })  : createdAt = createdAt ?? DateTime.now(),
-        id = id ??
-            'sys_${DateTime.now().year}_${DateTime.now().month}_${DateTime.now().day}',
+        id = id ?? _defaultId(),
         potentialPayout = potentialPayout ??
             double.parse((totalOdds * stake).toStringAsFixed(2));
 
-    bool _isMatchFinished(dynamic match) {
-    try {
-      if (match.effectiveIsFinished == true) return true;
-    } catch (_) {}
-    try {
-      if (match.isFinished == true) return true;
-    } catch (_) {}
-    return false;
-  }
-
-  bool areAllMatchesSettled(List latestFixtures) {
-    if (selections.isEmpty) return false;
-    final Map<String, dynamic> fixtureMap = {};
-    for (final f in latestFixtures) {
-      if (f.key != null) fixtureMap[f.key.toString()] = f;
-    }
-
-    for (final sel in selections) {
-      final key = sel['fixtureKey']?.toString() ?? '';
-      if (key.isEmpty) return false;
-      final match = fixtureMap[key];
-      if (match == null || !_isMatchFinished(match)) return false;
-    }
-    return true;
+  /// One system slip per day: sys_YYYY_M_D
+  static String _defaultId() {
+    final d = DateTime.now();
+    return 'sys_${d.year}_${d.month}_${d.day}';
   }
 
   Map<String, dynamic> toJson() => {
@@ -87,16 +80,15 @@ class GeneratedSlip {
 
   factory GeneratedSlip.fromJson(Map<String, dynamic> json) {
     final rawSelections = json['selections'] as List? ?? const [];
-    final parsedSelections = <Map<String, dynamic>>[];
-    for (final item in rawSelections) {
-      if (item is Map) {
-        parsedSelections.add(Map<String, dynamic>.from(item));
-      }
-    }
+    final List<Map<String, dynamic>> parsedSelections = [
+      for (final item in rawSelections)
+        if (item is Map) Map<String, dynamic>.from(item),
+    ];
+
+    final rawId = json['id']?.toString() ?? '';
+
     return GeneratedSlip(
-      id: (json['id'] == null || json['id'].toString().isEmpty)
-          ? null
-          : json['id'].toString(),
+      id: rawId.isEmpty ? null : rawId,
       title: json['title']?.toString() ?? '🔥 Prolific Value Accumulator',
       totalOdds: (json['totalOdds'] as num?)?.toDouble() ?? 0.0,
       selections: parsedSelections,
@@ -108,15 +100,38 @@ class GeneratedSlip {
     );
   }
 
+  // ------------------------------------------------------------
+  // Settlement
+  // ------------------------------------------------------------
+  bool _isMatchFinished(dynamic match) {
+    try {
+      if (match.effectiveIsFinished == true) return true;
+    } catch (_) {}
+    try {
+      if (match.isFinished == true) return true;
+    } catch (_) {}
+    return false;
+  }
+
+  bool areAllMatchesSettled(List latestFixtures) {
+    if (selections.isEmpty) return false;
+    final fixtureMap = _indexFixtures(latestFixtures);
+
+    for (final sel in selections) {
+      final key = sel['fixtureKey']?.toString() ?? '';
+      if (key.isEmpty) return false;
+      final match = fixtureMap[key];
+      if (match == null || !_isMatchFinished(match)) return false;
+    }
+    return true;
+  }
+
   SlipEvaluation evaluateOutcome(List<dynamic> latestFixtures) {
     if (selections.isEmpty || !areAllMatchesSettled(latestFixtures)) {
       return const SlipEvaluation(isSettled: false, isWon: false);
     }
 
-    final Map<String, dynamic> fixtureMap = {};
-    for (final f in latestFixtures) {
-      if (f.key != null) fixtureMap[f.key.toString()] = f;
-    }
+    final fixtureMap = _indexFixtures(latestFixtures);
 
     for (final sel in selections) {
       final key = (sel['fixtureKey'] ?? '').toString();
@@ -130,8 +145,8 @@ class GeneratedSlip {
     }
     return const SlipEvaluation(isSettled: true, isWon: true);
   }
-  
-    bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
+
+  bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
     final String rawScore = (match.actualScore ?? '')
         .toString()
         .replaceAll(RegExp(r'\s*ft\s*', caseSensitive: false), '')
@@ -144,8 +159,10 @@ class GeneratedSlip {
     if (hGoals == null || aGoals == null) return false;
 
     final int total = hGoals + aGoals;
-    final String homeName = (match.homeTeam ?? '').toString().trim().toLowerCase();
-    final String awayName = (match.awayTeam ?? '').toString().trim().toLowerCase();
+    final String homeName =
+        (match.homeTeam ?? '').toString().trim().toLowerCase();
+    final String awayName =
+        (match.awayTeam ?? '').toString().trim().toLowerCase();
     final String pick = (sel['prediction'] ?? sel['pick'] ?? '')
         .toString()
         .trim()
@@ -168,7 +185,7 @@ class GeneratedSlip {
           .any((w) => RegExp('\\b${RegExp.escape(w)}\\b').hasMatch(pick));
     }
 
-    // Double Chance (check before 1X2 so "Home or Draw (1X)" / "(12)" matches properly)
+    // Double Chance (checked before 1X2 so "Home or Draw (1X)" / "(12)" match)
     if (pick.contains('(12)') ||
         pick == '12' ||
         pick.contains('home or away')) {
@@ -196,9 +213,7 @@ class GeneratedSlip {
         pick == 'btts yes') {
       return hGoals > 0 && aGoals > 0;
     }
-    if (pick == 'ng' ||
-        pick == 'btts no' ||
-        pick.contains('btts: no')) {
+    if (pick == 'ng' || pick == 'btts no' || pick.contains('btts: no')) {
       return hGoals == 0 || aGoals == 0;
     }
 
@@ -218,10 +233,11 @@ class GeneratedSlip {
     }
 
     return false;
-    }
+  }
 }
+
 //=================
-// class _LeagueRule
+// _LeagueRule
 //=================
 class _LeagueRule {
   final Set<String> preferredMarkets;
@@ -239,9 +255,9 @@ class _LeagueRule {
   });
 }
 
-//====================
-// class _Candidate
-//====================
+//=================
+// _Candidate
+//=================
 class _Candidate {
   final String fixtureKey;
   final String league;
@@ -270,6 +286,22 @@ class _Candidate {
 // SlipGenerator
 //=================
 class SlipGenerator {
+  // Slip targets
+  static const double _targetMinOdds = 5.0;
+  static const double _targetMaxOdds = 10.0;
+  static const double _comboMinOdds = 2.0;
+
+  // Candidate thresholds
+  static const double _dcMinSideProb = 55.0;
+  static const double _dc12MinProb = 72.0;
+  static const double _dcMaxProb = 95.0;
+  static const double _tipMinProb = 62.0;
+  static const double _over25MinProb = 65.0;
+  static const double _bttsMinProb = 65.0;
+
+  // ------------------------------------------------------------
+  // Normalisers
+  // ------------------------------------------------------------
   static String _normalizeMarket(String market) {
     switch (market.trim().toLowerCase()) {
       case '1x2':
@@ -312,21 +344,14 @@ class SlipGenerator {
         return const _LeagueRule(
           preferredMarkets: {'Over 1.5', 'Double Chance'},
           blockedMarkets: {'Under 3.5'},
-          marketBonuses: {
-            'Over 1.5': 6.0,
-            'Double Chance': 4.5,
-          },
+          marketBonuses: {'Over 1.5': 6.0, 'Double Chance': 4.5},
           minOver15Prob: 73.0,
         );
 
       case 'Serie A':
         return const _LeagueRule(
           preferredMarkets: {'Over 1.5', '1X2', 'Double Chance'},
-          marketBonuses: {
-            'Over 1.5': 5.0,
-            '1X2': 3.5,
-            'Double Chance': 3.0,
-          },
+          marketBonuses: {'Over 1.5': 5.0, '1X2': 3.5, 'Double Chance': 3.0},
           minOver15Prob: 73.0,
           minUnder35Prob: 76.0,
         );
@@ -334,10 +359,7 @@ class SlipGenerator {
       case 'Ligue 1':
         return const _LeagueRule(
           preferredMarkets: {'Over 1.5', 'Double Chance'},
-          marketBonuses: {
-            'Over 1.5': 4.5,
-            'Double Chance': 4.0,
-          },
+          marketBonuses: {'Over 1.5': 4.5, 'Double Chance': 4.0},
           minOver15Prob: 73.0,
           minUnder35Prob: 78.0,
         );
@@ -346,10 +368,7 @@ class SlipGenerator {
         return const _LeagueRule(
           preferredMarkets: {'Over 1.5', 'Double Chance'},
           blockedMarkets: {'1X2'},
-          marketBonuses: {
-            'Over 1.5': 4.5,
-            'Double Chance': 4.0,
-          },
+          marketBonuses: {'Over 1.5': 4.5, 'Double Chance': 4.0},
           minOver15Prob: 73.0,
           minUnder35Prob: 76.0,
         );
@@ -358,25 +377,24 @@ class SlipGenerator {
         return const _LeagueRule(
           preferredMarkets: {'Double Chance', 'Ov2.5'},
           blockedMarkets: {'Under 3.5'},
-          marketBonuses: {
-            'Double Chance': 3.5,
-          },
+          marketBonuses: {'Double Chance': 3.5},
           minOver15Prob: 78.0,
         );
 
       default:
         return const _LeagueRule(
           preferredMarkets: {'Over 1.5', 'Double Chance'},
-          marketBonuses: {
-            'Over 1.5': 3.0,
-            'Double Chance': 2.5,
-          },
+          marketBonuses: {'Over 1.5': 3.0, 'Double Chance': 2.5},
           minOver15Prob: 73.0,
           minUnder35Prob: 76.0,
         );
     }
   }
 
+  // ------------------------------------------------------------
+  // Probability / odds helpers
+  // ------------------------------------------------------------
+  /// Returns a percentage in (0, 100) or null if missing/invalid.
   static double? _percent(dynamic raw) {
     if (raw == null) return null;
     if (raw is num) {
@@ -391,8 +409,16 @@ class SlipGenerator {
 
   static double _impliedOdds(double prob) {
     if (prob <= 1.0 || prob >= 100.0) return 1.25;
-    final double raw = 100.0 / prob;
-    return raw.clamp(1.15, 12.0).toDouble();
+    return (100.0 / prob).clamp(1.15, 12.0).toDouble();
+  }
+
+  static double _round2(double v) => double.parse(v.toStringAsFixed(2));
+
+  static bool _isToday(DateTime kickoff, DateTime now) {
+    final DateTime local = kickoff.toLocal();
+    return local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day;
   }
 
   static bool _passesGlobalRiskFilter({
@@ -403,9 +429,7 @@ class SlipGenerator {
   }) {
     final String normalizedMarket = _normalizeMarket(market);
 
-    if (rule.blockedMarkets.contains(normalizedMarket)) {
-      return false;
-    }
+    if (rule.blockedMarkets.contains(normalizedMarket)) return false;
 
     if (normalizedMarket == 'Under 3.5') {
       if ((over15Prob ?? 0.0) >= 70.0) return false;
@@ -415,6 +439,9 @@ class SlipGenerator {
     return true;
   }
 
+  // ------------------------------------------------------------
+  // Public entry point
+  // ------------------------------------------------------------
   static GeneratedSlip? generateTargetSlip(
     List<dynamic> availableFixtures, {
     Set<String>? allowedMarkets,
@@ -423,181 +450,30 @@ class SlipGenerator {
     bool strictPreferredMarketsOnly = false,
   }) {
     final DateTime now = DateTime.now();
-    final List<_Candidate> candidates = [];
 
     final Set<String>? normalizedAllowed =
         (allowedMarkets == null || allowedMarkets.isEmpty)
             ? null
             : allowedMarkets.map(_normalizeMarket).toSet();
 
+    final List<_Candidate> candidates = [];
+
     for (final fixture in availableFixtures) {
       if (fixture is! FixtureModel) continue;
       if (fixture.effectiveIsFinished || fixture.effectiveIsLive) continue;
       if (fixture.kickoff == null) continue;
+      if (!_isToday(fixture.kickoff!, now)) continue;
 
-      final DateTime localKickoff = fixture.kickoff!.toLocal();
-      if (localKickoff.year != now.year ||
-          localKickoff.month != now.month ||
-          localKickoff.day != now.day) {
-        continue;
-      }
-    
-      final double homeProb = fixture.homeWinProb.toDouble();
-      final double drawProb = fixture.drawProb.toDouble();
-      final double awayProb = fixture.awayWinProb.toDouble();
-      if (homeProb <= 0 && awayProb <= 0) continue;
-
-      final String league = _normalizeLeague(fixture.league);
-      final _LeagueRule rule = _ruleForLeague(league);
-
-      final String matchName = '${fixture.homeTeam} vs ${fixture.awayTeam}';
-      final String safeKey = fixture.key ?? '';
-      final String? kickoffIso = fixture.kickoff?.toIso8601String();
-
-      final double? over25 = _percent(fixture.over25Goals);
-      final double? explicitOver15 = _percent(fixture.over15Goals);
-      final double? over15Prob = explicitOver15 ??
-          (over25 != null
-              ? (over25 + 16.0).clamp(55.0, 88.0).toDouble()
-              : null);
-      final double? bttsProb = _percent(fixture.btts);
-    
-      void addCandidateIfValid({
-        required String market,
-        required String prediction,
-        required double odds,
-        required double prob,
-      }) {
-        final String normMarket = _normalizeMarket(market);
-
-        if (normalizedAllowed != null &&
-            !normalizedAllowed.contains(normMarket)) {
-          return;
-        }
-        if (strictPreferredMarketsOnly &&
-            rule.preferredMarkets.isNotEmpty &&
-            !rule.preferredMarkets.contains(normMarket)) {
-          return;
-        }
-        if (!_passesGlobalRiskFilter(
-          market: normMarket,
-          rule: rule,
-          over15Prob: over15Prob,
-          bttsProb: bttsProb,
-        )) {
-          return;
-        }
-
-        final double bonus = rule.marketBonuses[normMarket] ?? 0.0;
-        candidates.add(
-        _Candidate(
-          fixtureKey: safeKey,
-          league: league,
-          match: matchName,
-          market: normMarket,
-          prediction: prediction,
-          odds: odds,
-          prob: prob,
-          score: prob + bonus,
-          kickoffIso: kickoffIso,
+      candidates.addAll(
+        _candidatesForFixture(
+          fixture,
+          normalizedAllowed: normalizedAllowed,
+          strictPreferredMarketsOnly: strictPreferredMarketsOnly,
         ),
       );
-      // 1. Over 1.5 Goals
-      if (over15Prob != null && over15Prob >= rule.minOver15Prob) {
-        addCandidateIfValid(
-          market: 'Over 1.5',
-          prediction: 'Over 1.5 Goals',
-          odds: _impliedOdds(over15Prob),
-          prob: over15Prob,
-        );
-      }
-
-      // 2. Double Chance (1X / X2)
-      if (homeProb >= 55.0) {
-        final double dcProb = homeProb + drawProb;
-        if (dcProb < 95.0) {
-          addCandidateIfValid(
-            market: 'Double Chance',
-            prediction: 'Double Chance: ${fixture.homeTeam} or Draw (1X)',
-            odds: _impliedOdds(dcProb),
-            prob: dcProb,
-          );
-        }
-      } else if (awayProb >= 55.0) {
-        final double dcProb = awayProb + drawProb;
-        if (dcProb < 95.0) {
-          addCandidateIfValid(
-            market: 'Double Chance',
-            prediction: 'Double Chance: Draw or ${fixture.awayTeam} (X2)',
-            odds: _impliedOdds(dcProb),
-            prob: dcProb,
-          );
-        }
-      }
-
-    final double dc12Prob = homeProb + awayProb;
-    if (dc12Prob >= 72.0 && dc12Prob < 95.0) {
-      addCandidateIfValid(
-        market: 'Double Chance',
-        prediction: 'Double Chance: ${fixture.homeTeam} or ${fixture.awayTeam} (12)',
-        odds: _impliedOdds(dc12Prob),
-        prob: dc12Prob,
-      );
     }
-      // 3. 1X2 / Tip
-      final double tipProb = fixture.tipProb.toDouble();
-      if (fixture.topTip.isNotEmpty && tipProb >= 62.0) {
-        final double odds =
-            (fixture.odds > 0 && fixture.topTip.toLowerCase().contains('win'))
-                ? fixture.odds
-                : _impliedOdds(tipProb);
 
-        addCandidateIfValid(
-          market: '1X2',
-          prediction: fixture.topTip,
-          odds: odds,
-          prob: tipProb,
-        );
-      }
-
-      // 4. Under 3.5 Goals
-      final double? explicitUnder35 = _percent(fixture.under35Goals);
-      final double? under35Prob = explicitUnder35 ??
-          (over25 != null
-              ? (100.0 - over25 + 22.0).clamp(55.0, 86.0).toDouble()
-              : null);
-      if (under35Prob != null && under35Prob >= rule.minUnder35Prob) {
-        addCandidateIfValid(
-          market: 'Under 3.5',
-          prediction: 'Under 3.5 Goals',
-          odds: _impliedOdds(under35Prob),
-          prob: under35Prob,
-        );
-      }
-
-      // 5. Ov2.5 Goals
-      if (over25 != null && over25 >= 65.0) {
-        addCandidateIfValid(
-          market: 'Ov2.5',
-          prediction: 'Over 2.5 Goals',
-          odds: _impliedOdds(over25),
-          prob: over25,
-        );
-      }
-
-      // 6. GG (BTTS)
-      if (bttsProb != null && bttsProb >= 65.0) {
-        addCandidateIfValid(
-          market: 'GG',
-          prediction: 'Both Teams To Score: Yes',
-          odds: _impliedOdds(bttsProb),
-          prob: bttsProb,
-        );
-      }
-    }
-  }
-
-     debugPrint(
+    debugPrint(
       'candidates: ${candidates.length}, '
       'markets: ${candidates.map((c) => c.market).toSet()}',
     );
@@ -612,17 +488,176 @@ class SlipGenerator {
       maxLegs: maxLegs,
       maxLegsPerLeague: maxLegsPerLeague,
     );
-   }
- 
-  // ------------------------------------------------------------
-  // Selection helpers
-  // ------------------------------------------------------------
-  static const double _targetMinOdds = 5.0;
-  static const double _targetMaxOdds = 10.0;
-  static const double _comboMinOdds = 2.0;
+  }
 
-  static double _round2(double v) => double.parse(v.toStringAsFixed(2));
+  // ------------------------------------------------------------
+  // Candidate building (one fixture -> 0..n candidates)
+  // ------------------------------------------------------------
+  static List<_Candidate> _candidatesForFixture(
+    FixtureModel fixture, {
+    required Set<String>? normalizedAllowed,
+    required bool strictPreferredMarketsOnly,
+  }) {
+    final double homeProb = fixture.homeWinProb.toDouble();
+    final double drawProb = fixture.drawProb.toDouble();
+    final double awayProb = fixture.awayWinProb.toDouble();
+    if (homeProb <= 0 && awayProb <= 0) return const [];
 
+    final String league = _normalizeLeague(fixture.league);
+    final _LeagueRule rule = _ruleForLeague(league);
+
+    final String matchName = '${fixture.homeTeam} vs ${fixture.awayTeam}';
+    final String safeKey = fixture.key ?? '';
+    final String? kickoffIso = fixture.kickoff?.toIso8601String();
+
+    final double? over25 = _percent(fixture.over25Goals);
+    final double? over15Prob = _percent(fixture.over15Goals) ??
+        (over25 != null
+            ? (over25 + 16.0).clamp(55.0, 88.0).toDouble()
+            : null);
+    final double? under35Prob = _percent(fixture.under35Goals) ??
+        (over25 != null
+            ? (100.0 - over25 + 22.0).clamp(55.0, 86.0).toDouble()
+            : null);
+    final double? bttsProb = _percent(fixture.btts);
+
+    final List<_Candidate> out = [];
+
+    void add({
+      required String market,
+      required String prediction,
+      required double odds,
+      required double prob,
+    }) {
+      final String normMarket = _normalizeMarket(market);
+
+      if (normalizedAllowed != null &&
+          !normalizedAllowed.contains(normMarket)) {
+        return;
+      }
+      if (strictPreferredMarketsOnly &&
+          rule.preferredMarkets.isNotEmpty &&
+          !rule.preferredMarkets.contains(normMarket)) {
+        return;
+      }
+      if (!_passesGlobalRiskFilter(
+        market: normMarket,
+        rule: rule,
+        over15Prob: over15Prob,
+        bttsProb: bttsProb,
+      )) {
+        return;
+      }
+
+      final double bonus = rule.marketBonuses[normMarket] ?? 0.0;
+      out.add(
+        _Candidate(
+          fixtureKey: safeKey,
+          league: league,
+          match: matchName,
+          market: normMarket,
+          prediction: prediction,
+          odds: odds,
+          prob: prob,
+          score: prob + bonus,
+          kickoffIso: kickoffIso,
+        ),
+      );
+    }
+
+    // 1. Over 1.5 Goals
+    if (over15Prob != null && over15Prob >= rule.minOver15Prob) {
+      add(
+        market: 'Over 1.5',
+        prediction: 'Over 1.5 Goals',
+        odds: _impliedOdds(over15Prob),
+        prob: over15Prob,
+      );
+    }
+
+    // 2. Double Chance (1X / X2 / 12)
+    if (homeProb >= _dcMinSideProb) {
+      final double dcProb = homeProb + drawProb;
+      if (dcProb < _dcMaxProb) {
+        add(
+          market: 'Double Chance',
+          prediction: 'Double Chance: ${fixture.homeTeam} or Draw (1X)',
+          odds: _impliedOdds(dcProb),
+          prob: dcProb,
+        );
+      }
+    } else if (awayProb >= _dcMinSideProb) {
+      final double dcProb = awayProb + drawProb;
+      if (dcProb < _dcMaxProb) {
+        add(
+          market: 'Double Chance',
+          prediction: 'Double Chance: Draw or ${fixture.awayTeam} (X2)',
+          odds: _impliedOdds(dcProb),
+          prob: dcProb,
+        );
+      }
+    }
+
+    final double dc12Prob = homeProb + awayProb;
+    if (dc12Prob >= _dc12MinProb && dc12Prob < _dcMaxProb) {
+      add(
+        market: 'Double Chance',
+        prediction:
+            'Double Chance: ${fixture.homeTeam} or ${fixture.awayTeam} (12)',
+        odds: _impliedOdds(dc12Prob),
+        prob: dc12Prob,
+      );
+    }
+
+    // 3. 1X2 / Tip
+    final double tipProb = fixture.tipProb.toDouble();
+    if (fixture.topTip.isNotEmpty && tipProb >= _tipMinProb) {
+      final bool useBookmakerOdds =
+          fixture.odds > 0 && fixture.topTip.toLowerCase().contains('win');
+      add(
+        market: '1X2',
+        prediction: fixture.topTip,
+        odds: useBookmakerOdds ? fixture.odds : _impliedOdds(tipProb),
+        prob: tipProb,
+      );
+    }
+
+    // 4. Under 3.5 Goals
+    if (under35Prob != null && under35Prob >= rule.minUnder35Prob) {
+      add(
+        market: 'Under 3.5',
+        prediction: 'Under 3.5 Goals',
+        odds: _impliedOdds(under35Prob),
+        prob: under35Prob,
+      );
+    }
+
+    // 5. Over 2.5 Goals
+    if (over25 != null && over25 >= _over25MinProb) {
+      add(
+        market: 'Ov2.5',
+        prediction: 'Over 2.5 Goals',
+        odds: _impliedOdds(over25),
+        prob: over25,
+      );
+    }
+
+    // 6. GG (BTTS)
+    if (bttsProb != null && bttsProb >= _bttsMinProb) {
+      add(
+        market: 'GG',
+        prediction: 'Both Teams To Score: Yes',
+        odds: _impliedOdds(bttsProb),
+        prob: bttsProb,
+      );
+    }
+
+    return out;
+  }
+
+  // ------------------------------------------------------------
+  // Slip selection
+  // ------------------------------------------------------------
   static Map<String, dynamic> _toSelectionMap(_Candidate c) => {
         'fixtureKey': c.fixtureKey,
         'league': c.league,
@@ -682,7 +717,9 @@ class SlipGenerator {
 
     if (odds >= _comboMinOdds) {
       return _buildSlip(
-        odds <= _targetMinOdds ? '⚡ Daily Value Combo (2-5x)' : '⚡ Custom Combo Slip',
+        odds <= _targetMinOdds
+            ? '⚡ Daily Value Combo (2-5x)'
+            : '⚡ Custom Combo Slip',
         picks,
         odds,
       );
@@ -690,10 +727,10 @@ class SlipGenerator {
 
     return _buildSlip('⚡ Light Slate Combo', picks, odds);
   }
-
+}
 
 //=================================
-// class ProtectedSystemSlipCard
+// ProtectedSystemSlipCard
 //=================================
 class ProtectedSystemSlipCard extends StatefulWidget {
   final GeneratedSlip slip;
@@ -711,10 +748,13 @@ class ProtectedSystemSlipCard extends StatefulWidget {
 }
 
 class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
+  static const Color _teal = Color(0xFF008080);
+
   bool _hasAccess = false;
   bool _isAdmin = false;
   int _waiverDays = 0;
   bool _loading = true;
+  bool _notified = false;
 
   @override
   void initState() {
@@ -733,36 +773,42 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
     });
   }
 
-  bool _notified = false;
+  /// Sends the settled notification once per card instance.
+  void _notifyIfSettled(SlipEvaluation evaluation) {
+    if (!evaluation.isSettled || _notified) return;
+    _notified = true;
+
+    final slip = widget.slip;
+    final double amount = evaluation.isWon
+        ? (slip.potentialPayout > 0
+            ? slip.potentialPayout
+            : slip.stake * slip.totalOdds)
+        : slip.stake;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService.notifySlipSettled(
+        slipId: slip.id,
+        title: slip.title,
+        isWon: evaluation.isWon,
+        stake: slip.stake,
+        payoutOrLoss: amount,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final evaluation = widget.slip.evaluateOutcome(widget.latestFixtures);
-    final bool isSettled = evaluation.isSettled ||
-        widget.slip.areAllMatchesSettled(widget.latestFixtures);
-    final bool canViewPicks = _hasAccess || isSettled;
+    final slip = widget.slip;
+    final evaluation = slip.evaluateOutcome(widget.latestFixtures);
+    final bool canViewPicks = _hasAccess || evaluation.isSettled;
 
-    if (evaluation.isSettled && !_notified) {
-      _notified = true;
-      final double amount = evaluation.isWon
-          ? (widget.slip.stake * widget.slip.totalOdds)
-          : widget.slip.stake;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        NotificationService.notifySlipSettled(
-          slipId: widget.slip.id,
-          title: widget.slip.title,
-          isWon: evaluation.isWon,
-          stake: widget.slip.stake,
-          payoutOrLoss: amount,
-          phoneNumber: _profilePhone,
-        );
-      });
-    }
+    _notifyIfSettled(evaluation);
+
     return Card(
       color: const Color(0xFF1E1E1E),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: widget.slip.payoutColor, width: 1.2),
+        side: BorderSide(color: slip.payoutColor, width: 1.2),
       ),
       margin: const EdgeInsets.symmetric(vertical: 8),
       child: Padding(
@@ -770,198 +816,210 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.slip.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                if (_isAdmin)
-                  _badge('ADMIN', Colors.amber)
-                else if (_waiverDays > 0)
-                  _badge('FREE TRIAL ($_waiverDays d left)', Colors.teal)
-                else if (evaluation.isWon)
-                  _badge('WON', Colors.green)
-                else if (evaluation.isLost)
-                  _badge('LOST', Colors.red)
-                else if (isSettled)
-                  _badge('SETTLED', Colors.blueGrey),
-              ],
-            ),
+            _buildHeader(evaluation),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: widget.slip.payoutColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: widget.slip.payoutColor.withOpacity(0.35),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'TOTAL ODDS',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                      Text(
-                        '${widget.slip.totalOdds.toStringAsFixed(2)}x',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        'POSSIBLE WIN (Ksh ${widget.slip.stake.toStringAsFixed(0)})',
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                      Text(
-                        'Ksh ${widget.slip.potentialPayout.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: widget.slip.payoutColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            _buildOddsPanel(),
             const SizedBox(height: 14),
             if (_loading)
               const Center(
                 child: Padding(
                   padding: EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(color: Color(0xFF008080)),
+                  child: CircularProgressIndicator(color: _teal),
                 ),
               )
             else if (canViewPicks)
-              ...widget.slip.selections.asMap().entries.map((entry) {
-                final int idx = entry.key;
-                final dynamic sel = entry.value;
-                final legEval =
-                    idx < evaluation.legs.length ? evaluation.legs[idx] : null;
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sel['match']?.toString() ?? '',
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                            Text(
-                              sel['prediction']?.toString() ?? '',
-                              style: const TextStyle(
-                                color: Color(0xFF008080),
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (legEval?.won != null) ...[
-                            PredictionOutcomeBadge(won: legEval!.won),
-                            const SizedBox(width: 6),
-                          ],
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black45,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${sel['odds']}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              })
+              ..._buildPickRows(evaluation)
             else
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.black38,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.lock_outline,
-                      color: Color(0xFF008080),
-                      size: 32,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${widget.slip.selections.length} High-Value Picks Locked',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Unlock now to view matches & predictions',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF008080),
-                        foregroundColor: Colors.white,
-                      ),
-                      icon: const Icon(Icons.vpn_key, size: 18),
-                      label: const Text('Unlock Slip (From Ksh 50)'),
-                      onPressed: () {
-                        showSlipSubscriptionSheet(context, () async {
-                          await _verifyAccess();
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
+              _buildLockedPanel(),
           ],
         ),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // UI pieces
+  // ------------------------------------------------------------
+  Widget _buildHeader(SlipEvaluation evaluation) {
+    final Widget? badge = _statusBadge(evaluation);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            widget.slip.title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        if (badge != null) badge,
+      ],
+    );
+  }
+
+  Widget? _statusBadge(SlipEvaluation e) {
+    if (_isAdmin) return _badge('ADMIN', Colors.amber);
+    if (_waiverDays > 0) {
+      return _badge('FREE TRIAL ($_waiverDays d left)', Colors.teal);
+    }
+    if (e.isWon) return _badge('WON', Colors.green);
+    if (e.isLost) return _badge('LOST', Colors.red);
+    if (e.isSettled) return _badge('SETTLED', Colors.blueGrey);
+    return null;
+  }
+
+  Widget _buildOddsPanel() {
+    final slip = widget.slip;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: slip.payoutColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: slip.payoutColor.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'TOTAL ODDS',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+              Text(
+                '${slip.totalOdds.toStringAsFixed(2)}x',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'POSSIBLE WIN (Ksh ${slip.stake.toStringAsFixed(0)})',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+              Text(
+                'Ksh ${slip.potentialPayout.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: slip.payoutColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildPickRows(SlipEvaluation evaluation) {
+    return widget.slip.selections.asMap().entries.map((entry) {
+      final int idx = entry.key;
+      final dynamic sel = entry.value;
+      final legEval =
+          idx < evaluation.legs.length ? evaluation.legs[idx] : null;
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    sel['match']?.toString() ?? '',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  Text(
+                    sel['prediction']?.toString() ?? '',
+                    style: const TextStyle(color: _teal, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (legEval?.won != null) ...[
+                  PredictionOutcomeBadge(won: legEval!.won),
+                  const SizedBox(width: 6),
+                ],
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${sel['odds']}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _buildLockedPanel() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black38,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.lock_outline, color: _teal, size: 32),
+          const SizedBox(height: 8),
+          Text(
+            '${widget.slip.selections.length} High-Value Picks Locked',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Unlock now to view matches & predictions',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _teal,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.vpn_key, size: 18),
+            label: const Text('Unlock Slip (From Ksh 50)'),
+            onPressed: () {
+              showSlipSubscriptionSheet(context, () async {
+                await _verifyAccess();
+              });
+            },
+          ),
+        ],
       ),
     );
   }
@@ -985,4 +1043,3 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
     );
   }
 }
-  
