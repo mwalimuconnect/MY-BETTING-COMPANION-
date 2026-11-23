@@ -130,6 +130,17 @@ class GeneratedSlip {
     }
     return const SlipEvaluation(isSettled: true, isWon: true);
   }
+
+NotificationService.notifySlipSettled(
+  slipId: slip.id,
+  title: slip.title,
+  isWon: eval.isWon,
+  stake: slip.stake,
+  payoutOrLoss: eval.isWon
+      ? (slip.potentialPayout > 0 ? slip.potentialPayout : slip.stake * slip.totalOdds)
+      : slip.stake,
+  phoneNumber: _profilePhone,
+);
   
     bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
     final String rawScore = (match.actualScore ?? '')
@@ -461,7 +472,7 @@ class SlipGenerator {
               ? (over25 + 16.0).clamp(55.0, 88.0).toDouble()
               : null);
       final double? bttsProb = _percent(fixture.btts);
-
+    
       void addCandidateIfValid({
         required String market,
         required String prediction,
@@ -595,99 +606,103 @@ class SlipGenerator {
         );
       }
     }
+  }
 
+     debugPrint(
+      'candidates: ${candidates.length}, '
+      'markets: ${candidates.map((c) => c.market).toSet()}',
+    );
+
+    if (candidates.isEmpty) return null;
+
+    // Best-scored candidates first
     candidates.sort((a, b) => b.score.compareTo(a.score));
 
-    final List<Map<String, dynamic>> selectedBets = [];
+    return _selectSlip(
+      candidates,
+      maxLegs: maxLegs,
+      maxLegsPerLeague: maxLegsPerLeague,
+    );
+   }
+ 
+  // ------------------------------------------------------------
+  // Selection helpers
+  // ------------------------------------------------------------
+  static const double _targetMinOdds = 5.0;
+  static const double _targetMaxOdds = 10.0;
+  static const double _comboMinOdds = 2.0;
+
+  static double _round2(double v) => double.parse(v.toStringAsFixed(2));
+
+  static Map<String, dynamic> _toSelectionMap(_Candidate c) => {
+        'fixtureKey': c.fixtureKey,
+        'league': c.league,
+        'match': c.match,
+        'market': c.market,
+        'prediction': c.prediction,
+        'odds': _round2(c.odds),
+        'kickoff': c.kickoffIso,
+      };
+
+  static GeneratedSlip _buildSlip(
+    String title,
+    List<_Candidate> picks,
+    double odds,
+  ) {
+    return GeneratedSlip(
+      title: title,
+      totalOdds: _round2(odds),
+      selections: picks.map(_toSelectionMap).toList(),
+    );
+  }
+
+  static GeneratedSlip? _selectSlip(
+    List<_Candidate> candidates, {
+    required int maxLegs,
+    required int maxLegsPerLeague,
+  }) {
+    final List<_Candidate> picks = [];
     final Set<String> usedMatches = {};
     final Map<String, int> leagueCounts = {};
-    double cumulativeOdds = 1.0;
+    double odds = 1.0;
 
-    // Pass 1: Spread across leagues (maxLegsPerLeague) + 1 pick per match
-    for (final c in candidates) {
-      if (selectedBets.length >= maxLegs) break;
-      if (usedMatches.contains(c.match)) continue;
-      if ((leagueCounts[c.league] ?? 0) >= maxLegsPerLeague) continue;
-      if ((cumulativeOdds * c.odds) > 10.0) continue;
+    // Pass 1 respects the per-league cap (spreads risk across leagues).
+    // Pass 2 drops the cap so quiet days with few leagues still work.
+    for (final enforceLeagueCap in [true, false]) {
+      for (final c in candidates) {
+        if (picks.length >= maxLegs) break;
+        if (usedMatches.contains(c.match)) continue; // 1 pick per match
+        if (enforceLeagueCap &&
+            (leagueCounts[c.league] ?? 0) >= maxLegsPerLeague) {
+          continue;
+        }
+        if (odds * c.odds > _targetMaxOdds) continue;
 
-      selectedBets.add({
-        'fixtureKey': c.fixtureKey,
-        'league': c.league,
-        'match': c.match,
-        'market': c.market,
-        'prediction': c.prediction,
-        'odds': double.parse(c.odds.toStringAsFixed(2)),
-        'kickoff': c.kickoffIso,
-      });
+        picks.add(c);
+        usedMatches.add(c.match);
+        leagueCounts[c.league] = (leagueCounts[c.league] ?? 0) + 1;
+        odds *= c.odds;
 
-      usedMatches.add(c.match);
-      leagueCounts[c.league] = (leagueCounts[c.league] ?? 0) + 1;
-
-      usedMatches.add(c.match);
-      leagueCounts[c.league] = (leagueCounts[c.league] ?? 0) + 1;
-      cumulativeOdds *= c.odds;
-
-      if (cumulativeOdds >= 5.00 && cumulativeOdds <= 10.00) {
-        return GeneratedSlip(
-          title: '🔥 Prolific Value Accumulator',
-          totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
-          selections: selectedBets,
-        );
+        if (odds >= _targetMinOdds && odds <= _targetMaxOdds) {
+          return _buildSlip('🔥 Prolific Value Accumulator', picks, odds);
+        }
       }
     }
 
-    // Pass 2: Relax per-league cap if fewer leagues are active today
-    for (final c in candidates) {
-      if (selectedBets.length >= maxLegs) break;
-      if (usedMatches.contains(c.match)) continue;
-      if ((cumulativeOdds * c.odds) > 10.0) continue;
+    if (picks.isEmpty) return null;
 
-      selectedBets.add({
-        'fixtureKey': c.fixtureKey,
-        'league': c.league,
-        'match': c.match,
-        'market': c.market,
-        'prediction': c.prediction,
-        'odds': double.parse(c.odds.toStringAsFixed(2)),
-        'kickoff': c.kickoffIso,
-      });
-
-      usedMatches.add(c.match);
-      cumulativeOdds *= c.odds;
-
-      if (cumulativeOdds >= 5.00 && cumulativeOdds <= 10.00) {
-        return GeneratedSlip(
-          title: '🔥 Prolific Value Accumulator',
-          totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
-          selections: selectedBets,
-        );
-      }
-    }
-
-    if (selectedBets.isNotEmpty && cumulativeOdds >= 2.0) {
-      return GeneratedSlip(
-        title: cumulativeOdds <= 5.0
-            ? '⚡ Daily Value Combo (2-5x)'
-            : '⚡ Custom Combo Slip',
-        totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
-        selections: selectedBets,
+    if (odds >= _comboMinOdds) {
+      return _buildSlip(
+        odds <= _targetMinOdds ? '⚡ Daily Value Combo (2-5x)' : '⚡ Custom Combo Slip',
+        picks,
+        odds,
       );
     }
 
-    if (selectedBets.isNotEmpty) {
-      return GeneratedSlip(
-        title: '⚡ Light Slate Combo',
-        totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
-        selections: selectedBets,
-      );
-    }
-
-    return null;
-
+    return _buildSlip('⚡ Light Slate Combo', picks, odds);
   }
- }
-}
-  
+
+
 //=================================
 // class ProtectedSystemSlipCard
 //=================================
