@@ -92,6 +92,28 @@ class SlipSummary {
   bool get isSettled => isWon || isLost;
 }
 
+/// Formats a DateTime into YYYY-MM-DD in local time.
+String formatLocalDayKey(DateTime dt) {
+  final local = dt.toLocal();
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+}
+
+/// Today's local date key (YYYY-MM-DD).
+String todayDayKey([DateTime? now]) => formatLocalDayKey(now ?? DateTime.now());
+
+/// Yesterday's local date key (YYYY-MM-DD).
+String yesterdayDayKey([DateTime? now]) =>
+    formatLocalDayKey((now ?? DateTime.now()).subtract(const Duration(days: 1)));
+
+/// Keeps only legs within a rolling 7-day window (today + 6 prior days).
+List<SlipLeg> keepLast7DaysLegs(List<SlipLeg> legs, [DateTime? now]) {
+  final current = (now ?? DateTime.now()).toLocal();
+  final cutoff = DateTime(current.year, current.month, current.day)
+      .subtract(const Duration(days: 6));
+  final cutoffKey = formatLocalDayKey(cutoff);
+  return legs.where((leg) => leg.dayKey.compareTo(cutoffKey) >= 0).toList();
+}
+
 /// Header widget rendering MY PICKS in bold Teal Green capital letters
 Widget buildMyPicksHeader() {
   return const Padding(
@@ -200,6 +222,144 @@ Widget _buildLegStatusChip(String status) {
   }
 }
 
+Widget _buildLegCard(
+  SlipLeg leg,
+  int index,
+  Function(String key) onDelete,
+) {
+  return Card(
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+    child: ListTile(
+      leading: CircleAvatar(
+        backgroundColor: const Color(0xFF008080), // Teal Green badge
+        child: Text(
+          '${index + 1}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      title: Text('${leg.home} vs ${leg.away}'),
+      subtitle: Text(
+        'Kickoff: ${leg.kickoff.isNotEmpty ? leg.kickoff : "TBD"}\n'
+        'Tip: ${leg.tip.isNotEmpty ? leg.tip : "None"} | '
+        'Score: ${leg.score.isNotEmpty ? leg.score : "Pending"}',
+      ),
+      isThreeLine: true,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildLegStatusChip(leg.status),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: () => onDelete(leg.key),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Renders today's saved picks at the top and puts previous days (up to 7 days,
+/// starting with yesterday) inside a foldable flap that unfolds into days.
+Widget buildWeeklySavedSlipsList(
+  List<SlipLeg> rawLegs,
+  Function(String key) onDelete,
+) {
+  final legs = keepLast7DaysLegs(rawLegs);
+  if (legs.isEmpty) {
+    return const Padding(
+      padding: EdgeInsets.all(24),
+      child: Text(
+        'No picks saved yet. Tap the bookmark icon on any fixture to add it here.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.grey),
+      ),
+    );
+  }
+
+  final tKey = todayDayKey();
+  final yKey = yesterdayDayKey();
+
+  final Map<String, List<SlipLeg>> grouped = {};
+  for (final leg in legs) {
+    grouped.putIfAbsent(leg.dayKey, () => []).add(leg);
+  }
+
+  final todayLegs = grouped[tKey] ?? const <SlipLeg>[];
+  final previousDays = grouped.entries
+      .where((entry) => entry.key != tKey)
+      .toList()
+    ..sort((a, b) => b.key.compareTo(a.key)); // Yesterday first, then older days
+
+  final previousSlipCount = previousDays.fold<int>(
+    0,
+    (sum, entry) => sum + entry.value.length,
+  );
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      if (todayLegs.isNotEmpty) ...[
+        buildBrightDayHeader(tKey),
+        for (int i = 0; i < todayLegs.length; i++)
+          _buildLegCard(todayLegs[i], i, onDelete),
+      ] else
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            'No picks saved for today yet.',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      const SizedBox(height: 12),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ExpansionTile(
+            initiallyExpanded: false,
+            iconColor: const Color(0xFF008080),
+            collapsedIconColor: const Color(0xFF008080),
+            title: Text(
+              'PREVIOUS DAYS (UP TO 7 DAYS) • $previousSlipCount',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF008080),
+                letterSpacing: 0.8,
+              ),
+            ),
+            subtitle: Text(
+              previousDays.isEmpty
+                  ? 'No slips from previous days in the last 7 days'
+                  : 'Tap to unfold days of the week',
+            ),
+            children: previousDays.map((dayEntry) {
+              final day = dayEntry.key;
+              final dayLegs = dayEntry.value;
+              final prefix = day == yKey ? 'YESTERDAY • ' : '';
+
+              return ExpansionTile(
+                title: Text(
+                  '$prefix$day',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text('${dayLegs.length} pick(s)'),
+                children: [
+                  for (int i = 0; i < dayLegs.length; i++)
+                    _buildLegCard(dayLegs[i], i, onDelete),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 /// Helper builder to render saved picks grouped per day with bright day/date headers
 Widget buildGroupedSlipList(
     List<SlipLeg> legs, Function(String key) onDelete) {
@@ -236,36 +396,7 @@ Widget buildGroupedSlipList(
         children: [
           buildBrightDayHeader(day),
           for (int i = 0; i < dayLegs.length; i++)
-            Card(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFF008080), // Teal Green badge
-                  child: Text(
-                    '${i + 1}',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                title: Text('${dayLegs[i].home} vs ${dayLegs[i].away}'),
-                subtitle: Text(
-                  'Kickoff: ${dayLegs[i].kickoff.isNotEmpty ? dayLegs[i].kickoff : "TBD"}\n'
-                  'Tip: ${dayLegs[i].tip.isNotEmpty ? dayLegs[i].tip : "None"} | '
-                  'Score: ${dayLegs[i].score.isNotEmpty ? dayLegs[i].score : "Pending"}',
-                ),
-                isThreeLine: true,
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildLegStatusChip(dayLegs[i].status),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                      onPressed: () => onDelete(dayLegs[i].key),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _buildLegCard(dayLegs[i], i, onDelete),
         ],
       );
     },
@@ -296,14 +427,31 @@ class SlipStore {
     }
   }
 
+  /// Loads saved slips pruned to the rolling 7-day window.
+  static Future<List<SlipLeg>> loadLast7Days() async {
+    final all = await load();
+    final kept = keepLast7DaysLegs(all);
+    if (kept.length != all.length) {
+      await _save(kept);
+    }
+    return kept;
+  }
+
   static Future<void> _save(List<SlipLeg> legs) async {
     try {
+      final kept = keepLast7DaysLegs(legs);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
-          _prefsKey, jsonEncode(legs.map((l) => l.toJson()).toList()));
+          _prefsKey, jsonEncode(kept.map((l) => l.toJson()).toList()));
     } catch (e) {
       debugPrint('Could not save slips: $e');
     }
+  }
+
+  /// Removes any slips older than 7 days while preserving the rolling week.
+  static Future<void> pruneExpiredWeek() async {
+    final legs = await load();
+    await _save(legs);
   }
 
   /// Adds the match to saved slips, or removes it if already saved.
@@ -311,7 +459,7 @@ class SlipStore {
   static Future<bool> toggle(FixtureModel f) async {
     final key = f.key;
     if (key == null) return false;
-    final legs = await load();
+    final legs = await loadLast7Days();
     final index = legs.indexWhere((l) => l.key == key);
     if (index >= 0) {
       legs.removeAt(index);
@@ -350,7 +498,7 @@ class SlipStore {
   /// Settles pending legs using finished matches. Returns the legs that were
   /// newly won or lost (so the app can tell the user).
   static Future<List<SlipLeg>> settle(List<FixtureModel> fixtures) async {
-    final legs = await load();
+    final legs = await loadLast7Days();
     final byKey = <String, FixtureModel>{};
     final byMatch = <String, FixtureModel>{};
     for (final f in fixtures) {
