@@ -1340,7 +1340,7 @@ class _FixturesTabState extends State<FixturesTab> {
 }
                                                                     
 // ---------------------------------------------------------------------------
-// Slips tab (MY PICKS)
+// Slips tab (SYSTEM PICKS)
 // ---------------------------------------------------------------------------
 class _SlipsData {
   final List<SlipLeg> legs;
