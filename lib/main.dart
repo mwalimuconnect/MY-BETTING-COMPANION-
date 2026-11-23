@@ -112,8 +112,10 @@ class SuggestedSlip {
     );
   }
 }
+
 class SuggestedSlipStore {
   static const String _slipKey = 'suggested_slip_v2';
+  static const String _historyKey = 'suggested_slip_history_7d_v1';
   static const String _notifiedDayKey = 'suggested_slip_notified_day';
 
   static const String note =
@@ -124,6 +126,72 @@ class SuggestedSlipStore {
   static String todayString() {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  static String yesterdayString() {
+    final y = DateTime.now().subtract(const Duration(days: 1));
+    return '${y.year}-${y.month.toString().padLeft(2, '0')}-${y.day.toString().padLeft(2, '0')}';
+  }
+
+  static String _cutoffDateString([DateTime? now]) {
+    final current = now ?? DateTime.now();
+    final cutoff = DateTime(current.year, current.month, current.day)
+        .subtract(const Duration(days: 6)); // 7 days inclusive: today + 6 prior days
+    return '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
+  }
+
+  static Map<String, SuggestedSlip> _prune7Days(Map<String, SuggestedSlip> source) {
+    final cutoff = _cutoffDateString();
+    final entries = source.entries
+        .where((e) => e.key.compareTo(cutoff) >= 0)
+        .toList()
+      ..sort((a, b) => b.key.compareTo(a.key)); // Newest day first
+    return {for (final e in entries) e.key: e.value};
+  }
+
+  static Future> loadHistory7Days() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_historyKey);
+      if (raw == null || raw.isEmpty) return {};
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+
+      final map = <String, SuggestedSlip>{};
+      decoded.forEach((key, value) {
+        if (value is Map) {
+          final slip = SuggestedSlip.fromJson(Map<String, dynamic>.from(value));
+          final dateKey = slip.date.isNotEmpty ? slip.date : key.toString();
+          map[dateKey] = slip;
+        }
+      });
+
+      final pruned = _prune7Days(map);
+      await prefs.setString(
+        _historyKey,
+        jsonEncode({for (final e in pruned.entries) e.key: e.value.toJson()}),
+      );
+      return pruned;
+    } catch (e) {
+      debugPrint('Could not load 7-day suggested slip history: $e');
+      return {};
+    }
+  }
+
+  static Future<void> saveSlipForHistory(SuggestedSlip slip) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final history = await loadHistory7Days();
+      final key = slip.date.isNotEmpty ? slip.date : todayString();
+      history[key] = slip;
+      final pruned = _prune7Days(history);
+      await prefs.setString(
+        _historyKey,
+        jsonEncode({for (final e in pruned.entries) e.key: e.value.toJson()}),
+      );
+    } catch (e) {
+      debugPrint('Could not save slip to 7-day history: $e');
+    }
   }
 
   static Future<SuggestedSlip?> load() async {
@@ -140,7 +208,7 @@ class SuggestedSlipStore {
     }
   }
 
-  /// Saves an updated custom stake for today's active suggested slip
+  /// Saves an updated custom stake for today's active suggested slip and updates 7-day history
   static Future<void> updateStake(double newStake) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -154,22 +222,31 @@ class SuggestedSlipStore {
           date: slip.date,
         );
         await prefs.setString(_slipKey, jsonEncode(updatedSlip.toJson()));
+        await saveSlipForHistory(updatedSlip);
       }
     } catch (e) {
       debugPrint('Could not update suggested slip stake: $e');
     }
   }
 
-  /// Builds one slip per day from the latest fixtures and sends one
-  /// notification for it.
+  /// Builds one slip per day from the latest fixtures, archives into 7-day history,
+  /// and sends one notification for it.
   static Future<void> refresh(List<FixtureModel> fixtures) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final todayStr = todayString();
       final existing = await load();
 
-      // Today's slip already exists: keep it.
-      if (existing != null && existing.date == todayStr) return;
+      // Today's slip already exists: keep it and ensure it is in 7-day history.
+      if (existing != null && existing.date == todayStr) {
+        await saveSlipForHistory(existing);
+        return;
+      }
+
+      // Archive yesterday's/prior slip before replacing active slot if present
+      if (existing != null && existing.date.isNotEmpty) {
+        await saveSlipForHistory(existing);
+      }
 
       final generated = SlipGenerator.generateTargetSlip(fixtures);
       if (generated == null) {
@@ -178,13 +255,14 @@ class SuggestedSlipStore {
       }
 
       final slip = SuggestedSlip(
-  title: generated.title,
-  totalOdds: generated.totalOdds,
-  selections: List.from(generated.selections),
-  date: todayStr,
-);
+        title: generated.title,
+        totalOdds: generated.totalOdds,
+        selections: List.from(generated.selections),
+        date: todayStr,
+      );
 
       await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
+      await saveSlipForHistory(slip);
 
       if (prefs.getString(_notifiedDayKey) != todayStr) {
         await prefs.setString(_notifiedDayKey, todayStr);
@@ -196,14 +274,6 @@ class SuggestedSlipStore {
     } catch (e) {
       debugPrint('Suggested slip refresh failed: $e');
     }
-  }
-}
-
-Future<void> _safely(Future<void> Function() action) async {
-  try {
-    await action();
-  } catch (e) {
-    debugPrint('Background task failed: $e');
   }
 }
 
@@ -1289,16 +1359,10 @@ class SavedSlipsTab extends StatefulWidget {
 class _SavedSlipsTabState extends State<SavedSlipsTab> {
   late Future<_SlipsData> _slipsFuture;
   late Future<SlipAccessStatus> _accessFuture;
-  
-  // Controllers and edit modes for suggested slip & daily manual slips
+
   final TextEditingController _suggestedStakeController = TextEditingController();
   double? _customSuggestedStake;
   bool _isEditingSuggested = false;
-  
-  // Maps to hold controllers and edit states for each day's saved manual slip
-  final Map<String, TextEditingController> _manualStakeControllers = {};
-  final Map<String, double> _customManualStakes = {};
-  final Map<String, bool> _isEditingManual = {};
 
   @override
   void initState() {
@@ -1309,20 +1373,19 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   @override
   void dispose() {
     _suggestedStakeController.dispose();
-    for (var c in _manualStakeControllers.values) {
-      c.dispose();
-    }
     super.dispose();
   }
 
   Future<_SlipsData> _fetch() async {
-    final legs = await SlipStore.load();
+    final legs = await SlipStore.loadLast7Days();
     final suggested = await SuggestedSlipStore.load();
+    final history = await SuggestedSlipStore.loadHistory7Days();
+
     if (suggested != null && _customSuggestedStake == null) {
       _customSuggestedStake = suggested.stake;
       _suggestedStakeController.text = suggested.stake.toStringAsFixed(0);
     }
-    return _SlipsData(legs, suggested);
+    return _SlipsData(legs, suggested, history);
   }
 
   void _loadSlips() {
@@ -1332,38 +1395,183 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     });
   }
 
-  /// The day a saved pick belongs to, as YYYY-MM-DD
-  String _dayKeyOf(SlipLeg leg) {
-    final DateTime dt = DateTime.tryParse(leg.utcDate)?.toLocal() ??
-        DateTime.fromMillisecondsSinceEpoch(leg.savedAt);
-    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-  }
-
-  /// Day and date header helper
-  Widget _buildDayHeader(String dateStr) {
-    final dt = DateTime.tryParse(dateStr);
-    String formatted = dateStr;
-    if (dt != null) {
-      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-      formatted = '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+  Widget _buildSystemPicksHeader() {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Text(
-        formatted.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 12,
+        'SYSTEM PICKS',
+        style: TextStyle(
+          fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Color(0xFF00C853),
+          color: kTealGreen,
           letterSpacing: 1.2,
         ),
       ),
     );
   }
 
-  /// Suggested slip card with edit and save stake buttons
+  Widget _buildDayHeader(String dateStr) {
+  final dt = DateTime.tryParse(dateStr);
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+  final label = dt == null ? dateStr : '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
+
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+    child: Text(label.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF00C853), letterSpacing: 1.2)),
+  );
+}
+  
+  Widget _archiveSuggestedCard(BuildContext context, SuggestedSlip slip) {
+    final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
+
+    return Card(
+      color: cardBg(context),
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: kTealGreen.withOpacity(0.5), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    slip.title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ),
+                Text(
+                  '${slip.totalOdds.toStringAsFixed(2)}x',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: kTealGreen,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 12),
+            for (int i = 0; i < slip.selections.length; i++) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${i + 1}. ${slip.selections[i]['match']}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 12),
+                          ),
+                          Text(
+                            'Prediction: ${slip.selections[i]['prediction']}',
+                            style: TextStyle(
+                                fontSize: 11, color: mutedText(context)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${slip.selections[i]['odds']}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: kTealGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const Divider(height: 12),
+            Text(
+              'Stake: Ksh ${slip.stake.toStringAsFixed(0)}  •  Possible Win: Ksh ${slip.potentialPayout.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Chance that every leg wins: about ${chance.toStringAsFixed(0)}%',
+              style: TextStyle(fontSize: 11, color: mutedText(context)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrevious7DaysFlap(
+    BuildContext context,
+    Map<String, SuggestedSlip> history7Days,
+    String todayStr,
+  ) {
+    final yesterdayStr = SuggestedSlipStore.yesterdayString();
+    final pastEntries = history7Days.entries
+        .where((e) => e.key != todayStr)
+        .toList()
+      ..sort((a, b) => b.key.compareTo(a.key));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      child: Card(
+        color: cardBg(context),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: kTealGreen.withOpacity(0.45), width: 1),
+        ),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          iconColor: kTealGreen,
+          collapsedIconColor: kTealGreen,
+          title: Text(
+            'PREVIOUS 7 DAYS SLIPS (${pastEntries.length}d)',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: kTealGreen,
+              letterSpacing: 0.8,
+            ),
+          ),
+          subtitle: Text(
+            pastEntries.isEmpty
+                ? 'No previous days stored yet'
+                : 'Tap to unfold days of the week',
+            style: TextStyle(fontSize: 11, color: mutedText(context)),
+          ),
+          children: pastEntries.map((entry) {
+            final dayKey = entry.key;
+            final slip = entry.value;
+            final dayLabel =
+                dayKey == yesterdayStr ? 'YESTERDAY • $dayKey' : dayKey;
+
+            return ExpansionTile(
+              title: Text(
+                dayLabel,
+                style:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(
+                '${slip.title} • ${slip.totalOdds.toStringAsFixed(2)}x',
+                style: TextStyle(fontSize: 11, color: mutedText(context)),
+              ),
+              children: [_archiveSuggestedCard(context, slip)],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
     final double currentStake = _customSuggestedStake ?? slip.stake;
     final double potentialPayout = slip.totalOdds * currentStake;
@@ -1387,7 +1595,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                 Expanded(
                   child: Text(
                     slip.title,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 15),
                   ),
                 ),
                 Text(
@@ -1413,12 +1622,14 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                         children: [
                           Text(
                             '${i + 1}. ${slip.selections[i]['match']}',
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 13),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'Prediction: ${slip.selections[i]['prediction']}',
-                            style: TextStyle(fontSize: 12, color: mutedText(context)),
+                            style: TextStyle(
+                                fontSize: 12, color: mutedText(context)),
                           ),
                         ],
                       ),
@@ -1460,7 +1671,9 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Stake (Ksh)', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                            const Text('Stake (Ksh)',
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey)),
                             TextButton.icon(
                               style: TextButton.styleFrom(
                                 padding: EdgeInsets.zero,
@@ -1469,8 +1682,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                               ),
                               onPressed: () async {
                                 if (_isEditingSuggested) {
-                                  // Save action
-                                  final parsed = double.tryParse(_suggestedStakeController.text.trim());
+                                  final parsed = double.tryParse(
+                                      _suggestedStakeController.text.trim());
                                   if (parsed != null && parsed >= 0) {
                                     setState(() {
                                       _customSuggestedStake = parsed;
@@ -1479,16 +1692,23 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                                     await SuggestedSlipStore.updateStake(parsed);
                                   }
                                 } else {
-                                  // Edit action
                                   setState(() {
                                     _isEditingSuggested = true;
                                   });
                                 }
                               },
-                              icon: Icon(_isEditingSuggested ? Icons.save : Icons.edit, size: 14, color: kTealGreen),
+                              icon: Icon(
+                                _isEditingSuggested ? Icons.save : Icons.edit,
+                                size: 14,
+                                color: kTealGreen,
+                              ),
                               label: Text(
                                 _isEditingSuggested ? 'Save' : 'Edit',
-                                style: const TextStyle(fontSize: 11, color: kTealGreen, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: kTealGreen,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ],
@@ -1497,17 +1717,22 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                         _isEditingSuggested
                             ? TextField(
                                 controller: _suggestedStakeController,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                        decimal: true),
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.bold),
                                 decoration: const InputDecoration(
                                   isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                                  contentPadding: EdgeInsets.symmetric(
+                                      vertical: 4, horizontal: 8),
                                   border: OutlineInputBorder(),
                                 ),
                               )
                             : Text(
                                 'Ksh ${currentStake.toStringAsFixed(0)}',
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.bold),
                               ),
                       ],
                     ),
@@ -1517,7 +1742,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        const Text('Possible Win', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        const Text('Possible Win',
+                            style: TextStyle(fontSize: 11, color: Colors.grey)),
                         const SizedBox(height: 4),
                         Text(
                           'Ksh ${potentialPayout.toStringAsFixed(2)}',
@@ -1544,7 +1770,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 
-  /// Locked Paywall card for suggested slip
   Widget _buildLockedSuggestedCard(BuildContext context) {
     return Card(
       color: cardBg(context),
@@ -1589,231 +1814,23 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 
-  /// Manual Saved Picks Ticket per day with edit & save stake buttons
-  Widget _buildManualSlipCard(String day, List<SlipLeg> dayLegs) {
-    // Default standard combined odds calculation for saved manual legs
-    double totalOdds = 1.0;
-    for (int i = 0; i < dayLegs.length; i++) {
-      totalOdds *= 1.85; // Standard model-implied accumulator multiplier per leg
-    }
-
-    _manualStakeControllers.putIfAbsent(day, () => TextEditingController(text: (_customManualStakes[day] ?? 200.0).toStringAsFixed(0)));
-    final double currentStake = _customManualStakes[day] ?? 200.0;
-    final double potentialPayout = totalOdds * currentStake;
-    final bool isEditing = _isEditingManual[day] ?? false;
-
-    return Card(
-      color: cardBg(context),
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: kTealGreen, width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Saved Accumulator Ticket',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                ),
-                Text(
-                  '${totalOdds.toStringAsFixed(2)}x',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: kTealGreen,
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 16),
-            for (int i = 0; i < dayLegs.length; i++) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${i + 1}. ${dayLegs[i].home} vs ${dayLegs[i].away}',
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Date: ${dayLegs[i].utcDate.isNotEmpty ? dayLegs[i].utcDate : day} | Tip: ${dayLegs[i].tip.isNotEmpty ? dayLegs[i].tip : "None"}',
-                            style: TextStyle(fontSize: 11, color: mutedText(context)),
-                          ),
-                          Text(
-                            'Score: ${dayLegs[i].score.isNotEmpty ? dayLegs[i].score : "Pending"}',
-                            style: TextStyle(fontSize: 11, color: mutedText(context)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                      onPressed: () async {
-                        await SlipStore.remove(dayLegs[i].key);
-                        _loadSlips();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              if (i < dayLegs.length - 1)
-                const Divider(height: 8, color: Colors.black12),
-            ],
-            const Divider(height: 16),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.03),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: kTealGreen.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Stake (Ksh)', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                            TextButton.icon(
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                                minimumSize: const Size(50, 20),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              onPressed: () {
-                                if (isEditing) {
-                                  final parsed = double.tryParse(_manualStakeControllers[day]?.text.trim() ?? '');
-                                  if (parsed != null && parsed >= 0) {
-                                    setState(() {
-                                      _customManualStakes[day] = parsed;
-                                      _isEditingManual[day] = false;
-                                    });
-                                  }
-                                } else {
-                                  setState(() {
-                                    _isEditingManual[day] = true;
-                                  });
-                                }
-                              },
-                              icon: Icon(isEditing ? Icons.save : Icons.edit, size: 14, color: kTealGreen),
-                              label: Text(
-                                isEditing ? 'Save' : 'Edit',
-                                style: const TextStyle(fontSize: 11, color: kTealGreen, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        isEditing
-                            ? TextField(
-                                controller: _manualStakeControllers[day],
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                                decoration: const InputDecoration(
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                                  border: OutlineInputBorder(),
-                                ),
-                              )
-                            : Text(
-                                'Ksh ${currentStake.toStringAsFixed(0)}',
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                              ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text('Possible Win', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Ksh ${potentialPayout.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: kTealGreen,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGroupedManualList(List<SlipLeg> legs) {
-    if (legs.isEmpty) return const SizedBox.shrink();
-
-    final Map<String, List<SlipLeg>> grouped = {};
-    for (final leg in legs) {
-      grouped.putIfAbsent(_dayKeyOf(leg), () => []).add(leg);
-    }
-
-    final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 20, 16, 4),
-          child: Text(
-            '\u26A1 MY SAVED PICKS',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: kTealGreen,
-              letterSpacing: 1.1,
-            ),
-          ),
-        ),
-        for (final day in sortedDays) ...[
-          _buildDayHeader(day),
-          _buildManualSlipCard(day, grouped[day]!),
-        ],
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final todayStr = SuggestedSlipStore.todayString();
+
     return FutureBuilder<_SlipsData>(
       future: _slipsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Column(
             children: [
-              buildMyPicksHeader(),
+              _buildSystemPicksHeader(),
               const Expanded(child: Center(child: CircularProgressIndicator())),
             ],
           );
         }
 
-        final data = snapshot.data ?? const _SlipsData([], null);
-        final legs = data.legs;
-        final summary = SlipStore.summary(legs);
+        final data = snapshot.data ?? const _SlipsData([], null, {});
 
         return FutureBuilder<SlipAccessStatus>(
           future: _accessFuture,
@@ -1823,8 +1840,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
             return ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [
-                buildMyPicksHeader(),
-
+                _buildSystemPicksHeader(),
                 if (data.suggested != null) ...[
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -1844,38 +1860,16 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                   else
                     _suggestedCard(context, data.suggested!),
                 ],
-
-                if (legs.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                    child: Card(
-                      color: cardBg(context),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _statItem('Accumulator', summary.status),
-                            _statItem('Won', '${summary.won}'),
-                            _statItem('Lost', '${summary.lost}'),
-                            _statItem('Pending', '${summary.pending}'),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                if (legs.isEmpty && data.suggested == null)
+                _buildPrevious7DaysFlap(context, data.history7Days, todayStr),
+                if (data.suggested == null && data.history7Days.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      'No saved picks yet. Bookmark matches from the Fixtures tab to add them here.',
+                      'No system slips available yet.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: mutedText(context)),
                     ),
-                  )
-                else
-                  _buildGroupedManualList(legs),
+                  ),
               ],
             );
           },
@@ -1883,18 +1877,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       },
     );
   }
-
-  Widget _statItem(String label, String value) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
 }
-
+                     
 // ---------------------------------------------------------------------------
 // History tab (PROLIFIC)
 // ---------------------------------------------------------------------------
