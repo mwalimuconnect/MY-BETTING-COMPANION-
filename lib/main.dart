@@ -149,7 +149,8 @@ class SuggestedSlipStore {
     return {for (final e in entries) e.key: e.value};
   }
 
-  static Future> loadHistory7Days() async {
+  static Future<Map<String, SuggestedSlip>> loadHistory7Days() async {
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_historyKey);
