@@ -107,7 +107,7 @@ class GeneratedSlip {
           : DateTime.now(),
     );
   }
-
+}
   SlipEvaluation evaluateOutcome(List<dynamic> latestFixtures) {
     if (selections.isEmpty || !areAllMatchesSettled(latestFixtures)) {
       return const SlipEvaluation(isSettled: false, isWon: false);
