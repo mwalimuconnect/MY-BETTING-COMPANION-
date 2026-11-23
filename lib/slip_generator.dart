@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'fixture_model.dart';
 import 'notification_service.dart';
+import 'pick_evaluator.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
 
@@ -146,93 +147,16 @@ class GeneratedSlip {
     return const SlipEvaluation(isSettled: true, isWon: true);
   }
 
+  /// Delegates to the shared evaluator. Picks that can't be judged from the
+  /// final score count as not won (same behaviour as before).
   bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
-    final String rawScore = (match.actualScore ?? '')
-        .toString()
-        .replaceAll(RegExp(r'\s*ft\s*', caseSensitive: false), '')
-        .trim();
-    final parts = rawScore.split(RegExp(r'\s*[-:]\s*'));
-    if (parts.length != 2) return false;
-
-    final int? hGoals = int.tryParse(parts[0].trim());
-    final int? aGoals = int.tryParse(parts[1].trim());
-    if (hGoals == null || aGoals == null) return false;
-
-    final int total = hGoals + aGoals;
-    final String homeName =
-        (match.homeTeam ?? '').toString().trim().toLowerCase();
-    final String awayName =
-        (match.awayTeam ?? '').toString().trim().toLowerCase();
-    final String pick = (sel['prediction'] ?? sel['pick'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
-
-    if (pick.isEmpty) return false;
-
-    bool mentionsTeam(String fullName) {
-      if (fullName.isEmpty) return false;
-      if (pick == fullName ||
-          pick == '$fullName win' ||
-          pick.startsWith('$fullName ')) {
-        return true;
-      }
-      return fullName
-          .split(RegExp(r'\s+'))
-          .where((w) =>
-              w.length >= 4 &&
-              !{'fc', 'sc', 'cf', 'cd', 'ca', 'cr'}.contains(w))
-          .any((w) => RegExp('\\b${RegExp.escape(w)}\\b').hasMatch(pick));
-    }
-
-    // Double Chance (checked before 1X2 so "Home or Draw (1X)" / "(12)" match)
-    if (pick.contains('(12)') ||
-        pick == '12' ||
-        pick.contains('home or away')) {
-      return hGoals != aGoals;
-    }
-    if (pick.contains('(1x)') ||
-        pick == '1x' ||
-        (pick.contains('or draw') && mentionsTeam(homeName))) {
-      return hGoals >= aGoals;
-    }
-    if (pick.contains('(x2)') ||
-        pick == 'x2' ||
-        (pick.contains('or draw') && mentionsTeam(awayName))) {
-      return aGoals >= hGoals;
-    }
-
-    // Goals & BTTS
-    if (pick.contains('over 1.5') || pick == 'ov 1.5') return total >= 2;
-    if (pick.contains('over 2.5') || pick == 'ov 2.5') return total >= 3;
-    if (pick.contains('under 2.5') || pick == 'un 2.5') return total <= 2;
-    if (pick.contains('under 3.5') || pick == 'un 3.5') return total <= 3;
-    if (pick == 'gg' ||
-        pick == 'btts' ||
-        pick.contains('btts: yes') ||
-        pick == 'btts yes') {
-      return hGoals > 0 && aGoals > 0;
-    }
-    if (pick == 'ng' || pick == 'btts no' || pick.contains('btts: no')) {
-      return hGoals == 0 || aGoals == 0;
-    }
-
-    // 1X2
-    if (pick == 'x' || pick == 'draw') return hGoals == aGoals;
-    if (pick == '1' ||
-        pick == 'home' ||
-        pick == 'home win' ||
-        mentionsTeam(homeName)) {
-      return hGoals > aGoals;
-    }
-    if (pick == '2' ||
-        pick == 'away' ||
-        pick == 'away win' ||
-        mentionsTeam(awayName)) {
-      return aGoals > hGoals;
-    }
-
-    return false;
+    return evaluatePick(
+          pick: (sel['prediction'] ?? sel['pick'] ?? '').toString(),
+          home: (match.homeTeam ?? '').toString(),
+          away: (match.awayTeam ?? '').toString(),
+          score: (match.actualScore ?? '').toString(),
+        ) ==
+        true;
   }
 }
 
