@@ -1601,8 +1601,19 @@ Future<void> _addBet() async {
       losses: losses,
     );
   }
+
+NotificationService.notifySlipSettled(
+  slipId: slip.id,
+  title: slip.title,
+  isWon: eval.isWon,
+  stake: slip.stake,
+  payoutOrLoss: eval.isWon
+      ? (slip.potentialPayout > 0 ? slip.potentialPayout : slip.stake * slip.totalOdds)
+      : slip.stake,
+  phoneNumber: _profilePhone,
+);
   
-    Widget _comparisonTableCard() {
+  Widget _comparisonTableCard() {
   final systemBets =
       _bets.where((b) => b.description.contains('Accumulator')).toList();
   final manualBets =
