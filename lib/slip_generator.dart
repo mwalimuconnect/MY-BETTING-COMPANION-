@@ -130,17 +130,6 @@ class GeneratedSlip {
     }
     return const SlipEvaluation(isSettled: true, isWon: true);
   }
-
-NotificationService.notifySlipSettled(
-  slipId: slip.id,
-  title: slip.title,
-  isWon: eval.isWon,
-  stake: slip.stake,
-  payoutOrLoss: eval.isWon
-      ? (slip.potentialPayout > 0 ? slip.potentialPayout : slip.stake * slip.totalOdds)
-      : slip.stake,
-  phoneNumber: _profilePhone,
-);
   
     bool _isSelectionWon(Map<dynamic, dynamic> sel, dynamic match) {
     final String rawScore = (match.actualScore ?? '')
@@ -744,6 +733,8 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
     });
   }
 
+  bool _notified = false;
+
   @override
   Widget build(BuildContext context) {
     final evaluation = widget.slip.evaluateOutcome(widget.latestFixtures);
@@ -751,6 +742,22 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
         widget.slip.areAllMatchesSettled(widget.latestFixtures);
     final bool canViewPicks = _hasAccess || isSettled;
 
+    if (evaluation.isSettled && !_notified) {
+      _notified = true;
+      final double amount = evaluation.isWon
+          ? (widget.slip.stake * widget.slip.totalOdds)
+          : widget.slip.stake;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        NotificationService.notifySlipSettled(
+          slipId: widget.slip.id,
+          title: widget.slip.title,
+          isWon: evaluation.isWon,
+          stake: widget.slip.stake,
+          payoutOrLoss: amount,
+          phoneNumber: _profilePhone,
+        );
+      });
+    }
     return Card(
       color: const Color(0xFF1E1E1E),
       shape: RoundedRectangleBorder(
