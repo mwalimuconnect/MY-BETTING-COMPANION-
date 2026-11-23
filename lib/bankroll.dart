@@ -1,14 +1,17 @@
 import 'dart:convert';
 import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'app_settings.dart';
-import 'main.dart';
-import 'slip_access_manager.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'api_service.dart';
+import 'app_settings.dart';
 import 'fixture_model.dart';
+import 'main.dart';
+import 'pick_evaluator.dart';
+import 'slip_access_manager.dart';
 import 'slip_generator.dart';
 
 const Color _teal = Color(0xFF008080); // Teal Green
@@ -69,11 +72,7 @@ class UserProfileCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.grey.shade300),
                     ),
-                    child: const Icon(
-                      Icons.person,
-                      size: 40,
-                      color: _teal,
-                    ),
+                    child: const Icon(Icons.person, size: 40, color: _teal),
                   ),
                   Positioned(
                     bottom: 0,
@@ -111,7 +110,8 @@ class UserProfileCard extends StatelessWidget {
                         ),
                         if (isAdmin)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.orange.shade100,
                               borderRadius: BorderRadius.circular(4),
@@ -133,7 +133,9 @@ class UserProfileCard extends StatelessWidget {
                         const Icon(Icons.phone, size: 14, color: Colors.grey),
                         const SizedBox(width: 4),
                         Text(
-                          phoneNumber.isNotEmpty ? phoneNumber : 'No phone number',
+                          phoneNumber.isNotEmpty
+                              ? phoneNumber
+                              : 'No phone number',
                           style: TextStyle(
                             fontSize: 13,
                             color: mutedText(context),
@@ -151,8 +153,9 @@ class UserProfileCard extends StatelessWidget {
     );
   }
 }
+
 //=============================================
-/// One bet. status: pending, won, lost, void.
+// Bet: one bet. status: pending, won, lost, void.
 //=============================================
 class Bet {
   final int id;
@@ -198,75 +201,19 @@ class Bet {
   }
 }
 
-//======================
-// class SystemAutoStats
-//======================
-class SystemAutoStats {
-  final double totalStaked;
-  final double amountWon;
-  final double profitLoss;
-  final int wins;
-  final int losses;
-  final int pending;
-
-  const SystemAutoStats({
-    required this.totalStaked,
-    required this.amountWon,
-    required this.profitLoss,
-    required this.wins,
-    required this.losses,
-    required this.pending,
-  });
-
-  String get recordLabel => '$wins - $losses';
-}
-
-SystemAutoStats _computeSystemAutoStats(
-  List<GeneratedSlip> slips,
-  List<dynamic> latestFixtures,
-) {
-  double staked = 0.0;
-  double wonAmount = 0.0;
-  double profit = 0.0;
-  int wins = 0;
-  int losses = 0;
-  int pending = 0;
-
-  for (final slip in slips) {
-    final eval = slip.evaluateOutcome(latestFixtures);
-    if (eval.isWon) {
-      wins++;
-      staked += slip.stake;
-      final double payout = slip.potentialPayout;
-      wonAmount += payout;
-      profit += (payout - slip.stake);
-    } else if (eval.isWon) {
-      losses++;
-      staked += slip.stake;
-      profit -= slip.stake;
-    } else {
-      pending++;
-    }
-  }
-
-  return SystemAutoStats(
-    totalStaked: staked,
-    amountWon: wonAmount,
-    profitLoss: profit,
-    wins: wins,
-    losses: losses,
-    pending: pending,
-  );
-}
 //==============================
 // class SystemSlipHistoryStore
 //==============================
 class SystemSlipHistoryStore {
   static const String _prefsKey = 'system_generated_slips_by_day_v1';
 
-  static String _dayKey(DateTime dt) {
+  /// Day key used for storage, e.g. 2026-11-23. Also used to tell "today"
+  /// apart from past slips, so both sides must use this one function.
+  static String dayKey(DateTime dt) {
     final local = dt.toLocal();
-    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+    final m = local.month.toString().padLeft(2, '0');
+    final d = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$m-$d';
   }
 
   static Future<Map<String, GeneratedSlip>> loadByDay() async {
@@ -279,9 +226,9 @@ class SystemSlipHistoryStore {
       if (decoded is! Map) return {};
 
       final Map<String, GeneratedSlip> result = {};
-      decoded.forEach((dayKey, value) {
+      decoded.forEach((key, value) {
         if (value is Map) {
-          result[dayKey.toString()] = GeneratedSlip.fromJson(
+          result[key.toString()] = GeneratedSlip.fromJson(
             Map<String, dynamic>.from(value),
           );
         }
@@ -300,8 +247,7 @@ class SystemSlipHistoryStore {
     try {
       final prefs = await SharedPreferences.getInstance();
       final existing = await loadByDay();
-      final String key = _dayKey(date ?? DateTime.now());
-      existing[key] = slip;
+      existing[dayKey(date ?? DateTime.now())] = slip;
 
       final Map<String, dynamic> serialized = {
         for (final entry in existing.entries) entry.key: entry.value.toJson(),
@@ -314,7 +260,7 @@ class SystemSlipHistoryStore {
 }
 
 //=========================
-// class BankrollTab 
+// class BankrollTab
 //=========================
 class BankrollTab extends StatefulWidget {
   final List<FixtureModel> fixtures;
@@ -328,7 +274,8 @@ class BankrollTab extends StatefulWidget {
   State<BankrollTab> createState() => _BankrollTabState();
 }
 
-class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
+class _BankrollTabState extends State<BankrollTab>
+    with WidgetsBindingObserver {
   static const String _dataKey = 'bankroll_v1';
   static const String _pinKey = 'bankroll_pin';
   static const String _nameKey = 'profile_name';
@@ -355,7 +302,7 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
   final GlobalKey<FormFieldState<String>> outcomeFieldKey =
       GlobalKey<FormFieldState<String>>();
   final List<GeneratedSlip> _historicalSlips = [];
-  
+
   String _profileName = '';
   String _profilePhone = '';
 
@@ -367,24 +314,39 @@ class _BankrollTabState extends State<BankrollTab> with WidgetsBindingObserver {
     _load();
     _loadFixtures();
   }
-  
-GeneratedSlip? _asGeneratedSlip(SuggestedSlip? s) {
-  if (s == null) return null;
-  return GeneratedSlip(
-    title: s.title,
-    totalOdds: s.totalOdds,
-    selections: s.selections,
-  );
-}
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _phoneSetupController.dispose();
+    _pinController.dispose();
+    _confirmPinController.dispose();
+    super.dispose();
+  }
+
+  // ---------------------------------------------------------- slips & fixtures
+  /// Converts today's suggested slip into a GeneratedSlip, keeping its own
+  /// stake, payout and date (the defaults would silently use a Ksh 200 stake).
+  GeneratedSlip? _asGeneratedSlip(SuggestedSlip? s) {
+    if (s == null) return null;
+    return GeneratedSlip(
+      title: s.title,
+      totalOdds: s.totalOdds,
+      selections: s.selections,
+      stake: s.stake,
+      potentialPayout: s.potentialPayout,
+      createdAt: DateTime.tryParse(s.date),
+    );
+  }
+
   Future<void> _loadFixtures() async {
     try {
       final loaded = await ApiService.fetchFixtures();
       if (!mounted) return;
-          setState(() {
-      _fixtures = loaded;
-    });
-    await _syncDailySystemSlips(_asGeneratedSlip(_todaySuggestedSlip));
-  } catch (_) {
+      setState(() => _fixtures = loaded);
+      await _syncDailySystemSlips(_asGeneratedSlip(_todaySuggestedSlip));
+      await _autoSettleBets();
+    } catch (_) {
       // Keep any existing fixtures or fall back to manual typing in _addBet()
     }
   }
@@ -395,14 +357,11 @@ GeneratedSlip? _asGeneratedSlip(SuggestedSlip? s) {
     }
 
     final byDay = await SystemSlipHistoryStore.loadByDay();
-    final now = DateTime.now();
-    final String todayKey = '${now.year}_${now.month}_${now.day}';
-    final List<GeneratedSlip> pastSlips = [];
-    byDay.forEach((dayKey, slip) {
-      if (dayKey != todayKey) {
-        pastSlips.add(slip);
-      }
-    });
+    final String todayKey = SystemSlipHistoryStore.dayKey(DateTime.now());
+    final List<GeneratedSlip> pastSlips = [
+      for (final entry in byDay.entries)
+        if (entry.key != todayKey) entry.value,
+    ];
 
     if (!mounted) return;
     setState(() {
@@ -411,7 +370,7 @@ GeneratedSlip? _asGeneratedSlip(SuggestedSlip? s) {
         ..addAll(pastSlips);
     });
   }
-  
+
   List<String> _outcomeChoicesFor(FixtureModel? fixture) {
     final List<String> choices = [];
 
@@ -450,108 +409,83 @@ GeneratedSlip? _asGeneratedSlip(SuggestedSlip? s) {
     ];
 
     for (final m in standardMarkets) {
-      if (!choices.contains(m)) {
-        choices.add(m);
-      }
+      if (!choices.contains(m)) choices.add(m);
     }
     return choices;
-    }
-bool? _evaluatePick(String pick, String homeTeam, String awayTeam, int hGoals, int aGoals) {
-  final p = pick.trim().toLowerCase();
-  final hName = homeTeam.trim().toLowerCase();
-  final aName = awayTeam.trim().toLowerCase();
-  final total = hGoals + aGoals;
-
-  bool mentionsTeam(String fullName) {
-    if (fullName.isEmpty) return false;
-    if (p == fullName || p == '$fullName win' || p.startsWith('$fullName ')) {
-      return true;
-    }
-    return fullName
-        .split(RegExp(r'\s+'))
-        .where((w) => w.length >= 4 && !{'fc', 'sc', 'cf', 'cd', 'ca', 'cr'}.contains(w))
-        .any((w) => RegExp('\\b${RegExp.escape(w)}\\b').hasMatch(p));
   }
 
-  if (p == '1' || p == 'home' || p == 'home win' || mentionsTeam(hName)) {
-    return hGoals > aGoals;
-  }
-  if (p == '2' || p == 'away' || p == 'away win' || mentionsTeam(aName)) {
-    return aGoals > hGoals;
-  }
-  if (p == 'x' || p == 'draw') return hGoals == aGoals;
-  if (p == '1x' || p.contains('or draw') && mentionsTeam(hName)) return hGoals >= aGoals;
-  if (p == 'x2' || p.contains('or draw') && mentionsTeam(aName)) return aGoals >= hGoals;
-  if (p == '12' || p == 'home or away') return hGoals != aGoals;
+  // ------------------------------------------------------------ auto settle
+  /// Result of one leg written as "Home vs Away [pick]".
+  /// true = won, false = lost, null = not finished yet / can't be judged.
+  bool? _resultForLeg(String leg) {
+    final m = RegExp(r'^(.+?)\s*\[(.+)\]$').firstMatch(leg.trim());
+    if (m == null) return null;
 
-  if (p.contains('over 1.5') || p == 'ov 1.5') return total > 1;
-  if (p.contains('over 2.5') || p == 'ov 2.5') return total > 2;
-  if (p.contains('under 2.5') || p == 'un 2.5') return total < 3;
-  if (p.contains('under 3.5') || p == 'un 3.5') return total < 4;
-  if (p == 'gg' || p == 'btts' || p.contains('btts: yes') || p == 'btts yes') {
-    return hGoals > 0 && aGoals > 0;
-  }
-  if (p == 'ng' || p == 'btts no' || p.contains('btts: no')) {
-    return hGoals == 0 || aGoals == 0;
-  }
-  return null;
-}
-
-Future<void> _autoSettleBets() async {
-  if (_bets.isEmpty || _fixtures.isEmpty) return;
-
-  bool changed = false;
-  for (final bet in _bets) {
-    if (bet.status != 'pending') continue;
-
-    // Skip multi-leg descriptions unless you parse each leg separately
-    if (bet.description.startsWith('Multi (')) continue;
-
-    final match = RegExp(r'^(.+?)\s*\[(.+)\]$').firstMatch(bet.description.trim());
-    if (match == null) continue;
-
-    final descMatch = match.group(1)!.trim().toLowerCase();
-    final pick = match.group(2)!.trim();
+    final String label = m.group(1)!.trim().toLowerCase();
+    final String pick = m.group(2)!.trim();
 
     for (final f in _fixtures) {
       if (!f.effectiveIsFinished) continue;
-      final labelA = '${f.homeTeam} vs ${f.awayTeam}'.toLowerCase();
-      final labelB = '${f.homeTeam} v ${f.awayTeam}'.toLowerCase();
-      if (descMatch != labelA && descMatch != labelB) continue;
+      final a = '${f.homeTeam} vs ${f.awayTeam}'.toLowerCase();
+      final b = '${f.homeTeam} v ${f.awayTeam}'.toLowerCase();
+      if (label != a && label != b) continue;
 
-      final scoreRaw = f.actualScore
-          .replaceAll(RegExp(r'^ft\s*', caseSensitive: false), '')
-          .trim();
-      final parts = scoreRaw.split(RegExp(r'\s*-\s*'));
-      if (parts.length != 2) continue;
+      return evaluatePick(
+        pick: pick,
+        home: f.homeTeam,
+        away: f.awayTeam,
+        score: f.actualScore,
+      );
+    }
+    return null;
+  }
 
-      final hGoals = int.tryParse(parts[0].trim());
-      final aGoals = int.tryParse(parts[1].trim());
-      if (hGoals == null || aGoals == null) continue;
+  /// Multi bets: any lost leg loses the bet; all legs won wins it;
+  /// otherwise it stays pending.
+  bool? _resultForMulti(Bet bet) {
+    final int colon = bet.description.indexOf(':');
+    if (colon < 0) return null;
 
-      final won = _evaluatePick(pick, f.homeTeam, f.awayTeam, hGoals, aGoals);
-      if (won != null) {
-        bet.status = won ? 'won' : 'lost';
-        changed = true;
-      }
-      break;
+    final legs = bet.description
+        .substring(colon + 1)
+        .split('|')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (legs.isEmpty) return null;
+
+    var allWon = true;
+    for (final leg in legs) {
+      final r = _resultForLeg(leg);
+      if (r == false) return false;
+      if (r != true) allWon = false;
+    }
+    return allWon ? true : null;
+  }
+
+  Future<void> _autoSettleBets() async {
+    if (_bets.isEmpty || _fixtures.isEmpty) return;
+
+    bool changed = false;
+    for (final bet in _bets) {
+      if (bet.status != 'pending') continue;
+
+      final bool? won = bet.description.startsWith('Multi (')
+          ? _resultForMulti(bet)
+          : _resultForLeg(bet.description);
+      if (won == null) continue;
+
+      bet.status = won ? 'won' : 'lost';
+      changed = true;
+    }
+
+    if (changed && mounted) {
+      setState(() {});
+      await _saveData();
     }
   }
 
-  if (changed && mounted) {
-    setState(() {});
-    await _saveData();
-  }
-}
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _phoneSetupController.dispose();
-    _pinController.dispose();
-    _confirmPinController.dispose();
-    _loadFixtures();
-    super.dispose();
-  }
+  // --------------------------------------------------------------- lifecycle
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -569,20 +503,18 @@ Future<void> _autoSettleBets() async {
         final int diffMinutes =
             (DateTime.now().millisecondsSinceEpoch - bgTime) ~/ (1000 * 60);
         if (diffMinutes >= _gracePeriodMinutes && mounted) {
-          setState(() {
-            _isUnlocked = false;
-          });
+          setState(() => _isUnlocked = false);
         }
       }
     }
   }
 
   Future<void> _recordUnlockTime() async {
-    final prefs = await SharedPreferences.getInstance();
+     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_unlockTimeKey, DateTime.now().millisecondsSinceEpoch);
   }
-  
-    // ---------------------------------------------------------------- storage
+
+  // ----------------------------------------------------------------- storage
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -600,7 +532,8 @@ Future<void> _autoSettleBets() async {
       }
 
       _todaySuggestedSlip = await SuggestedSlipStore.load();
-    await _syncDailySystemSlips(_asGeneratedSlip(_todaySuggestedSlip));
+      await _syncDailySystemSlips(_asGeneratedSlip(_todaySuggestedSlip));
+
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
@@ -613,7 +546,9 @@ Future<void> _autoSettleBets() async {
           if (list is List) {
             _bets = [];
             for (final e in list) {
-              if (e is Map) _bets.add(Bet.fromJson(Map<String, dynamic>.from(e)));
+              if (e is Map) {
+                _bets.add(Bet.fromJson(Map<String, dynamic>.from(e)));
+              }
             }
           }
         }
@@ -718,7 +653,8 @@ Future<void> _autoSettleBets() async {
 
   // --------------------------------------------------- Account Setup & PIN
   void _snack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   bool _validPin(String pin) => RegExp(r'^\d{4}$').hasMatch(pin);
@@ -746,7 +682,8 @@ Future<void> _autoSettleBets() async {
     await _savePin(pin);
 
     // Register & sync account with backend MongoDB
-    final status = await SlipAccessManager.checkAccess(overridePhone: phone, pin: pin);
+    final status =
+        await SlipAccessManager.checkAccess(overridePhone: phone, pin: pin);
 
     if (!mounted) return;
     setState(() {
@@ -761,7 +698,7 @@ Future<void> _autoSettleBets() async {
     _snack('Bankroll Account created and synced!');
   }
 
- Future<void> _verifyPin() async {
+  Future<void> _verifyPin() async {
     if (_pinController.text.trim() == _storedPin) {
       await _recordUnlockTime(); // Save 15-min grace window
       setState(() {
@@ -772,7 +709,7 @@ Future<void> _autoSettleBets() async {
       _pinController.clear();
       _snack('Incorrect PIN');
     }
- } 
+  }
 
   void _forgotPinDialog() {
     final phoneCtl = TextEditingController();
@@ -871,8 +808,8 @@ Future<void> _autoSettleBets() async {
                       setDialogState(() => resetting = true);
 
                       // Sync reset with backend MongoDB
-                      final backendOk =
-                          await SlipAccessManager.resetPin(enteredPhone, newPin);
+                      final backendOk = await SlipAccessManager.resetPin(
+                          enteredPhone, newPin);
 
                       // Always save locally if local phone matched, even if offline
                       if (backendOk || _profilePhone.isNotEmpty) {
@@ -889,7 +826,8 @@ Future<void> _autoSettleBets() async {
                         _snack('PIN reset successfully. Account unlocked.');
                       } else {
                         setDialogState(() => resetting = false);
-                        _snack('Account not found on server for that phone number');
+                        _snack(
+                            'Account not found on server for that phone number');
                       }
                     },
               child: resetting
@@ -909,21 +847,20 @@ Future<void> _autoSettleBets() async {
     );
   }
 
-
-// ---------------------------------------------------------------- numbers
+  // ----------------------------------------------------------------- numbers
   double? _parse(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
 
   double get _settledProfit => _bets.fold(0.0, (sum, b) => sum + b.profit);
   double get _balance => _starting + _settledProfit;
 
   double get _pendingStake {
-    double manualPending = _bets
+    double pending = _bets
         .where((b) => b.status == 'pending')
         .fold(0.0, (sum, b) => sum + b.stake);
     if (_todaySuggestedSlip != null) {
-      manualPending += _todaySuggestedSlip!.stake;
+      pending += _todaySuggestedSlip!.stake;
     }
-    return manualPending;
+    return pending;
   }
 
   double get _spentThisMonth {
@@ -961,386 +898,49 @@ Future<void> _autoSettleBets() async {
     return Colors.grey;
   }
 
-  // ---------------------------------------------------------------- dialogs
+  // ----------------------------------------------------------------- dialogs
   void _editSettings() {
-  final startCtl = TextEditingController(
-      text: _starting > 0 ? _starting.toStringAsFixed(2) : '');
-  final capCtl =
-      TextEditingController(text: _cap > 0 ? _cap.toStringAsFixed(2) : '');
-  final pinCtl = TextEditingController();
-  String? pinError;
+    final startCtl = TextEditingController(
+        text: _starting > 0 ? _starting.toStringAsFixed(2) : '');
+    final capCtl =
+        TextEditingController(text: _cap > 0 ? _cap.toStringAsFixed(2) : '');
+    final pinCtl = TextEditingController();
+    String? pinError;
 
-  showDialog<void>(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: const Text('Bankroll Settings'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: startCtl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Starting bankroll (Ksh)'),
-              ),
-              TextField(
-                controller: capCtl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                    labelText: 'Monthly spending cap (Ksh, total stakes)'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: pinCtl,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 6, // Adjusted to 6 digits for PIN or Admin Passcode
-                decoration: InputDecoration(
-                  labelText: 'New 6-digit PIN or Admin Key',
-                  hintText: 'Leave empty to keep current',
-                  counterText: '',
-                  errorText: pinError,
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF008080),
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              final inputVal = pinCtl.text.trim();
-
-              // Check if they entered the admin secret key '775067'
-                    if (inputVal == '775067') {
-        if (_profilePhone.trim().isEmpty) {
-          setDialogState(() => pinError = 'Set your phone number in profile first');
-          return;
-        }
-        _snack('Activating admin access...');
-        try {
-          final response = await http
-              .post(
-                Uri.parse('https://my-betting-companion.onrender.com/api/access/make-admin'),
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode({
-                  'phone': _profilePhone.trim(),
-                  'secretKey': '775067',
-                }),
-              )
-              .timeout(const Duration(seconds: 45));
-
-          if (response.statusCode == 200) {
-            await SlipAccessManager.checkAccess();
-            if (!mounted) return;
-            setState(() => _isAdmin = true);
-            if (!dialogContext.mounted) return;
-            Navigator.pop(dialogContext);
-            
-            return;
-          } else {
-            setDialogState(() => pinError = 'Server error (${response.statusCode})');
-            return;
-          }
-        } catch (e) {
-          setDialogState(() => pinError = 'Network timeout. Try again.');
-          return;
-        }
-      }
-          // Standard PIN validation (allows 4 to 6 digits)
-              if (inputVal.isNotEmpty && (inputVal.length < 4 || inputVal.length > 6)) {
-                setDialogState(() => pinError = 'PIN must be 4 to 6 digits');
-                return;
-              }
-
-              setState(() {
-                _starting = math.max(0, _parse(startCtl.text) ?? 0);
-                _cap = math.max(0, _parse(capCtl.text) ?? 0);
-                if (inputVal.isNotEmpty && inputVal != '775067') {
-                  _storedPin = inputVal;
-                }
-              });
-
-              await _saveData();
-              if (inputVal.isNotEmpty && inputVal != '775067') {
-                await _savePin(inputVal);
-                if (_profilePhone.isNotEmpty) {
-                  await SlipAccessManager.resetPin(_profilePhone, inputVal);
-                }
-              }
-
-              if (!dialogContext.mounted) return;
-              Navigator.pop(dialogContext);
-              if (!mounted) return;
-              _snack(inputVal.isNotEmpty ? 'Settings and PIN updated' : 'Settings saved');
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-bool _isFixtureFinished(FixtureModel f) {
-  if (f.effectiveIsFinished) return true;
-
-  final DateTime? dt = f.kickoff ?? DateTime.tryParse(f.utcDate);
-  if (dt != null &&
-      dt.toUtc().isBefore(DateTime.now().toUtc()) &&
-      !f.effectiveIsLive) {
-    return true;
-  }
-  return false;
-}
-  
-Future<void> _addBet() async {
-  final matchCtl = TextEditingController();
-  final betTypeCtl = TextEditingController();
-  final stakeCtl = TextEditingController();
-  final oddsCtl = TextEditingController();
-  bool isMultibet = false;
-  bool editMatchManually = false;
-  bool editPickManually = false;
-  FixtureModel? selectedFixture;
-  String? selectedOutcome;
-  String? selectedBetType;
-  final List<String> multiLegs = [];
-  const betTypes = [
-    '1X2 (Match Result)',
-    'Both Teams to Score (GG / BTTS)',
-    'Over / Under Goals',
-    'Double Chance (1X / 12 / X2)',
-    'Draw No Bet',
-    'Corners',
-    'Cards',
-    'Custom',
-  ];
-
-  if (_fixtures.isEmpty) {
-    _loadFixtures();
-  }
-
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setModalState) {
-        final showMatchField = selectedFixture == null || editMatchManually;
-        final showPickField =
-            selectedOutcome == null ||
-            selectedOutcome == 'Custom...' ||
-            editPickManually;
-
-        return AlertDialog(
-          title: const Text('Add Bet & Prediction Type'),
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Bankroll Settings'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    ChoiceChip(
-                      label: const Text('Single'),
-                      selected: !isMultibet,
-                      onSelected: (_) =>
-                          setModalState(() => isMultibet = false),
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: const Text('Multibet'),
-                      selected: isMultibet,
-                      onSelected: (_) =>
-                          setModalState(() => isMultibet = true),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (_fixtures.isNotEmpty) ...[
-                  DropdownButtonFormField<FixtureModel>(
-                    value: selectedFixture,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Select Fixture',
-                    ),
-                    hint: const Text('Choose fixture or type below'),
-                    items: [
-                      for (final f in _fixtures.where(
-                        (item) => !_isFixtureFinished(item),
-                      ))
-                        DropdownMenuItem<FixtureModel>(
-                          value: f,
-                          child: Text(
-                            '${f.homeTeam} vs ${f.awayTeam}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    onChanged: (f) {
-                      setModalState(() {
-                        selectedFixture = f;
-                        editMatchManually = false;
-                        editPickManually = false;
-                        if (f != null) {
-                          matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
-                          selectedOutcome = null;
-                          betTypeCtl.clear();
-                        }
-                      });
-                      if (f != null) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          final ctx = outcomeFieldKey.currentContext;
-                          if (ctx != null) {
-                            GestureDetector? detector;
-                            void findDetector(Element e) {
-                              if (e.widget is GestureDetector) {
-                                detector = e.widget as GestureDetector;
-                                return;
-                              }
-                              e.visitChildren(findDetector);
-                            }
-
-                            ctx.visitChildElements(findDetector);
-                            detector?.onTap?.call();
-                          }
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                DropdownButtonFormField<String>(
-                  key: outcomeFieldKey,
-                  value: selectedOutcome,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Possible Outcomes',
-                  ),
-                  hint: const Text('Choose outcome or type below'),
-                  items: [
-                    for (final o in _outcomeChoicesFor(selectedFixture))
-                      DropdownMenuItem<String>(
-                        value: o,
-                        child: Text(
-                          o,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: (val) {
-                    setModalState(() {
-                      selectedOutcome = val;
-                      if (val != null && val != 'Custom...') {
-                        betTypeCtl.text = val;
-                        editPickManually = false;
-                      } else if (val == 'Custom...') {
-                        betTypeCtl.clear();
-                        editPickManually = true;
-                      }
-                    });
-                  },
-                ),
-                if (selectedFixture != null && !editMatchManually)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () =>
-                          setModalState(() => editMatchManually = true),
-                      child: const Text('Edit match manually'),
-                    ),
-                  ),
-                if (showMatchField) ...[
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: matchCtl,
-                    decoration: const InputDecoration(
-                      labelText: 'Match (e.g., Arsenal vs Chelsea)',
-                      hintText: 'Home vs Away',
-                    ),
-                  ),
-                ],
-                if (selectedOutcome != null &&
-                    selectedOutcome != 'Custom...' &&
-                    !editPickManually)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () =>
-                          setModalState(() => editPickManually = true),
-                      child: const Text('Edit pick manually'),
-                    ),
-                  ),
-                if (showPickField) ...[
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: betTypeCtl,
-                    decoration: const InputDecoration(
-                      labelText: 'Bet Type / Pick (e.g., GG, Over 2.5, Home Win)',
-                      hintText: 'e.g. GG or 1X or Over 2.5',
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
                 TextField(
-                  controller: stakeCtl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Stake (Ksh)'),
-                ),
-                if (isMultibet) ...[
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      final m = matchCtl.text.trim();
-                      final p = betTypeCtl.text.trim();
-                      if (m.isEmpty || p.isEmpty) {
-                        _snack('Pick or enter a fixture and outcome first.');
-                        return;
-                      }
-                      setModalState(() {
-                        multiLegs.add('$m [$p]');
-                        selectedFixture = null;
-                        selectedOutcome = null;
-                        selectedBetType = null;
-                        editMatchManually = false;
-                        editPickManually = false;
-                        matchCtl.clear();
-                        betTypeCtl.clear();
-                      });
-                    },
-                    icon: const Icon(Icons.add),
-                    label: Text('Add Leg (${multiLegs.length})'),
-                  ),
-                  for (int i = 0; i < multiLegs.length; i++)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${i + 1}. ${multiLegs[i]}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 16),
-                          onPressed: () =>
-                              setModalState(() => multiLegs.removeAt(i)),
-                        ),
-                      ],
-                    ),
-                ],
-                const SizedBox(height: 8),
-                TextField(
-                  controller: oddsCtl,
+                  controller: startCtl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
-                    labelText: 'Odds (decimal, e.g. 1.85)',
+                      labelText: 'Starting bankroll (Ksh)'),
+                ),
+                TextField(
+                  controller: capCtl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                      labelText: 'Monthly spending cap (Ksh, total stakes)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pinCtl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6, // 4-digit PIN, or the 6-digit admin key
+                  decoration: InputDecoration(
+                    labelText: 'New 4-digit PIN or Admin Key',
+                    hintText: 'Leave empty to keep current',
+                    counterText: '',
+                    errorText: pinError,
                   ),
                 ),
               ],
@@ -1348,7 +948,7 @@ Future<void> _addBet() async {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
@@ -1356,62 +956,390 @@ Future<void> _addBet() async {
                 backgroundColor: _teal,
                 foregroundColor: Colors.white,
               ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Add & Track'),
+              onPressed: () async {
+                final inputVal = pinCtl.text.trim();
+
+                // Admin secret key
+                if (inputVal == '775067') {
+                  if (_profilePhone.trim().isEmpty) {
+                    setDialogState(
+                        () => pinError = 'Set your phone number in profile first');
+                    return;
+                  }
+                  _snack('Activating admin access...');
+                  try {
+                    final response = await http
+                        .post(
+                          Uri.parse(
+                              'https://my-betting-companion.onrender.com/api/access/make-admin'),
+                          headers: {'Content-Type': 'application/json'},
+                          body: jsonEncode({
+                            'phone': _profilePhone.trim(),
+                            'secretKey': '775067',
+                          }),
+                        )
+                        .timeout(const Duration(seconds: 45));
+
+                    if (response.statusCode == 200) {
+                      await SlipAccessManager.checkAccess();
+                      if (!mounted) return;
+                      setState(() => _isAdmin = true);
+                      if (!dialogContext.mounted) return;
+                      Navigator.pop(dialogContext);
+                      _snack('Admin access activated');
+                      return;
+                    } else {
+                      setDialogState(() =>
+                          pinError = 'Server error (${response.statusCode})');
+                      return;
+                    }
+                  } catch (e) {
+                    setDialogState(() => pinError = 'Network timeout. Try again.');
+                    return;
+                  }
+                }
+
+                // The lock screen only accepts 4 digits, so a PIN of any other
+                // length would lock the user out.
+                if (inputVal.isNotEmpty && !_validPin(inputVal)) {
+                  setDialogState(() => pinError = 'PIN must be exactly 4 digits');
+                  return;
+                }
+
+                setState(() {
+                  _starting = math.max(0, _parse(startCtl.text) ?? 0);
+                  _cap = math.max(0, _parse(capCtl.text) ?? 0);
+                  if (inputVal.isNotEmpty) _storedPin = inputVal;
+                });
+
+                await _saveData();
+                if (inputVal.isNotEmpty) {
+                  await _savePin(inputVal);
+                  if (_profilePhone.isNotEmpty) {
+                    await SlipAccessManager.resetPin(_profilePhone, inputVal);
+                  }
+                }
+
+                if (!dialogContext.mounted) return;
+                Navigator.pop(dialogContext);
+                if (!mounted) return;
+                _snack(inputVal.isNotEmpty
+                    ? 'Settings and PIN updated'
+                    : 'Settings saved');
+              },
+              child: const Text('Save'),
             ),
           ],
-        );
-      },
-    ),
-  );
-
-  if (ok != true) return;
-
-  final matchName = matchCtl.text.trim();
-  final betType = betTypeCtl.text.trim();
-  final stake = _parse(stakeCtl.text);
-  final odds = _parse(oddsCtl.text);
-
-  if (isMultibet && matchName.isNotEmpty && betType.isNotEmpty) {
-    multiLegs.add('$matchName [$betType]');
-  }
-
-  final hasValidPick = isMultibet
-      ? (multiLegs.isNotEmpty || matchName.isNotEmpty)
-      : matchName.isNotEmpty;
-
-  if (!hasValidPick ||
-      stake == null ||
-      stake <= 0 ||
-      odds == null ||
-      odds <= 1.0) {
-    if (!mounted) return;
-    _snack('Enter a valid match or leg, stake above 0, and odds above 1.0');
-    return;
-  }
-
-  final fullDescription = isMultibet && multiLegs.isNotEmpty
-      ? 'Multi (${multiLegs.length} legs): ${multiLegs.join(' | ')}'
-      : (betType.isNotEmpty ? '$matchName [$betType]' : matchName);
-
-  final now = DateTime.now();
-
-  setState(() {
-    _bets.insert(
-      0,
-      Bet(
-        id: now.millisecondsSinceEpoch,
-        date: now.toIso8601String(),
-        description: fullDescription,
-        stake: stake,
-        odds: odds,
-        status: 'pending', // Will auto-settle or can be matched against live scores
+        ),
       ),
     );
-  });
+  }
+bool _isFixtureFinished(FixtureModel f) {
+    if (f.effectiveIsFinished) return true;
 
-  await _saveData();
-}
+    final DateTime? dt = f.kickoff ?? DateTime.tryParse(f.utcDate);
+    if (dt != null &&
+        dt.toUtc().isBefore(DateTime.now().toUtc()) &&
+        !f.effectiveIsLive) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _addBet() async {
+    final matchCtl = TextEditingController();
+    final betTypeCtl = TextEditingController();
+    final stakeCtl = TextEditingController();
+    final oddsCtl = TextEditingController();
+    bool isMultibet = false;
+    bool editMatchManually = false;
+    bool editPickManually = false;
+    FixtureModel? selectedFixture;
+    String? selectedOutcome;
+    final List<String> multiLegs = [];
+
+    if (_fixtures.isEmpty) {
+      _loadFixtures();
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final showMatchField = selectedFixture == null || editMatchManually;
+          final showPickField = selectedOutcome == null ||
+              selectedOutcome == 'Custom...' ||
+              editPickManually;
+
+          return AlertDialog(
+            title: const Text('Add Bet & Prediction Type'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Single'),
+                        selected: !isMultibet,
+                        onSelected: (_) =>
+                            setModalState(() => isMultibet = false),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('Multibet'),
+                        selected: isMultibet,
+                        onSelected: (_) =>
+                            setModalState(() => isMultibet = true),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (_fixtures.isNotEmpty) ...[
+                    DropdownButtonFormField<FixtureModel>(
+                      value: selectedFixture,
+                      isExpanded: true,
+                      decoration:
+                          const InputDecoration(labelText: 'Select Fixture'),
+                      hint: const Text('Choose fixture or type below'),
+                      items: [
+                        for (final f in _fixtures
+                            .where((item) => !_isFixtureFinished(item)))
+                          DropdownMenuItem<FixtureModel>(
+                            value: f,
+                            child: Text(
+                              '${f.homeTeam} vs ${f.awayTeam}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (f) {
+                        setModalState(() {
+                          selectedFixture = f;
+                          editMatchManually = false;
+                          editPickManually = false;
+                          if (f != null) {
+                            matchCtl.text = '${f.homeTeam} vs ${f.awayTeam}';
+                            selectedOutcome = null;
+                            betTypeCtl.clear();
+                          }
+                        });
+                        if (f != null) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            final fieldCtx = outcomeFieldKey.currentContext;
+                            if (fieldCtx != null) {
+                              GestureDetector? detector;
+                              void findDetector(Element e) {
+                                if (e.widget is GestureDetector) {
+                                  detector = e.widget as GestureDetector;
+                                  return;
+                                }
+                                e.visitChildren(findDetector);
+                              }
+
+                              fieldCtx.visitChildElements(findDetector);
+                              detector?.onTap?.call();
+                            }
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  DropdownButtonFormField<String>(
+                    key: outcomeFieldKey,
+                    value: selectedOutcome,
+                    isExpanded: true,
+                    decoration:
+                        const InputDecoration(labelText: 'Possible Outcomes'),
+                    hint: const Text('Choose outcome or type below'),
+                    items: [
+                      for (final o in _outcomeChoicesFor(selectedFixture))
+                        DropdownMenuItem<String>(
+                          value: o,
+                          child: Text(o, overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: (val) {
+                      setModalState(() {
+                        selectedOutcome = val;
+                        if (val != null && val != 'Custom...') {
+                          betTypeCtl.text = val;
+                          editPickManually = false;
+                        } else if (val == 'Custom...') {
+                          betTypeCtl.clear();
+                          editPickManually = true;
+                        }
+                      });
+                    },
+                  ),
+                  if (selectedFixture != null && !editMatchManually)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () =>
+                            setModalState(() => editMatchManually = true),
+                        child: const Text('Edit match manually'),
+                      ),
+                    ),
+                  if (showMatchField) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: matchCtl,
+                      decoration: const InputDecoration(
+                        labelText: 'Match (e.g., Arsenal vs Chelsea)',
+                        hintText: 'Home vs Away',
+                      ),
+                    ),
+                  ],
+                  if (selectedOutcome != null &&
+                      selectedOutcome != 'Custom...' &&
+                      !editPickManually)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () =>
+                            setModalState(() => editPickManually = true),
+                        child: const Text('Edit pick manually'),
+                      ),
+                    ),
+                  if (showPickField) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: betTypeCtl,
+                      decoration: const InputDecoration(
+                        labelText:
+                            'Bet Type / Pick (e.g., GG, Over 2.5, Home Win)',
+                        hintText: 'e.g. GG or 1X or Over 2.5',
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: stakeCtl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Stake (Ksh)'),
+                  ),
+                  if (isMultibet) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        final m = matchCtl.text.trim();
+                        final p = betTypeCtl.text.trim();
+                        if (m.isEmpty || p.isEmpty) {
+                          _snack('Pick or enter a fixture and outcome first.');
+                          return;
+                        }
+                        setModalState(() {
+                          multiLegs.add('$m [$p]');
+                          selectedFixture = null;
+                          selectedOutcome = null;
+                          editMatchManually = false;
+                          editPickManually = false;
+                          matchCtl.clear();
+                          betTypeCtl.clear();
+                        });
+                      },
+                      icon: const Icon(Icons.add),
+                      label: Text('Add Leg (${multiLegs.length})'),
+                    ),
+                    for (int i = 0; i < multiLegs.length; i++)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${i + 1}. ${multiLegs[i]}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 16),
+                            onPressed: () =>
+                                setModalState(() => multiLegs.removeAt(i)),
+                          ),
+                        ],
+                      ),
+                  ],
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: oddsCtl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Odds (decimal, e.g. 1.85)',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _teal,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Add & Track'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (ok != true) return;
+
+    final matchName = matchCtl.text.trim();
+    final betType = betTypeCtl.text.trim();
+    final stake = _parse(stakeCtl.text);
+    final odds = _parse(oddsCtl.text);
+
+    if (isMultibet && matchName.isNotEmpty && betType.isNotEmpty) {
+      multiLegs.add('$matchName [$betType]');
+    }
+
+    final hasValidPick = isMultibet
+        ? (multiLegs.isNotEmpty || matchName.isNotEmpty)
+        : matchName.isNotEmpty;
+
+    if (!hasValidPick ||
+        stake == null ||
+        stake <= 0 ||
+        odds == null ||
+        odds <= 1.0) {
+      if (!mounted) return;
+      _snack('Enter a valid match or leg, stake above 0, and odds above 1.0');
+      return;
+    }
+
+    final fullDescription = isMultibet && multiLegs.isNotEmpty
+        ? 'Multi (${multiLegs.length} legs): ${multiLegs.join(' | ')}'
+        : (betType.isNotEmpty ? '$matchName [$betType]' : matchName);
+
+    final now = DateTime.now();
+
+    setState(() {
+      _bets.insert(
+        0,
+        Bet(
+          id: now.millisecondsSinceEpoch,
+          date: now.toIso8601String(),
+          description: fullDescription,
+          stake: stake,
+          odds: odds,
+          status: 'pending', // auto-settled when the match finishes
+        ),
+      );
+    });
+
+    await _saveData();
+    await _autoSettleBets();
+  }
 
   Future<void> _onMenu(Bet bet, String action) async {
     setState(() {
@@ -1423,7 +1351,8 @@ Future<void> _addBet() async {
     });
     await _saveData();
   }
-  // ---------------------------------------------------------------- widgets
+
+  // ----------------------------------------------------------------- widgets
   Widget _summaryCard() {
     final spent = _spentThisMonth;
     final capUsed = _cap > 0 ? spent / _cap : 0.0;
@@ -1437,10 +1366,13 @@ Future<void> _addBet() async {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: const TextStyle(fontSize: 13)),
-            Text(value,
-                style: TextStyle(
-                    fontWeight: bold ? FontWeight.bold : FontWeight.w500,
-                    color: color)),
+            Text(
+              value,
+              style: TextStyle(
+                fontWeight: bold ? FontWeight.bold : FontWeight.w500,
+                color: color,
+              ),
+            ),
           ],
         ),
       );
@@ -1461,13 +1393,15 @@ Future<void> _addBet() async {
                 const Text('Bankroll (settled bets)',
                     style: TextStyle(fontSize: 12, color: Colors.grey)),
                 Text(_ksh(_balance),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 18)),
               ],
             ),
             const Divider(height: 20),
             line('Total profit / loss', _ksh(_settledProfit),
                 color: _profitColor(_settledProfit)),
-            line('ROI', '${_roi.toStringAsFixed(1)}%', color: _profitColor(_roi)),
+            line('ROI', '${_roi.toStringAsFixed(1)}%',
+                color: _profitColor(_roi)),
             line('At stake (pending)', _ksh(_pendingStake), bold: false),
             const Divider(height: 20),
             line('Staked this month',
@@ -1490,7 +1424,9 @@ Future<void> _addBet() async {
                   child: Text(
                     'You have reached your monthly cap. Consider stopping for this month.',
                     style: TextStyle(
-                        color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                        color: Colors.red,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold),
                   ),
                 )
               else if (capUsed >= 0.8)
@@ -1498,7 +1434,8 @@ Future<void> _addBet() async {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     'You have used ${(capUsed * 100).toStringAsFixed(0)}% of your monthly cap.',
-                    style: TextStyle(color: Colors.orange.shade800, fontSize: 12),
+                    style: TextStyle(
+                        color: Colors.orange.shade800, fontSize: 12),
                   ),
                 ),
             ] else
@@ -1514,7 +1451,8 @@ Future<void> _addBet() async {
   }
 
   Widget _automatedSlipCard() {
-    if (_todaySuggestedSlip == null) return const SizedBox.shrink();
+    final slip = _todaySuggestedSlip;
+    if (slip == null) return const SizedBox.shrink();
     return Card(
       color: cardBg(context),
       elevation: 1,
@@ -1531,29 +1469,33 @@ Future<void> _addBet() async {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  '🔥 Today\'s Automated Slip',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _teal),
+                  '\u{1F525} Today\'s Automated Slip',
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold, color: _teal),
                 ),
                 Text(
-                  '${_todaySuggestedSlip!.totalOdds.toStringAsFixed(2)}x',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
+                  '${slip.totalOdds.toStringAsFixed(2)}x',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
                 ),
               ],
             ),
             const SizedBox(height: 6),
             Text(
-              _todaySuggestedSlip!.title,
+              slip.title,
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
             ),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Stake: ${_ksh(_todaySuggestedSlip!.stake)}',
+                Text('Stake: ${_ksh(slip.stake)}',
                     style: const TextStyle(fontSize: 12)),
-                Text('Potential Win: ${_ksh(_todaySuggestedSlip!.potentialPayout)}',
+                Text('Potential Win: ${_ksh(slip.potentialPayout)}',
                     style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green)),
               ],
             ),
           ],
@@ -1561,7 +1503,6 @@ Future<void> _addBet() async {
       ),
     );
   }
-
   _SystemAutoStats _computeSystemAutoStats(
     List<GeneratedSlip> slips,
     List<FixtureModel> fixturesForEval,
@@ -1602,41 +1543,32 @@ Future<void> _addBet() async {
     );
   }
 
-NotificationService.notifySlipSettled(
-  slipId: slip.id,
-  title: slip.title,
-  isWon: eval.isWon,
-  stake: slip.stake,
-  payoutOrLoss: eval.isWon
-      ? (slip.potentialPayout > 0 ? slip.potentialPayout : slip.stake * slip.totalOdds)
-      : slip.stake,
-  phoneNumber: _profilePhone,
-);
-  
   Widget _comparisonTableCard() {
-  final systemBets =
-      _bets.where((b) => b.description.contains('Accumulator')).toList();
-  final manualBets =
-      _bets.where((b) => !b.description.contains('Accumulator')).toList();
+    final systemBets =
+        _bets.where((b) => b.description.contains('Accumulator')).toList();
+    final manualBets =
+        _bets.where((b) => !b.description.contains('Accumulator')).toList();
 
-  final fixturesForEval =
-      widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
-  final List<GeneratedSlip> trackedSlips = [
-    ..._historicalSlips,
-if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
-  ];
-  final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
+    final fixturesForEval =
+        widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
+    final todaySlip = _asGeneratedSlip(_todaySuggestedSlip);
+    final List<GeneratedSlip> trackedSlips = [
+      ..._historicalSlips,
+      if (todaySlip != null) todaySlip,
+    ];
+    final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
 
-  double totalStaked(List<Bet> list) =>
-      list.where((b) => b.status != 'void').fold(0.0, (s, b) => s + b.stake);
+    double totalStaked(List<Bet> list) => list
+        .where((b) => b.status != 'void')
+        .fold(0.0, (s, b) => s + b.stake);
 
-  double totalWon(List<Bet> list) {
-    return list
+    double totalWon(List<Bet> list) => list
         .where((b) => b.status == 'won')
         .fold(0.0, (s, b) => s + b.stake + b.profit);
-  }
+
     double totalProfit(List<Bet> list) =>
         list.fold(0.0, (s, b) => s + b.profit);
+
     int countStatus(List<Bet> list, String status) =>
         list.where((b) => b.status == status).length;
 
@@ -1651,8 +1583,21 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
     final manProfit = totalProfit(manualBets);
     final manWins = countStatus(manualBets, 'won');
     final manLosses = countStatus(manualBets, 'lost');
-    
-      return Card(
+
+    Widget cell(String text, {TextStyle? style}) => Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Text(text, style: style ?? const TextStyle(fontSize: 11)),
+        );
+
+    const headStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 11);
+    const greenStyle = TextStyle(fontSize: 11, color: Colors.green);
+    TextStyle profitStyle(double v) => TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: _profitColor(v),
+        );
+
+    return Card(
       color: cardBg(context),
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1662,8 +1607,9 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '📊 Performance: System vs Manual',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
+              '\u{1F4CA} Performance: System vs Manual',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
             ),
             const SizedBox(height: 10),
             Table(
@@ -1675,89 +1621,35 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
               border: TableBorder.all(color: lineColor(context), width: 0.5),
               children: [
                 TableRow(
-                  decoration: BoxDecoration(color: lineColor(context).withOpacity(0.3)),
-                  children: const [
-                    Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text('Metric',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
-                    Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text('System (Auto)',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                                color: _teal))),
-                    Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text('Manual (You)',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
-                  ],
-                ),
-                TableRow(
+                  decoration:
+                      BoxDecoration(color: lineColor(context).withOpacity(0.3)),
                   children: [
-                    const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text('Total Staked', style: TextStyle(fontSize: 11))),
-                    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(_ksh(sysStaked), style: const TextStyle(fontSize: 11))),
-                    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(_ksh(manStaked), style: const TextStyle(fontSize: 11))),
+                    cell('Metric', style: headStyle),
+                    cell('System (Auto)',
+                        style: headStyle.copyWith(color: _teal)),
+                    cell('Manual (You)', style: headStyle),
                   ],
                 ),
-                TableRow(
-                  children: [
-                    const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text('Amount Won', style: TextStyle(fontSize: 11))),
-                    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(_ksh(sysWonAmount),
-                            style: const TextStyle(fontSize: 11, color: Colors.green))),
-                    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(_ksh(manWonAmount),
-                            style: const TextStyle(fontSize: 11, color: Colors.green))),
-                  ],
-                ),
-                TableRow(
-                  children: [
-                    const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text('Profit / Loss', style: TextStyle(fontSize: 11))),
-                    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(_ksh(sysProfit),
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: _profitColor(sysProfit)))),
-                    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(_ksh(manProfit),
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: _profitColor(manProfit)))),
-                  ],
-                ),
-                TableRow(
-                  children: [
-                    const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text('Record (W - L)', style: TextStyle(fontSize: 11))),
-                    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text('$sysWins - $sysLosses',
-                            style: const TextStyle(fontSize: 11))),
-                    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text('$manWins - $manLosses',
-                            style: const TextStyle(fontSize: 11))),
-                  ],
-                ),
+                TableRow(children: [
+                  cell('Total Staked'),
+                  cell(_ksh(sysStaked)),
+                  cell(_ksh(manStaked)),
+                ]),
+                TableRow(children: [
+                  cell('Amount Won'),
+                  cell(_ksh(sysWonAmount), style: greenStyle),
+                  cell(_ksh(manWonAmount), style: greenStyle),
+                ]),
+                TableRow(children: [
+                  cell('Profit / Loss'),
+                  cell(_ksh(sysProfit), style: profitStyle(sysProfit)),
+                  cell(_ksh(manProfit), style: profitStyle(manProfit)),
+                ]),
+                TableRow(children: [
+                  cell('Record (W - L)'),
+                  cell('$sysWins - $sysLosses'),
+                  cell('$manWins - $manLosses'),
+                ]),
               ],
             ),
           ],
@@ -1765,6 +1657,7 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
       ),
     );
   }
+
   Widget _statusChip(Bet b) {
     Color bg;
     Color fg;
@@ -1787,9 +1680,12 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-      child: Text(b.status.toUpperCase(),
-          style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      child: Text(
+        b.status.toUpperCase(),
+        style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold),
+      ),
     );
   }
 
@@ -1801,8 +1697,18 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
 
   String _monthName(int month) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return months[month - 1];
   }
@@ -1824,8 +1730,7 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
       final dt = DateTime.tryParse(b.date) ?? DateTime.now();
       final monthKey = '${_monthName(dt.month)} ${dt.year}';
       final weekNum = _weekOfYear(dt);
-      final dayKey =
-          '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+      final dayKey = SystemSlipHistoryStore.dayKey(dt);
       grouped.putIfAbsent(monthKey, () => {});
       grouped[monthKey]!.putIfAbsent(weekNum, () => {});
       grouped[monthKey]![weekNum]!.putIfAbsent(dayKey, () => []);
@@ -1837,28 +1742,35 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
         final monthName = monthEntry.key;
         final weeks = monthEntry.value.entries.toList()
           ..sort((a, b) => b.key.compareTo(a.key));
+        final int betCount = weeks.fold(
+          0,
+          (sum, w) => sum + w.value.values.fold(0, (s, d) => s + d.length),
+        );
+
         return Card(
           color: cardBg(context),
           margin: const EdgeInsets.only(bottom: 12),
           child: ExpansionTile(
             title: Text(
               monthName,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _teal),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 15, color: _teal),
             ),
-            subtitle: Text(
-                '${weeks.fold(0, (sum, w) => sum + w.value.values.fold(0, (s, d) => s + d.length))} bets logged'),
+            subtitle: Text('$betCount bets logged'),
             children: weeks.map((weekEntry) {
               final weekNum = weekEntry.key;
               final days = weekEntry.value.entries.toList()
                 ..sort((a, b) => b.key.compareTo(a.key));
               return ExpansionTile(
                 title: Text('Week $weekNum',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
                 children: days.map((dayEntry) {
                   final dayDate = dayEntry.key;
                   final dayBets = dayEntry.value;
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1872,43 +1784,7 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
                                 color: mutedText(context)),
                           ),
                         ),
-                        ...dayBets.map((b) {
-                          final settled = b.status == 'won' || b.status == 'lost';
-                          return Card(
-                            elevation: 0,
-                            color: lineColor(context).withOpacity(0.3),
-                            margin: const EdgeInsets.only(bottom: 6),
-                            child: ListTile(
-                              dense: true,
-                              title: Text(b.description,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold, fontSize: 13)),
-                              subtitle: Text(
-                                'Stake: ${_ksh(b.stake)} – Odds: ${b.odds.toStringAsFixed(2)}${settled ? ' – P/L: ${_ksh(b.profit)}' : ''}',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: settled ? _profitColor(b.profit) : null),
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _statusChip(b),
-                                  PopupMenuButton<String>(
-                                    onSelected: (v) => _onMenu(b, v),
-                                    itemBuilder: (_) => const [
-                                      PopupMenuItem(value: 'won', child: Text('Mark won')),
-                                      PopupMenuItem(value: 'lost', child: Text('Mark lost')),
-                                      PopupMenuItem(value: 'void', child: Text('Mark void')),
-                                      PopupMenuItem(
-                                          value: 'pending', child: Text('Mark pending')),
-                                      PopupMenuItem(value: 'delete', child: Text('Delete')),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
+                        ...dayBets.map(_betTile),
                       ],
                     ),
                   );
@@ -1921,7 +1797,45 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
     );
   }
 
-  Widget _lockScreen() {
+  Widget _betTile(Bet b) {
+    final settled = b.status == 'won' || b.status == 'lost';
+    final String subtitle = 'Stake: ${_ksh(b.stake)} \u2022 '
+        'Odds: ${b.odds.toStringAsFixed(2)}'
+        '${settled ? ' \u2022 P/L: ${_ksh(b.profit)}' : ''}';
+
+    return Card(
+      elevation: 0,
+      color: lineColor(context).withOpacity(0.3),
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListTile(
+        dense: true,
+        title: Text(b.description,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+              fontSize: 12, color: settled ? _profitColor(b.profit) : null),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _statusChip(b),
+            PopupMenuButton<String>(
+              onSelected: (v) => _onMenu(b, v),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'won', child: Text('Mark won')),
+                PopupMenuItem(value: 'lost', child: Text('Mark lost')),
+                PopupMenuItem(value: 'void', child: Text('Mark void')),
+                PopupMenuItem(value: 'pending', child: Text('Mark pending')),
+                PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+    Widget _lockScreen() {
     final creating = _storedPin == null || _profilePhone.isEmpty;
     return Center(
       child: SingleChildScrollView(
@@ -2012,7 +1926,9 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
                         color: Colors.white,
                       ),
                     )
-                  : Text(creating ? 'Create Bankroll Account' : 'Unlock Bankroll Account'),
+                  : Text(creating
+                      ? 'Create Bankroll Account'
+                      : 'Unlock Bankroll Account'),
             ),
             if (!creating) ...[
               const SizedBox(height: 10),
@@ -2029,7 +1945,8 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
       ),
     );
   }
-   @override
+
+  @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -2047,7 +1964,8 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
             children: [
               const Text(
                 'Bankroll Account',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _teal),
+                style: TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold, color: _teal),
               ),
               Row(
                 children: [
@@ -2085,7 +2003,6 @@ if (_todaySuggestedSlip != null) _asGeneratedSlip(_todaySuggestedSlip)!,
                   isAdmin: _isAdmin,
                   onEdit: _editProfile,
                 ),
-                
                 const SizedBox(height: 12),
                 _summaryCard(),
                 const SizedBox(height: 12),
