@@ -441,6 +441,15 @@ class SlipGenerator {
         }
       }
 
+    final double dc12Prob = homeProb + awayProb;
+    if (dc12Prob >= 72.0 && dc12Prob < 95.0) {
+      addCandidateIfValid(
+        market: 'Double Chance',
+        prediction: 'Double Chance: ${fixture.homeTeam} or ${fixture.awayTeam} (12)',
+        odds: _impliedOdds(dc12Prob),
+        prob: dc12Prob,
+      );
+    }
       // 3. 1X2 / Tip
       final double tipProb = fixture.tipProb.toDouble();
       if (fixture.topTip.isNotEmpty && tipProb >= 62.0) {
@@ -561,15 +570,26 @@ class SlipGenerator {
       }
     }
 
-    if (selectedBets.isNotEmpty && cumulativeOdds >= 3.0) {
+    if (selectedBets.isNotEmpty && cumulativeOdds >= 2.0) {
       return GeneratedSlip(
-        title: '⚡ Custom Combo Slip',
+        title: cumulativeOdds <= 5.0
+            ? '⚡ Daily Value Combo (2-5x)'
+            : '⚡ Custom Combo Slip',
+        totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
+        selections: selectedBets,
+      );
+    }
+
+    if (selectedBets.isNotEmpty) {
+      return GeneratedSlip(
+        title: '⚡ Light Slate Combo',
         totalOdds: double.parse(cumulativeOdds.toStringAsFixed(2)),
         selections: selectedBets,
       );
     }
 
     return null;
+
   }
  }
 }
