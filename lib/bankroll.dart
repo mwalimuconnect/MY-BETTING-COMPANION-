@@ -13,6 +13,22 @@ import 'slip_generator.dart';
 
 const Color _teal = Color(0xFF008080); // Teal Green
 
+class _SystemAutoStats {
+  final double totalStaked;
+  final double amountWon;
+  final double profitLoss;
+  final int wins;
+  final int losses;
+
+  const _SystemAutoStats({
+    this.totalStaked = 0.0,
+    this.amountWon = 0.0,
+    this.profitLoss = 0.0,
+    this.wins = 0,
+    this.losses = 0,
+  });
+}
+
 //=======================
 // class UserProfileCard
 //=======================
@@ -1546,6 +1562,46 @@ Future<void> _addBet() async {
     );
   }
 
+  _SystemAutoStats _computeSystemAutoStats(
+    List<GeneratedSlip> slips,
+    List<FixtureModel> fixturesForEval,
+  ) {
+    double totalStaked = 0.0;
+    double amountWon = 0.0;
+    double profitLoss = 0.0;
+    int wins = 0;
+    int losses = 0;
+
+    final seenIds = <String>{};
+    for (final slip in slips) {
+      if (slip.id.isNotEmpty && !seenIds.add(slip.id)) continue;
+
+      final eval = slip.evaluateOutcome(fixturesForEval);
+      if (!eval.isSettled) continue;
+
+      totalStaked += slip.stake;
+      if (eval.isWon) {
+        wins++;
+        final payout = slip.potentialPayout > 0
+            ? slip.potentialPayout
+            : slip.stake * slip.totalOdds;
+        amountWon += payout;
+        profitLoss += (payout - slip.stake);
+      } else if (eval.isLost) {
+        losses++;
+        profitLoss -= slip.stake;
+      }
+    }
+
+    return _SystemAutoStats(
+      totalStaked: totalStaked,
+      amountWon: amountWon,
+      profitLoss: profitLoss,
+      wins: wins,
+      losses: losses,
+    );
+  }
+  
     Widget _comparisonTableCard() {
   final systemBets =
       _bets.where((b) => b.description.contains('Accumulator')).toList();
