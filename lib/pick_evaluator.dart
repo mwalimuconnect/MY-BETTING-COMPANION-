@@ -75,11 +75,25 @@ bool? evaluatePick({
   final int side = _teamSide(p, homeName, awayName);
 
   // ---- Double Chance (before 1X2 so "(1X)" / "(12)" match properly) ----
-  if (p.contains('(12)') || p == '12' || p.contains('home or away')) {
+  if (p.contains('(12)') ||
+      p == '12' ||
+      p.startsWith('12 ') ||
+      p.contains('home or away') ||
+      p.contains('away or home')) {
     return h != a;
   }
-  if (p.contains('(1x)') || p == '1x') return h >= a;
-  if (p.contains('(x2)') || p == 'x2') return a >= h;
+  if (p.contains('(1x)') ||
+      RegExp(r'^1x\b').hasMatch(p) ||
+      p.contains('home or draw') ||
+      p.contains('draw or home')) {
+    return h >= a;
+  }
+  if (p.contains('(x2)') ||
+      RegExp(r'^x2\b').hasMatch(p) ||
+      p.contains('away or draw') ||
+      p.contains('draw or away')) {
+    return a >= h;
+  }
   if ((p.contains('or draw') || p.contains('draw or')) && side != 0) {
     return side == 1 ? h >= a : a >= h;
   }
@@ -98,7 +112,7 @@ bool? evaluatePick({
 
   // ---- BTTS ("no" variants first) ----
   if (p == 'ng' ||
-      p == 'btts no' ||
+      p.contains('btts no') ||
       p == 'no gg' ||
       p.contains('btts: no') ||
       p.contains('both teams to score: no')) {
@@ -106,16 +120,16 @@ bool? evaluatePick({
   }
   if (p == 'gg' ||
       p == 'btts' ||
-      p == 'btts yes' ||
+      p.contains('btts yes') ||
       p.contains('btts: yes') ||
       p.contains('both teams to score: yes')) {
     return h > 0 && a > 0;
   }
 
   // ---- 1X2 ----
-  if (p == 'x' || p == 'draw') return h == a;
-  if (p == '1' || p == 'home' || p == 'home win') return h > a;
-  if (p == '2' || p == 'away' || p == 'away win') return a > h;
+  if (p == 'x' || p == 'draw' || p.startsWith('draw (')) return h == a;
+  if (p == '1' || p == 'home' || p.startsWith('home win')) return h > a;
+  if (p == '2' || p == 'away' || p.startsWith('away win')) return a > h;
   if (side == 1) return h > a;
   if (side == 2) return a > h;
 
