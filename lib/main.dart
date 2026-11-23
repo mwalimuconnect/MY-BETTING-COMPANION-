@@ -508,40 +508,59 @@ class _FixturesTabState extends State<FixturesTab> {
     'ALE': 'soccer_australia_aleague',
     'ARG': 'soccer_argentina_primera_division',
   };
-
-  void _loadFixtures() {
-    setState(() {
-      _fixturesFuture = ApiService.fetchFixtures().then((fixtures) async {
+void _loadFixtures() {
+  setState(() {
+    _fixturesFuture = ApiService.fetchFixtures().then((fixtures) async {
+      try {
         final activeSports = fixtures
-            .map((f) => _leagueToOddsSport[f.competitionCode.toUpperCase()])
+            .map((f) => _leagueToOddsSport[
+                f.competitionCode.toUpperCase()])
             .whereType<String>()
             .toSet();
 
         if (activeSports.isNotEmpty) {
-          try {
-            final oddsResponses = await Future.wait(
-              activeSports.map((sport) => ApiService.fetchOdds(sport)),
-            );
-            final allOdds = oddsResponses.expand((list) => list).toList();
+          final oddsResponses = await Future.wait(
+            activeSports.map(
+              (sport) => ApiService.fetchOdds(sport),
+            ),
+          );
 
-            for (final fixture in fixtures) {
-              final fHome = fixture.homeTeam.toLowerCase();
-              for (final item in allOdds) {
-                final oHome = item['home_team']?.toString().toLowerCase() ?? '';
-                if (oHome.isEmpty) continue;
+          final allOdds =
+              oddsResponses.expand((list) => list).toList();
 
-                if (fHome.contains(oHome) || oHome.contains(fHome)) {
-                  final bookmakers = item['bookmakers'] as List? ?? [];
-                  if (bookmakers.isNotEmpty) {
-                    final markets = bookmakers[0]['markets'] as List? ?? [];
-                    for (var market in markets) {
-                      if (market['key'] == 'h2h') {
-                        final outcomes = market['outcomes'] as List? ?? [];
-                        for (var outcome in outcomes) {
-                          if (outcome['name'].toString().toLowerCase() == oHome) {
-                            fixture.odds =
-                                (outcome['price'] as num?)?.toDouble() ?? 0.0;
-                          }
+          for (final fixture in fixtures) {
+            final fHome = fixture.homeTeam.toLowerCase();
+
+            for (final item in allOdds) {
+              final oHome =
+                  item['home_team']?.toString().toLowerCase() ??
+                      '';
+
+              if (oHome.isEmpty) continue;
+
+              if (fHome.contains(oHome) ||
+                  oHome.contains(fHome)) {
+                final bookmakers =
+                    item['bookmakers'] as List? ?? [];
+
+                if (bookmakers.isNotEmpty) {
+                  final markets =
+                      bookmakers[0]['markets'] as List? ?? [];
+
+                  for (final market in markets) {
+                    if (market['key'] == 'h2h') {
+                      final outcomes =
+                          market['outcomes'] as List? ?? [];
+
+                      for (final outcome in outcomes) {
+                        if (outcome['name']
+                                .toString()
+                                .toLowerCase() ==
+                            oHome) {
+                          fixture.odds =
+                              (outcome['price'] as num?)
+                                      ?.toDouble() ??
+                                  0.0;
                         }
                       }
                     }
@@ -549,12 +568,38 @@ class _FixturesTabState extends State<FixturesTab> {
                 }
               }
             }
-          } catch (e) {
-            debugPrint('Failed to attach live odds: $e');
           }
         }
+      } catch (e) {
+        debugPrint(
+          'Failed to attach live odds: $e',
+        );
+      }
 
-        Future<void> _safely(Future<void> Function() action) async {
+      await _safely(
+        () => PredictionLog.update(fixtures),
+      );
+
+      await _safely(
+        () => SlipStore.settle(fixtures),
+      );
+
+      await SuggestedSlipStore.refresh(fixtures);
+
+      await _safely(
+        () => NotificationService
+            .scheduleKickoffReminders(
+          fixtures,
+          _savedKeys,
+          AppSettings.favorites.value,
+        ),
+      );
+
+      return fixtures;
+    });
+  });
+}
+    Future<void> _safely(Future<void> Function() action) async {
   try {
     await action();
   } catch (e) {
@@ -1326,8 +1371,8 @@ class _FixturesTabState extends State<FixturesTab> {
                           leagues[index],
                           byLeague[leagues[index]]!,
                         ),
-                      ),
-              ),
+                     ),
+             ),   
             ),
           ],
         );
@@ -1335,6 +1380,7 @@ class _FixturesTabState extends State<FixturesTab> {
     );
   }
 }
+  
                                                                     
 // ---------------------------------------------------------------------------
 // Slips tab (SYSTEM PICKS)
