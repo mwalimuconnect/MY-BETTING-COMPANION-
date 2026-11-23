@@ -1,8 +1,17 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'fixture_model.dart';
+import 'pick_evaluator.dart';
+
+const Color _teal = Color(0xFF008080);
+
+//=========================
+// Insight dialog
+//=========================
 
 /// Dialog shown when a logged prediction is tapped. It only states things the
 /// app really knows: the tip, its confidence, the data saved when the tip was
@@ -29,7 +38,7 @@ class PredictionInsightHelper {
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 12,
-              color: Color(0xFF008080),
+              color: _teal,
               letterSpacing: 0.5,
             ),
           ),
@@ -40,7 +49,7 @@ class PredictionInsightHelper {
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.insights, color: Color(0xFF008080)),
+            Icon(Icons.insights, color: _teal),
             SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -58,7 +67,10 @@ class PredictionInsightHelper {
               Text(
                 matchTitle,
                 style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF008080)),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: _teal,
+                ),
               ),
               if (league.isNotEmpty || kickoff.isNotEmpty)
                 Padding(
@@ -71,9 +83,9 @@ class PredictionInsightHelper {
               const SizedBox(height: 8),
               Text(
                 'Selection: $prediction',
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                style:
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               ),
-
               heading('WHAT THE MODEL SAID'),
               Text(
                 confidence != null
@@ -85,31 +97,34 @@ class PredictionInsightHelper {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'Model odds: ${fairOdds.toStringAsFixed(2)} (100 divided by the confidence). These are not bookmaker odds.',
+                    'Model odds: ${fairOdds.toStringAsFixed(2)} '
+                    '(100 divided by the confidence). '
+                    'These are not bookmaker odds.',
                     style: const TextStyle(fontSize: 13),
                   ),
                 ),
-
               if (detail.isNotEmpty) ...[
                 heading('DATA BEHIND IT (SAVED WHEN THE TIP WAS MADE)'),
-                Text(detail, style: const TextStyle(fontSize: 13, height: 1.35)),
+                Text(detail,
+                    style: const TextStyle(fontSize: 13, height: 1.35)),
               ],
-
               if (status.isNotEmpty) ...[
                 heading('RESULT'),
                 Text(
                   score.isNotEmpty ? '$status (final score $score)' : status,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600),
                 ),
               ],
-
               heading('HOW IT IS CALCULATED'),
               const Text(
-                'The model counts the goals each team has scored and conceded in this season\'s '
-                'finished matches in the same competition, adjusts for home advantage, and '
-                'pulls small samples toward the league average. It then simulates the possible '
-                'scorelines to get win, draw and goals chances. It does not know about injuries, '
-                'suspensions, lineups or bookmaker odds, and no tip is guaranteed.',
+                'The model counts the goals each team has scored and conceded '
+                'in this season\'s finished matches in the same competition, '
+                'adjusts for home advantage, and pulls small samples toward '
+                'the league average. It then simulates the possible scorelines '
+                'to get win, draw and goals chances. It does not know about '
+                'injuries, suspensions, lineups or bookmaker odds, and no tip '
+                'is guaranteed.',
                 style: TextStyle(fontSize: 12, height: 1.4, color: Colors.grey),
               ),
             ],
@@ -118,7 +133,7 @@ class PredictionInsightHelper {
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF008080),
+              backgroundColor: _teal,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx),
@@ -130,216 +145,18 @@ class PredictionInsightHelper {
   }
 }
 
-/// Returns true if the tip won, false if it lost, or null if it cannot be
-/// judged from final score alone (treated as void).
-bool? evaluateTip(String tip, String home, String away, String score) {
-  final parts = score.split('-');
-  if (parts.length != 2) return null;
-  final h = int.tryParse(parts[0].trim());
-  final a = int.tryParse(parts[1].trim());
-  if (h == null || a == null) return null;
-  final normalizedTip = tip.trim();
-  final lowerTip = normalizedTip.toLowerCase();
-  final compactTip = lowerTip.replaceAll(RegExp(r'\s+'), '');
-  final totalGoals = h + a;
+//=========================
+// Tip evaluation
+//=========================
 
-  if (lowerTip.contains('most goals') ||
-      lowerTip.contains('card') ||
-      lowerTip.contains('scorer')) {
-    return null;
-  }
+/// Kept so existing call sites keep working. The logic lives in
+/// pick_evaluator.dart and is shared with the slip generator.
+bool? evaluateTip(String tip, String home, String away, String score) =>
+    evaluatePick(pick: tip, home: home, away: away, score: score);
 
-  if (normalizedTip == '$home Win') return h > a;
-  if (normalizedTip == '$away Win') return a > h;
-  if (normalizedTip == 'Draw') return h == a;
-
-  if (normalizedTip == 'Double Chance: $home or Draw (1X)' ||
-      normalizedTip.endsWith('(1X)')) {
-    return h >= a;
-  }
-  if (normalizedTip == 'Double Chance: Draw or $away (X2)' ||
-      normalizedTip.endsWith('(X2)')) {
-    return a >= h;
-  }
-
-  if (normalizedTip == 'Over 1.5 Goals') return totalGoals >= 2;
-  if (normalizedTip == 'Over 2.5 Goals') return totalGoals >= 3;
-  if (normalizedTip == 'Under 3.5 Goals') return totalGoals <= 3;
-
-  if (normalizedTip == 'Both Teams To Score: Yes') return h > 0 && a > 0;
-  if (normalizedTip == 'Both Teams To Score: No') return h == 0 || a == 0;
-
-  if (lowerTip == '1' || lowerTip == 'home') return h > a;
-  if (lowerTip == '2' || lowerTip == 'away') return a > h;
-  if (lowerTip == 'x') return h == a;
-  if (lowerTip == '12' || lowerTip == 'home or away') return h != a;
-
-  if (lowerTip == 'gg' || lowerTip == 'btts' || lowerTip == 'btts yes') {
-    return h > 0 && a > 0;
-  }
-  if (lowerTip == 'ng' || lowerTip == 'btts no' || lowerTip == 'no gg') {
-    return h == 0 || a == 0;
-  }
-
-  if (compactTip.contains('un1.5') || compactTip.contains('under1.5')) {
-    return totalGoals < 2;
-  }
-  if (lowerTip.contains('over 1.5') || compactTip.contains('ov1.5')) {
-    return totalGoals >= 2;
-  }
-  if (compactTip.contains('un2.5') || compactTip.contains('under2.5')) {
-    return totalGoals < 3;
-  }
-  if (lowerTip.contains('over 2.5') || compactTip.contains('ov2.5')) {
-    return totalGoals >= 3;
-  }
-  if (compactTip.contains('un3.5') || compactTip.contains('under3.5')) {
-    return totalGoals <= 3;
-  }
-
-  final RegExpMatch? scoreTipMatch =
-      RegExp(r'\b(\d+)\s*-\s*(\d+)\b').firstMatch(lowerTip);
-  if (scoreTipMatch != null) {
-    final int? tipH = int.tryParse(scoreTipMatch.group(1)!);
-    final int? tipA = int.tryParse(scoreTipMatch.group(2)!);
-    if (tipH != null && tipA != null) {
-      return h == tipH && a == tipA;
-    }
-  }
-  
-  return null;
-}
-  /// Helper widget to render the PROLIFIC \u{1F525} header in bold Teal Green capital letters
-  Widget buildProlificHeader() {
-  return const Padding(
-    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-    child: Text(
-      'PROLIFIC \u{1F525}',
-      style: TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: Color(0xFF008080), // Teal Green
-        letterSpacing: 1.2,
-      ),
-    ),
-  );
-}
-
-String _statusTextOf(LogEntry entry) {
-  if (!entry.settled) return 'Pending';
-  if (entry.isVoid) return 'Void';
-  return entry.won == true ? 'Won' : 'Lost';
-}
-
-/// Opens the insight dialog for a logged prediction.
-void showLogEntryInsight(BuildContext context, LogEntry entry) {
-  PredictionInsightHelper.show(
-    context,
-    '${entry.home} vs ${entry.away}',
-    entry.tip,
-    entry.tipProb,
-    league: entry.league,
-    kickoff: entry.kickoff,
-    status: _statusTextOf(entry),
-    score: entry.score,
-    detail: entry.detail,
-  );
-}
-
-/// Helper builder to render your logged prediction items cleanly with tap-to-inspect insights
-Widget buildPredictionLogList(List<LogEntry> entries) {
-  if (entries.isEmpty) {
-    return const Padding(
-      padding: EdgeInsets.all(24),
-      child: Text(
-        'No prediction logs found.',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: Colors.grey),
-      ),
-    );
-  }
-
-  return ListView.builder(
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    itemCount: entries.length,
-    itemBuilder: (context, index) {
-      final entry = entries[index];
-
-      Color statusColor = Colors.orange;
-      String statusText = 'Pending';
-      if (entry.settled) {
-        if (entry.isVoid) {
-          statusColor = Colors.grey;
-          statusText = 'Void';
-        } else if (entry.won == true) {
-          statusColor = Colors.green;
-          statusText = 'Won';
-        } else {
-          statusColor = Colors.red;
-          statusText = 'Lost';
-        }
-      }
-
-      return Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          // Tapping any logged prediction opens its insight breakdown dialog
-          onTap: () => showLogEntryInsight(context, entry),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${entry.home} vs ${entry.away}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              'Tip: ${entry.tip}',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF008080),
-                                  fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.info_outline, size: 12, color: Colors.grey),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'League: ${entry.league}',
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-                Chip(
-                  label: Text(
-                    statusText,
-                    style: const TextStyle(color: Colors.white, fontSize: 10),
-                  ),
-                  backgroundColor: statusColor,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
-  );
-}
-
+//=========================
+// Models
+//=========================
 class LogEntry {
   final String key;
   final String home;
@@ -370,6 +187,18 @@ class LogEntry {
     this.won,
     this.score = '',
   });
+
+  String get statusText {
+    if (!settled) return 'Pending';
+    if (isVoid) return 'Void';
+    return won == true ? 'Won' : 'Lost';
+  }
+
+  Color get statusColor {
+    if (!settled) return Colors.orange;
+    if (isVoid) return Colors.grey;
+    return won == true ? Colors.green : Colors.red;
+  }
 
   Map<String, dynamic> toJson() => {
         'key': key,
@@ -438,9 +267,138 @@ class LeagueStats {
   double get hitRate => settled == 0 ? 0 : wins / settled;
 }
 
+//=========================
+// UI helpers
+//=========================
+
+/// Bold teal "PROLIFIC 🔥" section header.
+Widget buildProlificHeader() {
+  return const Padding(
+    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+    child: Text(
+      'PROLIFIC \u{1F525}',
+      style: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: _teal,
+        letterSpacing: 1.2,
+      ),
+    ),
+  );
+}
+
+/// Opens the insight dialog for a logged prediction.
+void showLogEntryInsight(BuildContext context, LogEntry entry) {
+  PredictionInsightHelper.show(
+    context,
+    '${entry.home} vs ${entry.away}',
+    entry.tip,
+    entry.tipProb,
+    league: entry.league,
+    kickoff: entry.kickoff,
+    status: entry.statusText,
+    score: entry.score,
+    detail: entry.detail,
+  );
+}
+
+/// Renders logged predictions; tapping one opens its insight dialog.
+Widget buildPredictionLogList(List<LogEntry> entries) {
+  if (entries.isEmpty) {
+    return const Padding(
+      padding: EdgeInsets.all(24),
+      child: Text(
+        'No prediction logs found.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.grey),
+      ),
+    );
+  }
+
+  return ListView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: entries.length,
+    itemBuilder: (context, index) =>
+        _LogEntryCard(entry: entries[index]),
+  );
+}
+
+class _LogEntryCard extends StatelessWidget {
+  final LogEntry entry;
+
+  const _LogEntryCard({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => showLogEntryInsight(context, entry),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${entry.home} vs ${entry.away}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Tip: ${entry.tip}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _teal,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.info_outline,
+                            size: 12, color: Colors.grey),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'League: ${entry.league}',
+                      style:
+                          const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              Chip(
+                label: Text(
+                  entry.statusText,
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                ),
+                backgroundColor: entry.statusColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+//=========================
+// PredictionLog storage
+//=========================
 class PredictionLog {
   static const String _prefsKey = 'prediction_log_v2';
   static const int _maxEntries = 500;
+  static const int _voidAfterDays = 14;
 
   static Future<List<LogEntry>> load() async {
     try {
@@ -449,11 +407,10 @@ class PredictionLog {
       if (raw == null || raw.isEmpty) return [];
       final decoded = jsonDecode(raw);
       if (decoded is! List) return [];
-      final out = <LogEntry>[];
-      for (final e in decoded) {
-        if (e is Map) out.add(LogEntry.fromJson(Map<String, dynamic>.from(e)));
-      }
-      return out;
+      return [
+        for (final e in decoded)
+          if (e is Map) LogEntry.fromJson(Map<String, dynamic>.from(e)),
+      ];
     } catch (e) {
       debugPrint('Could not load prediction log: $e');
       return [];
@@ -464,7 +421,9 @@ class PredictionLog {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
-          _prefsKey, jsonEncode(entries.map((e) => e.toJson()).toList()));
+        _prefsKey,
+        jsonEncode(entries.map((e) => e.toJson()).toList()),
+      );
     } catch (e) {
       debugPrint('Could not save prediction log: $e');
     }
@@ -487,26 +446,50 @@ class PredictionLog {
     final parts = <String>[];
     if (f.hasPrediction) {
       parts.add(
-          'Chances: ${f.homeTeam} ${f.homeWinProb.round()}%, draw ${f.drawProb.round()}%, ${f.awayTeam} ${f.awayWinProb.round()}%.');
+        'Chances: ${f.homeTeam} ${f.homeWinProb.round()}%, '
+        'draw ${f.drawProb.round()}%, '
+        '${f.awayTeam} ${f.awayWinProb.round()}%.',
+      );
     }
     if (f.homeForm.isNotEmpty && f.awayForm.isNotEmpty) {
       parts.add(
-          'Form (last ${f.homeForm.length}): ${f.homeTeam} ${_formPoints(f.homeForm)} points, '
-          '${f.awayTeam} ${_formPoints(f.awayForm)} points.');
+        'Form (last ${f.homeForm.length}): '
+        '${f.homeTeam} ${_formPoints(f.homeForm)} points, '
+        '${f.awayTeam} ${_formPoints(f.awayForm)} points.',
+      );
     }
     if (f.over25Goals != 'N/A') {
-      parts.add('Over 2.5 goals ${f.over25Goals}, both teams to score ${f.btts}.');
+      parts.add(
+          'Over 2.5 goals ${f.over25Goals}, both teams to score ${f.btts}.');
     }
     return parts.join(' ');
+  }
+
+  static LogEntry _newEntry(String key, FixtureModel f) => LogEntry(
+        key: key,
+        home: f.homeTeam,
+        away: f.awayTeam,
+        league: f.league,
+        tip: f.topTip,
+        tipProb: f.tipProbInt,
+        kickoff: f.timeLabel,
+        utcDate: f.utcDate,
+        detail: _detailOf(f),
+      );
+
+  static void _settle(LogEntry entry, FixtureModel f) {
+    final result =
+        evaluateTip(entry.tip, entry.home, entry.away, f.actualScore);
+    entry.settled = true;
+    entry.score = f.actualScore;
+    entry.isVoid = result == null;
+    entry.won = result;
   }
 
   /// Records new tips (only before kickoff) and settles finished matches.
   static Future<void> update(List<FixtureModel> fixtures) async {
     final entries = await load();
-    final byKey = <String, LogEntry>{};
-    for (final e in entries) {
-      byKey[e.key] = e;
-    }
+    final byKey = {for (final e in entries) e.key: e};
     final now = DateTime.now().toUtc();
     var changed = false;
 
@@ -517,50 +500,31 @@ class PredictionLog {
 
       if (existing == null) {
         final ko = f.kickoff;
-        if (!f.isFinished &&
+        final bool canRecord = !f.isFinished &&
             !f.isLive &&
             f.topTip.isNotEmpty &&
             ko != null &&
-            ko.isAfter(now)) {
-          final entry = LogEntry(
-            key: k,
-            home: f.homeTeam,
-            away: f.awayTeam,
-            league: f.league,
-            tip: f.topTip,
-            tipProb: f.tipProbInt,
-            kickoff: f.timeLabel,
-            utcDate: f.utcDate,
-            detail: _detailOf(f),
-          );
+            ko.isAfter(now);
+        if (canRecord) {
+          final entry = _newEntry(k, f);
           entries.add(entry);
           byKey[k] = entry;
           changed = true;
         }
       } else if (!existing.settled && f.isFinished) {
-        final result =
-            evaluateTip(existing.tip, existing.home, existing.away, f.actualScore);
-        existing.settled = true;
-        existing.score = f.actualScore;
-        if (result == null) {
-          existing.isVoid = true;
-          existing.won = null;
-        } else {
-          existing.won = result;
-        }
+        _settle(existing, f);
         changed = true;
       }
     }
 
-    // Tips whose result never arrived (older than 14 days) are marked void.
+    // Tips whose result never arrived are marked void.
     for (final e in entries) {
-      if (!e.settled) {
-        final ko = DateTime.tryParse(e.utcDate);
-        if (ko != null && now.difference(ko).inDays > 14) {
-          e.settled = true;
-          e.isVoid = true;
-          changed = true;
-        }
+      if (e.settled) continue;
+      final ko = DateTime.tryParse(e.utcDate);
+      if (ko != null && now.difference(ko).inDays > _voidAfterDays) {
+        e.settled = true;
+        e.isVoid = true;
+        changed = true;
       }
     }
 
@@ -605,10 +569,14 @@ class PredictionLog {
       settledCount[e.league] = (settledCount[e.league] ?? 0) + 1;
       if (e.won == true) winCount[e.league] = (winCount[e.league] ?? 0) + 1;
     }
-    final out = <LeagueStats>[];
-    settledCount.forEach((league, n) {
-      out.add(LeagueStats(league: league, settled: n, wins: winCount[league] ?? 0));
-    });
+    final out = [
+      for (final entry in settledCount.entries)
+        LeagueStats(
+          league: entry.key,
+          settled: entry.value,
+          wins: winCount[entry.key] ?? 0,
+        ),
+    ];
     out.sort((a, b) => b.settled.compareTo(a.settled));
     return out;
   }
