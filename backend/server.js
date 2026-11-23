@@ -3,6 +3,10 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 
 const app = express();
+const footballRoutes = require('./routes/football');
+
+app.set('trust proxy', 1);
+app.use('/api/football', footballRoutes);
 const PORT = process.env.PORT || 10000;
 
 // ---------- Environment Variables & Core Configuration ----------
