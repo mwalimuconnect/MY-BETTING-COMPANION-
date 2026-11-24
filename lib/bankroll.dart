@@ -216,7 +216,8 @@ class SystemSlipHistoryStore {
     return '${local.year}-$m-$d';
   }
 
-  static Future> loadByDay() async {
+  static Future<Map<String, GeneratedSlip>> loadByDay() async {
+    
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefsKey);
