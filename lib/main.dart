@@ -247,7 +247,7 @@ class SuggestedSlipStore {
     return {for (final e in entries) e.key: e.value};
   }
 
-  static Future<Map<String, GeneratedSlip>> loadHistory7Days() async {
+  static Future<Map<String, SuggestedSlip>> loadHistory7Days() async {
 
 
     try {
