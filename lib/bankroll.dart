@@ -1438,8 +1438,11 @@ class _BankrollTabState extends State<BankrollTab>
     final stake = _parse(stakeCtl.text);
     final odds = _parse(oddsCtl.text);
 
-    if (isMultibet && matchName.isNotEmpty && betType.isNotEmpty) {
-      multiLegs.add('$matchName [$betType]');
+      if (isMultibet && matchName.isNotEmpty && betType.isNotEmpty) {
+      final candidateLeg = '$matchName [$betType]';
+      if (multiLegs.isEmpty || multiLegs.last != candidateLeg) {
+        multiLegs.add(candidateLeg);
+      }
     }
 
     final hasValidPick = isMultibet
@@ -1479,17 +1482,84 @@ class _BankrollTabState extends State<BankrollTab>
     await _autoSettleBets();
   }
 
-  Future<void> _onMenu(Bet bet, String action) async {
+    Future<void> _onMenu(Bet bet, String action) async {
+    if (action == 'won' || action == 'lost') return;
+
     setState(() {
       if (action == 'delete') {
         _bets.removeWhere((b) => b.id == bet.id);
-      } else {
+      } else if (action == 'void' || action == 'pending') {
         bet.status = action;
       }
     });
     await _saveData();
+      }
+  bool? _resultForLeg(String leg) {
+    final m = RegExp(r'^(.+?)\s*\[(.+)\]$').firstMatch(leg.trim());
+    if (m == null) return null;
+
+    final String label = m.group(1)!.trim().toLowerCase();
+    final String pick = m.group(2)!.trim();
+
+    for (final f in _fixtures) {
+      if (!f.effectiveIsFinished) continue;
+      final a = '${f.homeTeam} vs ${f.awayTeam}'.toLowerCase();
+      final b = '${f.homeTeam} v ${f.awayTeam}'.toLowerCase();
+      if (label != a && label != b) continue;
+
+      return evaluatePick(
+        pick: pick,
+        home: f.homeTeam,
+        away: f.awayTeam,
+        score: f.actualScore,
+      );
+    }
+    return null;
   }
 
+  bool? _resultForMulti(Bet bet) {
+    final int colon = bet.description.indexOf(':');
+    if (colon < 0) return null;
+
+    final legs = bet.description
+        .substring(colon + 1)
+        .split('|')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (legs.isEmpty) return null;
+
+    var allWon = true;
+    for (final leg in legs) {
+      final r = _resultForLeg(leg);
+      if (r == false) return false;
+      if (r != true) allWon = false;
+    }
+    return allWon ? true : null;
+  }
+
+  Future<void> _autoSettleBets() async {
+    if (_bets.isEmpty || _fixtures.isEmpty) return;
+
+    bool changed = false;
+    for (final bet in _bets) {
+      if (bet.status != 'pending') continue;
+
+      final bool? won = bet.description.startsWith('Multi (')
+          ? _resultForMulti(bet)
+          : _resultForLeg(bet.description);
+      if (won == null) continue;
+
+      bet.status = won ? 'won' : 'lost';
+      changed = true;
+    }
+
+    if (changed && mounted) {
+      setState(() {});
+      await _saveData();
+    }
+  }
+  
   // ----------------------------------------------------------------- widgets
   _SystemAutoStats _computeSystemAutoStats(
     List<GeneratedSlip> slips,
@@ -2081,8 +2151,6 @@ Widget _comparisonFlap() {
             PopupMenuButton<String>(
               onSelected: (v) => _onMenu(b, v),
               itemBuilder: (_) => const [
-                PopupMenuItem(value: 'won', child: Text('Mark won')),
-                PopupMenuItem(value: 'lost', child: Text('Mark lost')),
                 PopupMenuItem(value: 'void', child: Text('Mark void')),
                 PopupMenuItem(value: 'pending', child: Text('Mark pending')),
                 PopupMenuItem(value: 'delete', child: Text('Delete')),
