@@ -77,11 +77,11 @@ class MainHomeScreen extends StatefulWidget {
 class _MainHomeScreenState extends State<MainHomeScreen> {
   int _currentIndex = 0; // Starts on Bankroll (leftmost tab)
   int _tabRefreshTick = 0;
-
+final GlobalKey _bankrollKey = GlobalKey();
   Widget _buildCurrentTab() {
     switch (_currentIndex) {
       case 0:
-        return const BankrollTab();
+        return BankrollTab(key: _bankrollKey);
       case 1:
         return const FixturesTab();
       case 2:
@@ -114,6 +114,30 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               AppSettings.setDark(!isDark);
             },
           ),
+                    if (_currentIndex == 0)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_horiz),
+              tooltip: 'Backup & Restore',
+              onSelected: (value) {
+                final state = _bankrollKey.currentState as dynamic;
+                if (state == null) return;
+                if (value == 'export') {
+                  state._exportAllBackup();
+                } else if (value == 'import') {
+                  state._importAllBackup();
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem<String>(
+                  value: 'export',
+                  child: Text('Export Backup (Bets & Slips)'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'import',
+                  child: Text('Restore Backup (Bets & Slips)'),
+                ),
+              ],
+            ),
         ],
       ),
       body: _buildCurrentTab(),
