@@ -8,6 +8,7 @@ import 'fixture_model.dart';
 import 'pick_evaluator.dart';
 
 const Color _teal = Color(0xFF008080);
+const Color _safaricomGreen = Color(0xFF3AA335);
 
 //=========================
 // Insight dialog
@@ -197,7 +198,7 @@ class LogEntry {
   Color get statusColor {
     if (!settled) return Colors.orange;
     if (isVoid) return Colors.grey;
-    return won == true ? Colors.green : Colors.red;
+    return won == true ? _safaricomGreen : Colors.red;
   }
 
   Map<String, dynamic> toJson() => {
@@ -319,8 +320,7 @@ Widget buildPredictionLogList(List<LogEntry> entries) {
     shrinkWrap: true,
     physics: const NeverScrollableScrollPhysics(),
     itemCount: entries.length,
-    itemBuilder: (context, index) =>
-        _LogEntryCard(entry: entries[index]),
+    itemBuilder: (context, index) => _LogEntryCard(entry: entries[index]),
   );
 }
 
@@ -500,18 +500,20 @@ class PredictionLog {
 
       if (existing == null) {
         final ko = f.kickoff;
-        final bool canRecord = !f.isFinished &&
-            !f.isLive &&
+        final bool canRecord = !f.effectiveIsFinished &&
+            !f.effectiveIsLive &&
             f.topTip.isNotEmpty &&
             ko != null &&
-            ko.isAfter(now);
+            ko.toUtc().isAfter(now);
         if (canRecord) {
           final entry = _newEntry(k, f);
           entries.add(entry);
           byKey[k] = entry;
           changed = true;
         }
-      } else if (!existing.settled && f.isFinished) {
+      } else if (!existing.settled &&
+          f.effectiveIsFinished &&
+          f.actualScore.trim().isNotEmpty) {
         _settle(existing, f);
         changed = true;
       }
@@ -521,7 +523,7 @@ class PredictionLog {
     for (final e in entries) {
       if (e.settled) continue;
       final ko = DateTime.tryParse(e.utcDate);
-      if (ko != null && now.difference(ko).inDays > _voidAfterDays) {
+      if (ko != null && now.difference(ko.toUtc()).inDays > _voidAfterDays) {
         e.settled = true;
         e.isVoid = true;
         changed = true;
