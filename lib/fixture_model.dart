@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+const Color _kSafaricomGreen = Color(0xFF3AA335);
+
 class H2HEntry {
   final String date;
   final String home;
@@ -191,7 +193,10 @@ class FixtureModel {
   /// True when actualScore contains a scoreline like "2-1" or starts with "FT".
   bool get hasFinalScore {
     final String clean = actualScore.trim().toLowerCase();
-    if (clean.isEmpty || clean == 'pending' || clean == 'ns' || clean == 'tbd') {
+    if (clean.isEmpty ||
+        clean == 'pending' ||
+        clean == 'ns' ||
+        clean == 'tbd') {
       return false;
     }
     return clean.contains('-') || clean.startsWith('ft');
@@ -221,10 +226,28 @@ class FixtureModel {
     if (dt == null) return timeLabel;
 
     final DateTime local = dt.toLocal();
-    const List<String> weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const List<String> weekdays = [
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ];
     const List<String> months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
 
     final String dayName = weekdays[local.weekday - 1];
@@ -268,10 +291,12 @@ class FixtureModel {
       }
       final List<String> tokens = fullName
           .split(RegExp(r'\s+'))
-          .where((t) =>
-              t.length >= 4 &&
-              !{'fc', 'sc', 'cf', 'cd', 'ca', 'cr', 'afc', 'united', 'city'}
-                  .contains(t))
+          .where(
+            (t) =>
+                t.length >= 4 &&
+                !{'fc', 'sc', 'cf', 'cd', 'ca', 'cr', 'afc', 'united', 'city'}
+                    .contains(t),
+          )
           .toList();
       return tokens.any(
         (token) => RegExp('\\b${RegExp.escape(token)}\\b').hasMatch(tip),
@@ -308,12 +333,14 @@ class FixtureModel {
         tip == 'gg' ||
         tip == 'btts' ||
         tip == 'btts yes' ||
+        tip.contains('btts yes') ||
         tip.contains('both teams to score: yes')) {
       return homeGoals > 0 && awayGoals > 0;
     }
     if (normMarket == 'ng' ||
         tip == 'ng' ||
         tip == 'btts no' ||
+        tip.contains('btts no') ||
         tip.contains('both teams to score: no')) {
       return homeGoals == 0 || awayGoals == 0;
     }
@@ -531,10 +558,13 @@ class PredictionOutcomeBadge extends StatelessWidget {
     if (won == null) return const SizedBox.shrink();
 
     final bool isWon = won!;
-    final Color color = isWon ? Colors.green.shade700 : Colors.red.shade700;
-    final Color bgColor = isWon ? Colors.green.shade50 : Colors.red.shade50;
-    final Color borderColor =
-        isWon ? Colors.green.shade300 : Colors.red.shade300;
+    final Color color = isWon ? _kSafaricomGreen : Colors.red.shade700;
+    final Color bgColor = isWon
+        ? _kSafaricomGreen.withValues(alpha: 0.12)
+        : Colors.red.shade50;
+    final Color borderColor = isWon
+        ? _kSafaricomGreen.withValues(alpha: 0.45)
+        : Colors.red.shade300;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
