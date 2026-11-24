@@ -14,7 +14,7 @@ import 'pick_evaluator.dart';
 import 'slip_access_manager.dart';
 import 'slip_generator.dart';
 
-const Color _teal = Color(0xFF008080); // Teal Green
+const Color _teal = kTealAccent;
 
 class _SystemAutoStats {
   final double totalStaked;
@@ -1531,286 +1531,294 @@ class _BankrollTabState extends State<BankrollTab>
     );
   }
 
-  Widget _dailySlipFlap() {
-    final slip = _todaySuggestedSlip;
-    final genSlip = _asGeneratedSlip(slip);
-    final fixturesForEval =
-        widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
-    final eval = genSlip?.evaluateOutcome(fixturesForEval);
+ Widget _dailySlipFlap() {
+  final slip = _todaySuggestedSlip;
+  final genSlip = _asGeneratedSlip(slip);
+  final fixturesForEval =
+      widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
+  final eval = genSlip?.evaluateOutcome(fixturesForEval);
 
-    String statusLabel = 'DAILY SLIP';
-    Color statusColor = _teal;
-    if (eval != null && eval.isSettled) {
-      statusLabel = eval.isWon ? 'WON' : 'LOST';
-      statusColor = eval.isWon ? Colors.green.shade700 : Colors.red.shade700;
-    }
+  const Color safaricomGreen = Color(0xFF3AA335);
+  String statusLabel = 'DAILY SLIP';
+  Color statusColor = safaricomGreen;
+  if (eval != null && eval.isSettled) {
+    statusLabel = eval.isWon ? 'WON' : 'LOST';
+    statusColor = eval.isWon ? safaricomGreen : Colors.red.shade700;
+  }
 
-    return Card(
-      color: cardBg(context),
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: _teal.withOpacity(0.5), width: 0.9),
-      ),
-      child: ExpansionTile(
-        initiallyExpanded: true,
-        iconColor: _teal,
-        collapsedIconColor: _teal,
-        title: Row(
-          children: [
-            const Expanded(
-              child: Text(
-                '\u{1F525} Today\'s Generated Slip',
-                style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.bold, color: _teal),
-              ),
-            ),
-            if (slip != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '$statusLabel \u2022 ${slip.totalOdds.toStringAsFixed(2)}x',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        subtitle: Text(
-          slip == null
-              ? 'No system slip generated for today yet'
-              : '${slip.title} \u2022 Stake: ${_ksh(slip.stake)}',
-          style: TextStyle(fontSize: 11, color: mutedText(context)),
-        ),
+  return Card(
+    color: ticketCardBg(context),
+    elevation: 1,
+    margin: const EdgeInsets.only(bottom: 12),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(color: ticketBorderColor(context), width: 1.2),
+    ),
+    child: ExpansionTile(
+      initiallyExpanded: true,
+      iconColor: _teal,
+      collapsedIconColor: _teal,
+      title: Row(
         children: [
-          if (slip == null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              child: Text(
-                'Generate or refresh today\'s slip in the Slips tab to track daily system profit/loss here.',
-                style: TextStyle(fontSize: 12, color: mutedText(context)),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Stake: ${_ksh(slip.stake)}',
-                          style: const TextStyle(fontSize: 12)),
-                      Text(
-                        'Potential Win: ${_ksh(slip.potentialPayout)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (slip.selections.isNotEmpty) ...[
-                    const Divider(height: 14),
-                    for (int i = 0; i < slip.selections.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Text(
-                          '${i + 1}. ${slip.selections[i]['match'] ?? ''} '
-                          '(${slip.selections[i]['prediction'] ?? ''}) '
-                          '@ ${slip.selections[i]['odds'] ?? ''}',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                  ],
-                ],
-              ),
+          const Expanded(
+            child: Text(
+              '\u{1F525} Today\'s Generated Slip',
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.bold, color: _teal),
             ),
-          if (_historicalSlips.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-              child: ExpansionTile(
-                initiallyExpanded: false,
-                iconColor: _teal,
-                collapsedIconColor: _teal,
-                title: Text(
-                  'Past System Slips (${_historicalSlips.length})',
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-                children: _historicalSlips
-                    .map((past) => ListTile(
-                          dense: true,
-                          title: Text(past.title,
-                              style: const TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.bold)),
-                          subtitle: Text(
-                            'Stake: ${_ksh(past.stake)} \u2022 Win: ${_ksh(past.potentialPayout)}',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                          trailing: Text(
-                            '${past.totalOdds.toStringAsFixed(2)}x',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: _teal),
-                          ),
-                        ))
-                    .toList(),
-              ),
+          ),
+          if (slip != null)
+            ticketStatusPill(
+              '$statusLabel \u2022 ${slip.totalOdds.toStringAsFixed(2)}x',
+              statusColor,
             ),
         ],
       ),
-    );
-  }
-  Widget _comparisonFlap() {
-    final systemBets =
-        _bets.where((b) => b.description.contains('Accumulator')).toList();
-    final manualBets =
-        _bets.where((b) => !b.description.contains('Accumulator')).toList();
-
-    final fixturesForEval =
-        widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
-    final todaySlip = _asGeneratedSlip(_todaySuggestedSlip);
-    final List<GeneratedSlip> trackedSlips = [
-      ..._historicalSlips,
-      if (todaySlip != null) todaySlip,
-    ];
-    final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
-
-    double totalStaked(List<Bet> list) => list
-        .where((b) => b.status != 'void')
-        .fold(0.0, (s, b) => s + b.stake);
-
-    double totalWon(List<Bet> list) => list
-        .where((b) => b.status == 'won')
-        .fold(0.0, (s, b) => s + b.stake + b.profit);
-
-    double totalProfit(List<Bet> list) =>
-        list.fold(0.0, (s, b) => s + b.profit);
-
-    int countStatus(List<Bet> list, String status) =>
-        list.where((b) => b.status == status).length;
-
-    final sysStaked = totalStaked(systemBets) + autoStats.totalStaked;
-    final sysWonAmount = totalWon(systemBets) + autoStats.amountWon;
-    final sysProfit = totalProfit(systemBets) + autoStats.profitLoss;
-    final sysWins = countStatus(systemBets, 'won') + autoStats.wins;
-    final sysLosses = countStatus(systemBets, 'lost') + autoStats.losses;
-
-    final manStaked = totalStaked(manualBets);
-    final manWonAmount = totalWon(manualBets);
-    final manProfit = totalProfit(manualBets);
-    final manWins = countStatus(manualBets, 'won');
-    final manLosses = countStatus(manualBets, 'lost');
-
-    final double diff = sysProfit - manProfit;
-    final String appVerdict = sysProfit > 0
-        ? 'App in Profit (+${_ksh(sysProfit)})'
-        : (sysProfit < 0
-            ? 'App in Loss (${_ksh(sysProfit)})'
-            : 'App Break-Even (${_ksh(0)})');
-
-    final String vsUserSummary = diff > 0
-        ? 'App ahead of you by ${_ksh(diff)}'
-        : (diff < 0
-            ? 'You are ahead of app by ${_ksh(diff.abs())}'
-            : 'Tied with your manual P/L');
-
-    Widget cell(String text, {TextStyle? style}) => Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Text(text, style: style ?? const TextStyle(fontSize: 11)),
-        );
-
-    const headStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 11);
-    const greenStyle = TextStyle(fontSize: 11, color: Colors.green);
-    TextStyle profitStyle(double v) => TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: _profitColor(v),
-        );
-
-    return Card(
-      color: cardBg(context),
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: ExpansionTile(
-        initiallyExpanded: true,
-        iconColor: _teal,
-        collapsedIconColor: _teal,
-        title: const Text(
-          '\u{1F4CA} App vs. User Profit & Loss',
-          style: TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
-        ),
-        subtitle: Text(
-          '$appVerdict \u2022 $vsUserSummary',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: _profitColor(sysProfit),
-          ),
-        ),
-        children: [
+      subtitle: Text(
+        slip == null
+            ? 'No system slip generated for today yet'
+            : '${slip.title} \u2022 Stake: ${_ksh(slip.stake)}',
+        style: TextStyle(fontSize: 11, color: mutedText(context)),
+      ),
+      children: [
+        if (slip == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Text(
+              'Generate or refresh today\'s slip in the Slips tab to track daily system profit/loss here.',
+              style: TextStyle(fontSize: 12, color: mutedText(context)),
+            ),
+          )
+        else
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
-            child: Table(
-              columnWidths: const {
-                0: FlexColumnWidth(1.3),
-                1: FlexColumnWidth(1.0),
-                2: FlexColumnWidth(1.0),
-              },
-              border: TableBorder.all(color: lineColor(context), width: 0.5),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TableRow(
-                  decoration:
-                      BoxDecoration(color: lineColor(context).withOpacity(0.3)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    cell('Metric', style: headStyle),
-                    cell('System (App)',
-                        style: headStyle.copyWith(color: _teal)),
-                    cell('Manual (You)', style: headStyle),
+                    Text('Stake: ${_ksh(slip.stake)}',
+                        style: const TextStyle(fontSize: 12)),
+                    Text(
+                      'Possible Win: ${_ksh(slip.potentialPayout)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: safaricomGreen,
+                      ),
+                    ),
                   ],
                 ),
-                TableRow(children: [
-                  cell('Total Staked'),
-                  cell(_ksh(sysStaked)),
-                  cell(_ksh(manStaked)),
-                ]),
-                TableRow(children: [
-                  cell('Amount Won'),
-                  cell(_ksh(sysWonAmount), style: greenStyle),
-                  cell(_ksh(manWonAmount), style: greenStyle),
-                ]),
-                TableRow(children: [
-                  cell('Profit / Loss'),
-                  cell(_ksh(sysProfit), style: profitStyle(sysProfit)),
-                  cell(_ksh(manProfit), style: profitStyle(manProfit)),
-                ]),
-                TableRow(children: [
-                  cell('Record (W - L)'),
-                  cell('$sysWins - $sysLosses'),
-                  cell('$manWins - $manLosses'),
-                ]),
+                if (slip.selections.isNotEmpty) ...[
+                  Divider(height: 14, color: lineColor(context)),
+                  for (int i = 0; i < slip.selections.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text(
+                        '${i + 1}. ${slip.selections[i]['match'] ?? ''} '
+                        '(${slip.selections[i]['prediction'] ?? ''}) '
+                        '@ ${slip.selections[i]['odds'] ?? ''}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                ],
               ],
             ),
           ),
-        ],
-      ),
-    );
+        if (_historicalSlips.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: ExpansionTile(
+              initiallyExpanded: false,
+              iconColor: _teal,
+              collapsedIconColor: _teal,
+              title: Text(
+                'Past System Slips (${_historicalSlips.length})',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              children: _historicalSlips
+                  .map((past) => ListTile(
+                        dense: true,
+                        title: Text(past.title,
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                          'Stake: ${_ksh(past.stake)} \u2022 Win: ${_ksh(past.potentialPayout)}',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        trailing: ticketStatusPill(
+                          '${past.totalOdds.toStringAsFixed(2)}x',
+                          _teal,
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+Widget _comparisonFlap() {
+  final systemBets =
+      _bets.where((b) => b.description.contains('Accumulator')).toList();
+  final manualBets =
+      _bets.where((b) => !b.description.contains('Accumulator')).toList();
+
+  final fixturesForEval =
+      widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
+  final todaySlip = _asGeneratedSlip(_todaySuggestedSlip);
+  final List<GeneratedSlip> trackedSlips = [
+    ..._historicalSlips,
+    if (todaySlip != null) todaySlip,
+  ];
+  final autoStats = _computeSystemAutoStats(trackedSlips, fixturesForEval);
+
+  double totalStaked(List<Bet> list) => list
+      .where((b) => b.status != 'void')
+      .fold(0.0, (s, b) => s + b.stake);
+
+  double totalWon(List<Bet> list) => list
+      .where((b) => b.status == 'won')
+      .fold(0.0, (s, b) => s + b.stake + b.profit);
+
+  double totalProfit(List<Bet> list) =>
+      list.fold(0.0, (s, b) => s + b.profit);
+
+  int countStatus(List<Bet> list, String status) =>
+      list.where((b) => b.status == status).length;
+
+  final sysStaked = totalStaked(systemBets) + autoStats.totalStaked;
+  final sysWonAmount = totalWon(systemBets) + autoStats.amountWon;
+  final sysProfit = totalProfit(systemBets) + autoStats.profitLoss;
+  final sysWins = countStatus(systemBets, 'won') + autoStats.wins;
+  final sysLosses = countStatus(systemBets, 'lost') + autoStats.losses;
+
+  final manStaked = totalStaked(manualBets);
+  final manWonAmount = totalWon(manualBets);
+  final manProfit = totalProfit(manualBets);
+  final manWins = countStatus(manualBets, 'won');
+  final manLosses = countStatus(manualBets, 'lost');
+
+  const Color safaricomGreen = Color(0xFF3AA335);
+
+  Color winOrProfitColor(double v) {
+    if (v > 0) return safaricomGreen;
+    if (v < 0) return Colors.red.shade700;
+    return mutedText(context);
   }
 
+  final double diff = sysProfit - manProfit;
+  final String appVerdict = sysProfit > 0
+      ? 'App in Profit (+${_ksh(sysProfit)})'
+      : (sysProfit < 0
+          ? 'App in Loss (${_ksh(sysProfit)})'
+          : 'App Break-Even (${_ksh(0)})');
+
+  final String vsUserSummary = diff > 0
+      ? 'App ahead of you by ${_ksh(diff)}'
+      : (diff < 0
+          ? 'You are ahead of app by ${_ksh(diff.abs())}'
+          : 'Tied with your manual P/L');
+
+  Widget cell(String text, {TextStyle? style}) => Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Text(text, style: style ?? const TextStyle(fontSize: 11)),
+      );
+
+  const headStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 11);
+  const greenStyle = TextStyle(fontSize: 11, color: safaricomGreen);
+  TextStyle profitStyle(double v) => TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        color: winOrProfitColor(v),
+      );
+
+  return Card(
+    color: cardBg(context),
+    elevation: 1,
+    margin: const EdgeInsets.only(bottom: 12),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(color: lineColor(context), width: 1),
+    ),
+    child: ExpansionTile(
+      initiallyExpanded: true,
+      iconColor: _teal,
+      collapsedIconColor: _teal,
+      title: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              '\u{1F4CA} App vs. User Profit & Loss',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
+            ),
+          ),
+          ticketStatusPill(
+            sysProfit >= 0 ? 'PROFITABLE' : 'LOSS',
+            winOrProfitColor(sysProfit),
+          ),
+        ],
+      ),
+      subtitle: Text(
+        '$appVerdict \u2022 $vsUserSummary',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: winOrProfitColor(sysProfit),
+        ),
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+          child: Table(
+            columnWidths: const {
+              0: FlexColumnWidth(1.3),
+              1: FlexColumnWidth(1.0),
+              2: FlexColumnWidth(1.0),
+            },
+            border: TableBorder.all(color: lineColor(context), width: 0.7),
+            children: [
+              TableRow(
+                decoration: BoxDecoration(color: ticketCardBg(context)),
+                children: [
+                  cell('Metric', style: headStyle),
+                  cell('System (App)',
+                      style: headStyle.copyWith(color: _teal)),
+                  cell('Manual (You)', style: headStyle),
+                ],
+              ),
+              TableRow(children: [
+                cell('Total Staked'),
+                cell(_ksh(sysStaked)),
+                cell(_ksh(manStaked)),
+              ]),
+              TableRow(children: [
+                cell('Amount Won'),
+                cell(_ksh(sysWonAmount), style: greenStyle),
+                cell(_ksh(manWonAmount), style: greenStyle),
+              ]),
+              TableRow(children: [
+                cell('Profit / Loss'),
+                cell(_ksh(sysProfit), style: profitStyle(sysProfit)),
+                cell(_ksh(manProfit), style: profitStyle(manProfit)),
+              ]),
+              TableRow(children: [
+                cell('Record (W - L)'),
+                cell('$sysWins - $sysLosses'),
+                cell('$manWins - $manLosses'),
+              ]),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+} 
+                                 
   Widget _summaryFlap() {
     final spent = _spentThisMonth;
     final capUsed = _cap > 0 ? spent / _cap : 0.0;
@@ -1904,36 +1912,40 @@ class _BankrollTabState extends State<BankrollTab>
     );
   }
 
-  Widget _statusChip(Bet b) {
-    Color bg;
-    Color fg;
-    switch (b.status) {
-      case 'won':
-        bg = Colors.green.shade100;
-        fg = Colors.green.shade800;
-        break;
-      case 'lost':
-        bg = Colors.red.shade100;
-        fg = Colors.red.shade800;
-        break;
-      case 'void':
-        bg = Colors.blueGrey.shade100;
-        fg = Colors.blueGrey.shade700;
-        break;
-      default:
-        bg = Colors.orange.withOpacity(0.2);
-        fg = Colors.orange.shade800;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-      child: Text(
-        b.status.toUpperCase(),
-        style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold),
-      ),
-    );
+ Widget _statusChip(Bet b) {
+  const Color safaricomGreen = Color(0xFF3AA335);
+  Color bg;
+  Color fg;
+  switch (b.status) {
+    case 'won':
+      bg = safaricomGreen.withOpacity(0.16);
+      fg = safaricomGreen;
+      break;
+    case 'lost':
+      bg = Colors.red.shade100;
+      fg = Colors.red.shade800;
+      break;
+    case 'void':
+      bg = Colors.blueGrey.shade100;
+      fg = Colors.blueGrey.shade700;
+      break;
+    default:
+      bg = Colors.orange.withOpacity(0.2);
+      fg = Colors.orange.shade800;
   }
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: fg.withOpacity(0.55), width: 1),
+    ),
+    child: Text(
+      b.status.toUpperCase(),
+      style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.w800),
+    ),
+  );
+ }
 
   int _weekOfYear(DateTime date) {
     final startOfYear = DateTime(date.year, 1, 1);
