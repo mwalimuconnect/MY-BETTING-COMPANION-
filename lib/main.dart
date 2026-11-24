@@ -1631,7 +1631,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     statusLabel = eval.isWon ? 'WON' : 'LOST';
     statusColor = eval.isWon ? safaricomGreen : Colors.red.shade700;
   }
-  const Color safaricomGreen = Color(0xFF3AA335);
+  
   final genSlip = _asGeneratedSlip(slip);
   final fixturesForEval =
       widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
