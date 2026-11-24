@@ -559,19 +559,18 @@ class PredictionLog {
 
     final bestDc = dcCandidates.first;
 
-    // Pick strongest primary goals market (Over 2.5 vs GG)
+        // Pick strongest primary goals market (Over 2.5 vs GG)
     ({String tip, int prob})? bestGoalsPick(int minThreshold) {
       final candidates = <({String tip, int prob})>[
         if (ov25Prob != null && ov25Prob >= minThreshold)
           (tip: 'Over 2.5 Goals', prob: ov25Prob),
         if (ggProb != null && ggProb >= minThreshold)
-          (tip: 'GG (Both Teams to Score)', prob: ggProb),
+          (tip: 'GG', prob: ggProb),
       ];
       if (candidates.isEmpty) return null;
       candidates.sort((a, b) => b.prob.compareTo(a.prob));
       return candidates.first;
     }
-
     if (f.hasPrediction) {
       // 1. Bundesliga & Eredivisie -> favor Over 2.5, GG, or safe Over 1.5
       if (isGoalHeavyLeague) {
