@@ -2080,6 +2080,9 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 // ---------------------------------------------------------------------------
 // History tab (PROLIFIC)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// History tab (PROLIFIC)
+// ---------------------------------------------------------------------------
 class PredictionLogTab extends StatefulWidget {
   const PredictionLogTab({super.key});
 
@@ -2102,6 +2105,43 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
     });
   }
 
+  DateTime? _extractEntryDate(LogEntry entry) {
+    final dynamic dyn = entry;
+    final candidates = <dynamic>[
+      () => dyn.matchDate,
+      () => dyn.kickoff,
+      () => dyn.date,
+      () => dyn.createdAt,
+      () => dyn.timestamp,
+    ];
+
+    for (final getter in candidates) {
+      try {
+        final val = getter();
+        if (val is DateTime) return val;
+        if (val is String && val.isNotEmpty) {
+          final parsed = DateTime.tryParse(val);
+          if (parsed != null) return parsed;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  String _dayBucketLabel(DateTime? dt) {
+    if (dt == null) return 'Scheduled';
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(local.year, local.month, local.day);
+    final diff = target.difference(today).inDays;
+
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
+    if (diff == -1) return 'Yesterday';
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<LogEntry>>(
@@ -2114,7 +2154,16 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
         } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
           body = const Center(child: Text('No prediction history recorded yet.'));
         } else {
-          final entries = snapshot.data!;
+          final entries = List<LogEntry>.from(snapshot.data!);
+          entries.sort((a, b) {
+            final da = _extractEntryDate(a);
+            final db = _extractEntryDate(b);
+            if (da == null && db == null) return 0;
+            if (da == null) return 1;
+            if (db == null) return -1;
+            return da.compareTo(db);
+          });
+
           final stats = PredictionLog.stats(entries);
 
           body = Column(
@@ -2131,8 +2180,10 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
                         _statItem('Total', '${stats.total}'),
                         _statItem('Settled', '${stats.settled}'),
                         _statItem('Wins', '${stats.wins}'),
-                        _statItem('Hit Rate',
-                            '${(stats.hitRate * 100).toStringAsFixed(1)}%'),
+                        _statItem(
+                          'Hit Rate',
+                          '${(stats.hitRate * 100).toStringAsFixed(1)}%',
+                        ),
                       ],
                     ),
                   ),
@@ -2144,17 +2195,42 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
                   itemCount: entries.length,
                   itemBuilder: (context, index) {
                     final entry = entries[index];
-                    return Card(
-                      color: cardBg(context),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        // Tapping any history item opens its audit breakdown dialog
-                        onTap: () => showLogEntryInsight(context, entry),
-                        title: Text('${entry.home} vs ${entry.away}'),
-                        subtitle:
-                            Text('Tip: ${entry.tip} | League: ${entry.league}'),
-                        trailing: _buildStatusBadge(entry),
-                      ),
+                    final currentLabel =
+                        _dayBucketLabel(_extractEntryDate(entry));
+                    final prevLabel = index > 0
+                        ? _dayBucketLabel(_extractEntryDate(entries[index - 1]))
+                        : null;
+                    final showHeader = index == 0 || currentLabel != prevLabel;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (showHeader)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+                            child: Text(
+                              currentLabel.toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.0,
+                                color: Colors.amber,
+                              ),
+                            ),
+                          ),
+                        Card(
+                          color: cardBg(context),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            onTap: () => showLogEntryInsight(context, entry),
+                            title: Text('${entry.home} vs ${entry.away}'),
+                            subtitle: Text(
+                              'Tip: ${entry.tip} | League: ${entry.league}',
+                            ),
+                            trailing: _buildStatusBadge(entry),
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -2178,8 +2254,10 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
       children: [
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
       ],
     );
   }
@@ -2187,7 +2265,14 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
   Widget _buildStatusBadge(LogEntry entry) {
     if (!entry.settled) {
       return const Chip(
-        label: Text('Pending', style: TextStyle(fontSize: 10)),
+        label: Text(
+          'Pending',
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         backgroundColor: Colors.amberAccent,
       );
     } else if (entry.isVoid) {
