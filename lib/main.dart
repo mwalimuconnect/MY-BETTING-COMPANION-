@@ -15,6 +15,7 @@ import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
 
 const Color kTealGreen = Color(0xFF008080);
+const Color kSafaricomGreen = Color(0xFF3AA335);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,14 +41,20 @@ class MyBettingCompanionApp extends StatelessWidget {
             brightness: Brightness.light,
             primaryColor: kPrimary,
             scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-            colorScheme: ColorScheme.fromSeed(seedColor: kPrimary, brightness: Brightness.light),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: kPrimary,
+              brightness: Brightness.light,
+            ),
             useMaterial3: true,
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primaryColor: kPrimary,
             scaffoldBackgroundColor: const Color(0xFF12161C),
-            colorScheme: ColorScheme.fromSeed(seedColor: kPrimary, brightness: Brightness.dark),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: kPrimary,
+              brightness: Brightness.dark,
+            ),
             useMaterial3: true,
           ),
           home: const MainHomeScreen(),
@@ -58,12 +65,98 @@ class MyBettingCompanionApp extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// Home screen
+// ---------------------------------------------------------------------------
+class MainHomeScreen extends StatefulWidget {
+  const MainHomeScreen({super.key});
+
+  @override
+  State<MainHomeScreen> createState() => _MainHomeScreenState();
+}
+
+class _MainHomeScreenState extends State<MainHomeScreen> {
+  int _currentIndex = 0; // Starts on Bankroll (leftmost tab)
+  int _tabRefreshTick = 0;
+
+  Widget _buildCurrentTab() {
+    switch (_currentIndex) {
+      case 0:
+        return const BankrollTab();
+      case 1:
+        return const FixturesTab();
+      case 2:
+        return PredictionLogTab(key: ValueKey('pred_$_tabRefreshTick'));
+      case 3:
+        return SavedSlipsTab(key: ValueKey('slips_$_tabRefreshTick'));
+      case 4:
+      default:
+        return const TablesScreen();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'My Betting Companion',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        backgroundColor: isDark ? const Color(0xFF1E2228) : Colors.white,
+        elevation: 1,
+        actions: [
+          IconButton(
+            icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
+            tooltip: 'Toggle Theme',
+            onPressed: () {
+              AppSettings.setDark(!isDark);
+            },
+          ),
+        ],
+      ),
+      body: _buildCurrentTab(),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        onTap: (index) => setState(() {
+          _currentIndex = index;
+          _tabRefreshTick++;
+        }),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance_wallet),
+            label: 'Bankroll',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.sports_soccer),
+            label: 'Fixtures',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history),
+            label: 'Prediction',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bookmark),
+            label: 'Saved Slips',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.leaderboard),
+            label: 'Standings',
+          ),
+        ],
+      ),
+    );
+  }
+}
+// ---------------------------------------------------------------------------
 // Suggested slip (5-10 combined odds), built automatically from fixtures daily
 // ---------------------------------------------------------------------------
 class SuggestedSlip {
   final String title;
   final double totalOdds;
-  final List<Map<String, dynamic>> selections;
+  final List> selections;
   final double stake;
   final double potentialPayout;
   final String date;
@@ -87,7 +180,7 @@ class SuggestedSlip {
       };
 
   factory SuggestedSlip.fromJson(Map<String, dynamic> j) {
-    final List<Map<String, dynamic>> sel = [];
+    final List> sel = [];
     final raw = j['selections'];
     if (raw is List) {
       for (final e in raw) {
@@ -96,8 +189,10 @@ class SuggestedSlip {
         }
       }
     }
-    final double odds = j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0;
-    final double parsedStake = j['stake'] is num ? (j['stake'] as num).toDouble() : 200.0;
+    final double odds =
+        j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0;
+    final double parsedStake =
+        j['stake'] is num ? (j['stake'] as num).toDouble() : 200.0;
     final double parsedPayout = j['potentialPayout'] is num
         ? (j['potentialPayout'] as num).toDouble()
         : (odds * parsedStake);
@@ -140,7 +235,8 @@ class SuggestedSlipStore {
     return '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
   }
 
-  static Map<String, SuggestedSlip> _prune7Days(Map<String, SuggestedSlip> source) {
+  static Map<String, SuggestedSlip> _prune7Days(
+      Map<String, SuggestedSlip> source) {
     final cutoff = _cutoffDateString();
     final entries = source.entries
         .where((e) => e.key.compareTo(cutoff) >= 0)
@@ -149,8 +245,7 @@ class SuggestedSlipStore {
     return {for (final e in entries) e.key: e.value};
   }
 
-  static Future<Map<String, SuggestedSlip>> loadHistory7Days() async {
-
+  static Future> loadHistory7Days() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_historyKey);
@@ -279,81 +374,6 @@ class SuggestedSlipStore {
 }
 
 // ---------------------------------------------------------------------------
-// Home screen
-// ---------------------------------------------------------------------------
-class MainHomeScreen extends StatefulWidget {
-  const MainHomeScreen({super.key});
-
-  @override
-  State<MainHomeScreen> createState() => _MainHomeScreenState();
-}
-
-class _MainHomeScreenState extends State<MainHomeScreen> {
-  int _currentIndex = 0; // Starts on Bankroll (leftmost tab)
-
-  final List<Widget> _screens = const [
-    BankrollTab(),
-    FixturesTab(),
-    PredictionLogTab(),
-    SavedSlipsTab(),
-    TablesScreen(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'My Betting Companion',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: isDark ? const Color(0xFF1E2228) : Colors.white,
-        elevation: 1,
-        actions: [
-          IconButton(
-            icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
-            tooltip: 'Toggle Theme',
-            onPressed: () {
-              AppSettings.setDark(!isDark);
-            },
-          ),
-        ],
-      ),
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet),
-            label: 'Bankroll',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.sports_soccer),
-            label: 'Fixtures',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'Prediction',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bookmark),
-            label: 'Saved Slips',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.leaderboard),
-            label: 'Standings',
-          ),
-        ],
-      ),
-    );
-  }
-}
-            
-// ---------------------------------------------------------------------------
 // Fixtures tab
 // ---------------------------------------------------------------------------
 class FixturesTab extends StatefulWidget {
@@ -381,7 +401,7 @@ class _FixturesTabState extends State<FixturesTab> {
 
   // Optional market filters (empty = all supported markets)
   final Set<String> _selectedMarkets = {};
-    static const List<String> _marketOptions = [
+  static const List<String> _marketOptions = [
     '1X2',
     'Double Chance',
     'GG',
@@ -395,13 +415,13 @@ class _FixturesTabState extends State<FixturesTab> {
     'Player to Score',
   ];
 
-  /// Returns a market-specific prediction string from server-backed fields
-  /// on [fixture], or null when data for that market is not available.
   String? _predictionForMarket(FixtureModel fixture, String market) {
     switch (market) {
       case '1X2':
         if (fixture.topTip.isNotEmpty) return fixture.topTip;
-        if (fixture.homeWinProb > 0 || fixture.drawProb > 0 || fixture.awayWinProb > 0) {
+        if (fixture.homeWinProb > 0 ||
+            fixture.drawProb > 0 ||
+            fixture.awayWinProb > 0) {
           if (fixture.homeWinProb >= fixture.awayWinProb &&
               fixture.homeWinProb >= fixture.drawProb) {
             return '${fixture.homeTeam} (${fixture.homeWinProb.round()}%)';
@@ -415,7 +435,9 @@ class _FixturesTabState extends State<FixturesTab> {
         return null;
 
       case 'Double Chance':
-        if (fixture.homeWinProb > 0 || fixture.drawProb > 0 || fixture.awayWinProb > 0) {
+        if (fixture.homeWinProb > 0 ||
+            fixture.drawProb > 0 ||
+            fixture.awayWinProb > 0) {
           final homeDraw = fixture.homeWinProb + fixture.drawProb;
           final awayDraw = fixture.awayWinProb + fixture.drawProb;
           final homeAway = fixture.homeWinProb + fixture.awayWinProb;
@@ -508,59 +530,52 @@ class _FixturesTabState extends State<FixturesTab> {
     'ALE': 'soccer_australia_aleague',
     'ARG': 'soccer_argentina_primera_division',
   };
-void _loadFixtures() {
-  setState(() {
-    _fixturesFuture = ApiService.fetchFixtures().then((fixtures) async {
-      try {
-        final activeSports = fixtures
-            .map((f) => _leagueToOddsSport[
-                f.competitionCode.toUpperCase()])
-            .whereType<String>()
-            .toSet();
 
-        if (activeSports.isNotEmpty) {
-          final oddsResponses = await Future.wait(
-            activeSports.map(
-              (sport) => ApiService.fetchOdds(sport),
-            ),
-          );
+  void _loadFixtures() {
+    setState(() {
+      _fixturesFuture = ApiService.fetchFixtures().then((fixtures) async {
+        try {
+          final activeSports = fixtures
+              .map((f) => _leagueToOddsSport[f.competitionCode.toUpperCase()])
+              .whereType<String>()
+              .toSet();
 
-          final allOdds =
-              oddsResponses.expand((list) => list).toList();
+          if (activeSports.isNotEmpty) {
+            final oddsResponses = await Future.wait(
+              activeSports.map(
+                (sport) => ApiService.fetchOdds(sport),
+              ),
+            );
 
-          for (final fixture in fixtures) {
-            final fHome = fixture.homeTeam.toLowerCase();
+            final allOdds = oddsResponses.expand((list) => list).toList();
 
-            for (final item in allOdds) {
-              final oHome =
-                  item['home_team']?.toString().toLowerCase() ??
-                      '';
+            for (final fixture in fixtures) {
+              final fHome = fixture.homeTeam.toLowerCase();
 
-              if (oHome.isEmpty) continue;
+              for (final item in allOdds) {
+                final oHome =
+                    item['home_team']?.toString().toLowerCase() ?? '';
 
-              if (fHome.contains(oHome) ||
-                  oHome.contains(fHome)) {
-                final bookmakers =
-                    item['bookmakers'] as List? ?? [];
+                if (oHome.isEmpty) continue;
 
-                if (bookmakers.isNotEmpty) {
-                  final markets =
-                      bookmakers[0]['markets'] as List? ?? [];
+                if (fHome.contains(oHome) || oHome.contains(fHome)) {
+                  final bookmakers = item['bookmakers'] as List? ?? [];
 
-                  for (final market in markets) {
-                    if (market['key'] == 'h2h') {
-                      final outcomes =
-                          market['outcomes'] as List? ?? [];
+                  if (bookmakers.isNotEmpty) {
+                    final markets = bookmakers[0]['markets'] as List? ?? [];
 
-                      for (final outcome in outcomes) {
-                        if (outcome['name']
-                                .toString()
-                                .toLowerCase() ==
-                            oHome) {
-                          fixture.odds =
-                              (outcome['price'] as num?)
-                                      ?.toDouble() ??
-                                  0.0;
+                    for (final market in markets) {
+                      if (market['key'] == 'h2h') {
+                        final outcomes = market['outcomes'] as List? ?? [];
+
+                        for (final outcome in outcomes) {
+                          if (outcome['name']
+                                  ?.toString()
+                                  .toLowerCase() ==
+                              oHome) {
+                            fixture.odds =
+                                (outcome['price'] as num?)?.toDouble() ?? 0.0;
+                          }
                         }
                       }
                     }
@@ -569,44 +584,33 @@ void _loadFixtures() {
               }
             }
           }
+        } catch (e) {
+          debugPrint('Failed to attach live odds: $e');
         }
-      } catch (e) {
-        debugPrint(
-          'Failed to attach live odds: $e',
+
+        await _safely(() => PredictionLog.update(fixtures));
+        await _safely(() => SlipStore.settle(fixtures));
+        await SuggestedSlipStore.refresh(fixtures);
+        await _safely(
+          () => NotificationService.scheduleKickoffReminders(
+            fixtures,
+            _savedKeys,
+            AppSettings.favorites.value,
+          ),
         );
-      }
 
-      await _safely(
-        () => PredictionLog.update(fixtures),
-      );
-
-      await _safely(
-        () => SlipStore.settle(fixtures),
-      );
-
-      await SuggestedSlipStore.refresh(fixtures);
-
-      await _safely(
-        () => NotificationService
-            .scheduleKickoffReminders(
-          fixtures,
-          _savedKeys,
-          AppSettings.favorites.value,
-        ),
-      );
-
-      return fixtures;
+        return fixtures;
+      });
     });
-  });
-}
-    Future<void> _safely(Future<void> Function() action) async {
-  try {
-    await action();
-  } catch (e) {
-    debugPrint('Ignored background error: $e');
   }
-}
 
+  Future<void> _safely(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (e) {
+      debugPrint('Ignored background error: $e');
+    }
+  }
 
   Future<void> _toggleSave(FixtureModel fixture) async {
     await SlipStore.toggle(fixture);
@@ -619,7 +623,6 @@ void _loadFixtures() {
       ),
     );
   }
-
   // ---- time window filter -------------------------------------------------
 
   List<FixtureModel> _applyTimeWindow(List<FixtureModel> list) {
@@ -804,7 +807,8 @@ void _loadFixtures() {
                     backgroundColor: cardBg(context),
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.white : mutedText(context),
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
                       fontSize: 12,
                     ),
                     onSelected: (_) => setState(() => _selectedFilter = key),
@@ -880,7 +884,7 @@ void _loadFixtures() {
     Color colorFor(String r) {
       switch (r.toUpperCase()) {
         case 'W':
-          return Colors.green;
+          return kSafaricomGreen;
         case 'D':
           return Colors.orange;
         case 'L':
@@ -932,7 +936,6 @@ void _loadFixtures() {
       ),
     );
   }
-
   Widget _kv(String k, String v) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
@@ -948,7 +951,7 @@ void _loadFixtures() {
 
   // ---- one match flap -----------------------------------------------------
 
-    Widget _buildAnalysedBadge(FixtureModel fixture) {
+  Widget _buildAnalysedBadge(FixtureModel fixture) {
     if (!fixture.hasAnalysis) {
       return const SizedBox.shrink();
     }
@@ -956,31 +959,29 @@ void _loadFixtures() {
       margin: const EdgeInsets.only(right: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color.fromARGB(36, 14, 107, 88),
+        color: const Color.fromARGB(36, 58, 163, 53),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF0E6B58), width: 1),
+        border: Border.all(color: kSafaricomGreen, width: 1),
       ),
       child: const Text(
         'Analysed',
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF0E6B58),
+          color: kSafaricomGreen,
         ),
       ),
     );
   }
-  
+
   Widget _buildPredictionOutcomeBadge(FixtureModel fixture) {
     final bool? won = fixture.isPredictionWon;
     if (won == null) {
       return const SizedBox.shrink();
     }
-    final Color badgeColor = won
-        ? const Color(0xFF0E6B58)
-        : const Color(0xFFC62828);
+    final Color badgeColor = won ? kSafaricomGreen : const Color(0xFFC62828);
     final Color bgColor = won
-        ? const Color.fromARGB(36, 14, 107, 88)
+        ? const Color.fromARGB(36, 58, 163, 53)
         : const Color.fromARGB(36, 198, 40, 40);
 
     return Container(
@@ -1001,7 +1002,7 @@ void _loadFixtures() {
       ),
     );
   }
-  
+
   List<Widget> _buildExtendedInsightsWidgets(FixtureModel fixture) {
     final List<Widget> items = [
       _kv('Over 1.5 goals', fixture.over15Goals),
@@ -1056,172 +1057,172 @@ void _loadFixtures() {
     }
 
     return items;
-    }
-  
+  }
+
   Widget _buildMatchTile(FixtureModel fixture, int index) {
-  final isSaved = _savedKeys.contains(fixture.key);
+    final isSaved = _savedKeys.contains(fixture.key);
 
-  final String label = fixture.formattedLocalTime;
-  final String whenText = fixture.effectiveIsFinished
-      ? '${label.isNotEmpty ? '$label · ' : ''}FT ${fixture.actualScore}'
-      : label;
+    final String label = fixture.formattedLocalTime;
+    final String whenText = fixture.effectiveIsFinished
+        ? '${label.isNotEmpty ? '$label · ' : ''}FT ${fixture.actualScore}'
+        : label;
 
-  return Theme(
-    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-    child: ExpansionTile(
-      key: PageStorageKey('match_${fixture.key ?? index}'),
-      tilePadding: const EdgeInsets.only(left: 16, right: 8),
-      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      expandedCrossAxisAlignment: CrossAxisAlignment.start,
-      title: Row(
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: PageStorageKey('match_${fixture.key ?? index}'),
+        tilePadding: const EdgeInsets.only(left: 16, right: 8),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${fixture.homeTeam} vs ${fixture.awayTeam}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (whenText.isNotEmpty)
+                    Text(
+                      whenText,
+                      style: TextStyle(fontSize: 11, color: mutedText(context)),
+                    ),
+                ],
+              ),
+            ),
+            _buildAnalysedBadge(fixture),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                isSaved ? Icons.bookmark : Icons.bookmark_border,
+                color: kPrimary,
+                size: 22,
+              ),
+              onPressed: () => _toggleSave(fixture),
+              tooltip: 'Save to Slip',
+            ),
+          ],
+        ),
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Prediction
+          _sectionTitle('Prediction'),
+          if (fixture.hasPrediction) ...[
+            Row(
               children: [
-                Text(
-                  '${fixture.homeTeam} vs ${fixture.awayTeam}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                _buildPredictionOutcomeBadge(fixture),
+                Expanded(
+                  child: Text(
+                    fixture.effectiveIsFinished
+                        ? (fixture.topTip.isNotEmpty
+                            ? 'Top Tip: ${fixture.topTip} (FT ${fixture.actualScore})'
+                            : 'Full time: ${fixture.actualScore}')
+                        : (fixture.topTip.isEmpty
+                            ? 'No clear tip'
+                            : 'Top Tip: ${fixture.topTip}'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
-                if (whenText.isNotEmpty)
-                  Text(
-                    whenText,
-                    style: TextStyle(fontSize: 11, color: mutedText(context)),
-                  ),
               ],
             ),
-          ),
-          _buildAnalysedBadge(fixture),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              isSaved ? Icons.bookmark : Icons.bookmark_border,
-              color: kPrimary,
-              size: 22,
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Home: ${fixture.homeWinProb.round()}%',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Draw: ${fixture.drawProb.round()}%',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Away: ${fixture.awayWinProb.round()}%',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
             ),
-            onPressed: () => _toggleSave(fixture),
-            tooltip: 'Save to Slip',
+          ] else
+            Row(
+              children: [
+                _buildPredictionOutcomeBadge(fixture),
+                Expanded(
+                  child: Text(
+                    fixture.effectiveIsFinished
+                        ? 'Full time: ${fixture.actualScore}'
+                        : 'Analysis pending or unavailable',
+                    style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      color: mutedText(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+          // Odds
+          _sectionTitle('Odds'),
+          Text(
+            fixture.odds > 0
+                ? fixture.odds.toStringAsFixed(2)
+                : 'No bookmaker odds available',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: fixture.odds > 0 ? FontWeight.bold : FontWeight.normal,
+              color: fixture.odds > 0 ? null : mutedText(context),
+            ),
+          ),
+
+          // Form
+          _sectionTitle('Form'),
+          _formDots(fixture.homeTeam, fixture.homeForm),
+          _formDots(fixture.awayTeam, fixture.awayForm),
+
+          // Insights
+          _sectionTitle('Insights'),
+          ..._buildExtendedInsightsWidgets(fixture),
+
+          Text(
+            'Head to head',
+            style: TextStyle(fontSize: 12, color: mutedText(context)),
+          ),
+          ...fixture.h2h.take(3).map(
+                (h) => Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    '${h.date}  ${h.home} ${h.score} ${h.away}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => showMatchInsights(context, fixture),
+              icon: const Icon(Icons.insights, size: 16),
+              label: const Text('Full insights'),
+            ),
           ),
         ],
       ),
-      children: [
-        // Prediction
-        _sectionTitle('Prediction'),
-        if (fixture.hasPrediction) ...[
-          Row(
-            children: [
-              _buildPredictionOutcomeBadge(fixture),
-              Expanded(
-                child: Text(
-                  fixture.effectiveIsFinished
-                      ? (fixture.topTip.isNotEmpty
-                          ? 'Top Tip: ${fixture.topTip} (FT ${fixture.actualScore})'
-                          : 'Full time: ${fixture.actualScore}')
-                      : (fixture.topTip.isEmpty
-                          ? 'No clear tip'
-                          : 'Top Tip: ${fixture.topTip}'),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Home: ${fixture.homeWinProb.round()}%',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  'Draw: ${fixture.drawProb.round()}%',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  'Away: ${fixture.awayWinProb.round()}%',
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ] else
-          Row(
-            children: [
-              _buildPredictionOutcomeBadge(fixture),
-              Expanded(
-                child: Text(
-                  fixture.effectiveIsFinished
-                      ? 'Full time: ${fixture.actualScore}'
-                      : 'Analysis pending or unavailable',
-                  style: TextStyle(
-                    fontStyle: FontStyle.italic,
-                    color: mutedText(context),
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-        // Odds
-        _sectionTitle('Odds'),
-        Text(
-          fixture.odds > 0
-              ? fixture.odds.toStringAsFixed(2)
-              : 'No bookmaker odds available',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: fixture.odds > 0 ? FontWeight.bold : FontWeight.normal,
-            color: fixture.odds > 0 ? null : mutedText(context),
-          ),
-        ),
-
-        // Form
-        _sectionTitle('Form'),
-        _formDots(fixture.homeTeam, fixture.homeForm),
-        _formDots(fixture.awayTeam, fixture.awayForm),
-
-        // Insights
-        _sectionTitle('Insights'),
-        ..._buildExtendedInsightsWidgets(fixture),
-
-        Text(
-          'Head to head',
-          style: TextStyle(fontSize: 12, color: mutedText(context)),
-        ),
-        ...fixture.h2h.take(3).map(
-              (h) => Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  '${h.date}  ${h.home} ${h.score} ${h.away}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: () => showMatchInsights(context, fixture),
-            icon: const Icon(Icons.insights, size: 16),
-            label: const Text('Full insights'),
-          ),
-        ),
-      ],
-    ),
-  );
-}
+    );
+  }
 
   // ---- one league flap ----------------------------------------------------
 
@@ -1275,7 +1276,6 @@ void _loadFixtures() {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<FixtureModel>>(
@@ -1371,8 +1371,8 @@ void _loadFixtures() {
                           leagues[index],
                           byLeague[leagues[index]]!,
                         ),
-                     ),
-             ),   
+                      ),
+              ),
             ),
           ],
         );
@@ -1380,8 +1380,7 @@ void _loadFixtures() {
     );
   }
 }
-  
-                                                                    
+
 // ---------------------------------------------------------------------------
 // Slips tab (SYSTEM PICKS)
 // ---------------------------------------------------------------------------
@@ -1389,10 +1388,15 @@ class _SlipsData {
   final List<SlipLeg> legs;
   final SuggestedSlip? suggested;
   final Map<String, SuggestedSlip> history7Days;
+  final List<FixtureModel> fixtures;
 
-  const _SlipsData(this.legs, this.suggested, [this.history7Days = const {}]);
+  const _SlipsData(
+    this.legs,
+    this.suggested, [
+    this.history7Days = const {},
+    this.fixtures = const [],
+  ]);
 }
-
 
 class SavedSlipsTab extends StatefulWidget {
   const SavedSlipsTab({super.key});
@@ -1404,6 +1408,7 @@ class SavedSlipsTab extends StatefulWidget {
 class _SavedSlipsTabState extends State<SavedSlipsTab> {
   late Future<_SlipsData> _slipsFuture;
   late Future<SlipAccessStatus> _accessFuture;
+  List<FixtureModel> _fixtures = const [];
 
   final TextEditingController _suggestedStakeController = TextEditingController();
   double? _customSuggestedStake;
@@ -1426,11 +1431,18 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     final suggested = await SuggestedSlipStore.load();
     final history = await SuggestedSlipStore.loadHistory7Days();
 
+    List<FixtureModel> fixtures = _fixtures;
+    try {
+      fixtures = await ApiService.fetchFixtures();
+    } catch (e) {
+      debugPrint('Could not load fixtures for slip evaluation: $e');
+    }
+
     if (suggested != null && _customSuggestedStake == null) {
       _customSuggestedStake = suggested.stake;
       _suggestedStakeController.text = suggested.stake.toStringAsFixed(0);
     }
-    return _SlipsData(legs, suggested, history);
+    return _SlipsData(legs, suggested, history, fixtures);
   }
 
   void _loadSlips() {
@@ -1438,6 +1450,75 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       _slipsFuture = _fetch();
       _accessFuture = SlipAccessManager.checkAccess();
     });
+  }
+
+  /// true = all legs won, false = at least one leg lost, null = pending/unsettled.
+  bool? _evaluateSuggestedSlipWon(
+    SuggestedSlip slip,
+    List<FixtureModel> fixtures,
+  ) {
+    if (slip.selections.isEmpty) return null;
+
+    bool anyPending = false;
+    for (final leg in slip.selections) {
+      final String matchText = (leg['match'] ?? '').toString().toLowerCase();
+      final String tipText = (leg['prediction'] ?? '').toString().toLowerCase();
+
+      FixtureModel? match;
+      for (final f in fixtures) {
+        final home = f.homeTeam.toLowerCase();
+        final away = f.awayTeam.toLowerCase();
+        if (matchText.contains(home) && matchText.contains(away)) {
+          match = f;
+          break;
+        }
+      }
+
+      if (match == null || !match.effectiveIsFinished) {
+        anyPending = true;
+        continue;
+      }
+
+      final bool? legWon = _evaluateLegAgainstFixture(match, tipText);
+      if (legWon == false) return false;
+      if (legWon == null) anyPending = true;
+    }
+
+    return anyPending ? null : true;
+  }
+
+  bool? _evaluateLegAgainstFixture(FixtureModel f, String tipLower) {
+    final parts = f.actualScore.split(RegExp(r'\s*[-:]\s*'));
+    if (parts.length != 2) return f.isPredictionWon;
+    final int? h = int.tryParse(parts[0].trim());
+    final int? a = int.tryParse(parts[1].trim());
+    if (h == null || a == null) return f.isPredictionWon;
+
+    final int total = h + a;
+    final home = f.homeTeam.toLowerCase();
+    final away = f.awayTeam.toLowerCase();
+
+    if (tipLower.contains('over 1.5')) return total > 1;
+    if (tipLower.contains('under 1.5')) return total < 1;
+    if (tipLower.contains('over 2.5')) return total > 2;
+    if (tipLower.contains('under 2.5')) return total < 2;
+    if (tipLower.contains('over 3.5')) return total > 3;
+    if (tipLower.contains('under 3.5')) return total < 3;
+    if (tipLower.contains('btts') || tipLower.contains('gg')) {
+      return h > 0 && a > 0;
+    }
+    if (tipLower.contains('(1x)') || tipLower.contains('$home or draw')) {
+      return h >= a;
+    }
+    if (tipLower.contains('(x2)') || tipLower.contains('$away or draw')) {
+      return a >= h;
+    }
+    if (tipLower.contains('(12)')) return h != a;
+    if (tipLower.contains('$home win') || tipLower == home) return h > a;
+    if (tipLower.contains('$away win') || tipLower == away) return a > h;
+    if (tipLower.contains('draw')) return h == a;
+
+    return f.isPredictionWon;
   }
 
   Widget _buildSystemPicksHeader() {
@@ -1456,26 +1537,52 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   }
 
   Widget _buildDayHeader(String dateStr) {
-  final dt = DateTime.tryParse(dateStr);
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-  final label = dt == null ? dateStr : '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
+    final dt = DateTime.tryParse(dateStr);
+    const months = [
+      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+    ];
+    const days = [
+      'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY',
+      'FRIDAY', 'SATURDAY', 'SUNDAY',
+    ];
+    final label = dt == null
+        ? dateStr
+        : '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
 
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-    child: Text(label.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF00C853), letterSpacing: 1.2)),
-  );
-}
-  
-  Widget _archiveSuggestedCard(BuildContext context, SuggestedSlip slip) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF00C853),
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _archiveSuggestedCard(
+    BuildContext context,
+    SuggestedSlip slip,
+    List<FixtureModel> fixtures,
+  ) {
     final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
+    final bool? won = _evaluateSuggestedSlipWon(slip, fixtures);
+    final String statusLabel =
+        won == null ? 'PENDING' : (won ? 'WON' : 'LOST');
+    final Color statusColor = won == null
+        ? Colors.orange.shade800
+        : (won ? kSafaricomGreen : Colors.red.shade700);
 
     return Card(
-      color: cardBg(context),
+      color: ticketCardBg(context),
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: kTealGreen.withOpacity(0.5), width: 1),
+        side: BorderSide(color: ticketBorderColor(context), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1492,6 +1599,9 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                         fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),
+                const SizedBox(width: 6),
+                ticketStatusPill(statusLabel, statusColor),
+                const SizedBox(width: 6),
                 Text(
                   '${slip.totalOdds.toStringAsFixed(2)}x',
                   style: const TextStyle(
@@ -1554,11 +1664,11 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ),
     );
   }
-
   Widget _buildPrevious7DaysFlap(
     BuildContext context,
     Map<String, SuggestedSlip> history7Days,
     String todayStr,
+    List<FixtureModel> fixtures,
   ) {
     final yesterdayStr = SuggestedSlipStore.yesterdayString();
     final pastEntries = history7Days.entries
@@ -1569,10 +1679,10 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: Card(
-        color: cardBg(context),
+        color: ticketCardBg(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: kTealGreen.withOpacity(0.45), width: 1),
+          side: BorderSide(color: ticketBorderColor(context), width: 1),
         ),
         child: ExpansionTile(
           initiallyExpanded: false,
@@ -1609,7 +1719,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                 '${slip.title} • ${slip.totalOdds.toStringAsFixed(2)}x',
                 style: TextStyle(fontSize: 11, color: mutedText(context)),
               ),
-              children: [_archiveSuggestedCard(context, slip)],
+              children: [_archiveSuggestedCard(context, slip, fixtures)],
             );
           }).toList(),
         ),
@@ -1617,49 +1727,57 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 
-  Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
-  final double currentStake = _customSuggestedStake ?? slip.stake;
-  final double potentialPayout = slip.totalOdds * currentStake;
-  final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
+  Widget _suggestedCard(
+    BuildContext context,
+    SuggestedSlip slip,
+    List<FixtureModel> fixtures,
+  ) {
+    final double currentStake = _customSuggestedStake ?? slip.stake;
+    final double potentialPayout = slip.totalOdds * currentStake;
+    final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
 
-  const String statusLabel = 'PENDING';
-  final Color statusColor = Colors.orange.shade800;
+    final bool? won = _evaluateSuggestedSlipWon(slip, fixtures);
+    final String statusLabel =
+        won == null ? 'PENDING' : (won ? 'WON' : 'LOST');
+    final Color statusColor = won == null
+        ? Colors.orange.shade800
+        : (won ? kSafaricomGreen : Colors.red.shade700);
 
-  return Card(
-    color: cardBg(context),
-    margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-      side: const BorderSide(color: kTealGreen, width: 1),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  slip.title,
+    return Card(
+      color: ticketCardBg(context),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: ticketBorderColor(context), width: 1.2),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    slip.title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ticketStatusPill(statusLabel, statusColor),
+                const SizedBox(width: 8),
+                Text(
+                  '${slip.totalOdds.toStringAsFixed(2)}x',
                   style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 15),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: kTealGreen,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              ticketStatusPill(statusLabel, statusColor),
-              const SizedBox(width: 8),
-              Text(
-                '${slip.totalOdds.toStringAsFixed(2)}x',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: kTealGreen,
-                ),
-              ),
-            ],
-          ),
+              ],
+            ),
             const Divider(height: 16),
             for (int i = 0; i < slip.selections.length; i++) ...[
               Padding(
@@ -1820,50 +1938,49 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ),
     );
   }
-
   Widget _buildLockedSuggestedCard(BuildContext context) {
-  return Card(
-    color: ticketCardBg(context),
-    margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-      side: BorderSide(color: ticketBorderColor(context), width: 1.2),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        children: [
-          const Icon(Icons.lock, size: 42, color: kTealGreen),
-          const SizedBox(height: 10),
-          const Text(
-            'Daily Prolific System Slip Locked',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Your free access waiver has expired. Unlock today\'s high-confidence value accumulator',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          const SizedBox(height: 14),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kTealGreen,
-              foregroundColor: Colors.white,
-            ),
-            icon: const Icon(Icons.lock_open),
-            label: const Text('Pay to View Slip'),
-            onPressed: () {
-              showSlipSubscriptionSheet(context, () async {
-                _loadSlips();
-              });
-            },
-          ),
-        ],
+    return Card(
+      color: ticketCardBg(context),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: ticketBorderColor(context), width: 1.2),
       ),
-    ),
-  );
-}
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            const Icon(Icons.lock, size: 42, color: kTealGreen),
+            const SizedBox(height: 10),
+            const Text(
+              'Daily Prolific System Slip Locked',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Your free access waiver has expired. Unlock today\'s high-confidence value accumulator',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kTealGreen,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.lock_open),
+              label: const Text('Pay to View Slip'),
+              onPressed: () {
+                showSlipSubscriptionSheet(context, () async {
+                  _loadSlips();
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1881,7 +1998,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
           );
         }
 
-        final data = snapshot.data ?? const _SlipsData([], null, {});
+        final data = snapshot.data ?? const _SlipsData([], null, {}, []);
+        _fixtures = data.fixtures;
 
         return FutureBuilder<SlipAccessStatus>(
           future: _accessFuture,
@@ -1909,9 +2027,10 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
                   if (!hasAccess)
                     _buildLockedSuggestedCard(context)
                   else
-                    _suggestedCard(context, data.suggested!),
+                    _suggestedCard(context, data.suggested!, data.fixtures),
                 ],
-                _buildPrevious7DaysFlap(context, data.history7Days, todayStr),
+                _buildPrevious7DaysFlap(
+                    context, data.history7Days, todayStr, data.fixtures),
                 if (data.suggested == null && data.history7Days.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(24),
@@ -1929,7 +2048,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     );
   }
 }
-                     
+
 // ---------------------------------------------------------------------------
 // History tab (PROLIFIC)
 // ---------------------------------------------------------------------------
@@ -1984,7 +2103,8 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
                         _statItem('Total', '${stats.total}'),
                         _statItem('Settled', '${stats.settled}'),
                         _statItem('Wins', '${stats.wins}'),
-                        _statItem('Hit Rate', '${(stats.hitRate * 100).toStringAsFixed(1)}%'),
+                        _statItem('Hit Rate',
+                            '${(stats.hitRate * 100).toStringAsFixed(1)}%'),
                       ],
                     ),
                   ),
@@ -2003,7 +2123,8 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
                         // Tapping any history item opens its audit breakdown dialog
                         onTap: () => showLogEntryInsight(context, entry),
                         title: Text('${entry.home} vs ${entry.away}'),
-                        subtitle: Text('Tip: ${entry.tip} | League: ${entry.league}'),
+                        subtitle:
+                            Text('Tip: ${entry.tip} | League: ${entry.league}'),
                         trailing: _buildStatusBadge(entry),
                       ),
                     );
@@ -2029,20 +2150,33 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
       children: [
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       ],
     );
   }
 
   Widget _buildStatusBadge(LogEntry entry) {
     if (!entry.settled) {
-      return const Chip(label: Text('Pending', style: TextStyle(fontSize: 10)), backgroundColor: Colors.amberAccent);
+      return const Chip(
+        label: Text('Pending', style: TextStyle(fontSize: 10)),
+        backgroundColor: Colors.amberAccent,
+      );
     } else if (entry.isVoid) {
-      return const Chip(label: Text('Void', style: TextStyle(fontSize: 10)), backgroundColor: Colors.grey);
+      return const Chip(
+        label: Text('Void', style: TextStyle(fontSize: 10)),
+        backgroundColor: Colors.grey,
+      );
     } else if (entry.won == true) {
-      return const Chip(label: Text('Won', style: TextStyle(fontSize: 10, color: Colors.white)), backgroundColor: Colors.green);
+      return const Chip(
+        label: Text('Won', style: TextStyle(fontSize: 10, color: Colors.white)),
+        backgroundColor: kSafaricomGreen,
+      );
     } else {
-      return const Chip(label: Text('Lost', style: TextStyle(fontSize: 10, color: Colors.white)), backgroundColor: Colors.red);
+      return const Chip(
+        label: Text('Lost', style: TextStyle(fontSize: 10, color: Colors.white)),
+        backgroundColor: Colors.red,
+      );
     }
   }
 }
