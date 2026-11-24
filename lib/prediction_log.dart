@@ -498,12 +498,7 @@ class PredictionLog {
     return double.tryParse(cleaned)?.round();
   }
 
-  /// Selects a market using league-specific tendencies:
-  /// - Bundesliga & Eredivisie: prioritize Over 2.5 and GG (BTTS).
-  /// - Premier League (EPL): avoid straight 1X2 unless overwhelming; favor
-  ///   Double Chance (1X/X2), GG, or Over 2.5.
-  /// - Other leagues: use straight 1X2 only on clear edges (>= 56%),
-  ///   otherwise pivot to Double Chance, Over 2.5, or GG.
+  
     static int? _extractOver15Prob(FixtureModel f, int? ov25Prob) {
     try {
       final dynamic dyn = f;
@@ -644,8 +639,12 @@ class PredictionLog {
     return parts.join(' ');
   }
 
-  static LogEntry _newEntry(String key, FixtureModel f) {
+    static LogEntry _newEntry(String key, FixtureModel f) {
     final chosen = _selectLeagueAwareTip(f);
+    final String effectiveUtc = f.utcDate.trim().isNotEmpty
+        ? f.utcDate.trim()
+        : (f.kickoff?.toUtc().toIso8601String() ?? '');
+
     return LogEntry(
       key: key,
       home: f.homeTeam,
@@ -654,10 +653,10 @@ class PredictionLog {
       tip: chosen.tip,
       tipProb: chosen.prob,
       kickoff: f.timeLabel,
-      utcDate: f.utcDate,
+      utcDate: effectiveUtc,
       detail: _detailOf(f),
     );
-  }
+    }
 
   static void _settle(LogEntry entry, FixtureModel f) {
     final result =
