@@ -1622,27 +1622,8 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   final double potentialPayout = slip.totalOdds * currentStake;
   final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
 
-  const Color safaricomGreen = Color(0xFF3AA335);
-  final eval = slip.evaluateOutcome(const []);
-
-  String statusLabel = 'PENDING';
-  Color statusColor = Colors.orange.shade800;
-  if (eval != null && eval.isSettled) {
-    statusLabel = eval.isWon ? 'WON' : 'LOST';
-    statusColor = eval.isWon ? safaricomGreen : Colors.red.shade700;
-  }
-  
-  final genSlip = _asGeneratedSlip(slip);
-  final fixturesForEval =
-      widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
-  final eval = genSlip?.evaluateOutcome(fixturesForEval);
-
-  String statusLabel = 'PENDING';
-  Color statusColor = Colors.orange.shade800;
-  if (eval != null && eval.isSettled) {
-    statusLabel = eval.isWon ? 'WON' : 'LOST';
-    statusColor = eval.isWon ? safaricomGreen : Colors.red.shade700;
-  }
+  const String statusLabel = 'PENDING';
+  final Color statusColor = Colors.orange.shade800;
 
   return Card(
     color: cardBg(context),
