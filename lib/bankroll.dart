@@ -1532,33 +1532,61 @@ class _BankrollTabState extends State<BankrollTab>
       status: map['status']?.toString() ?? 'pending',
     );
   }
-    Map<String, dynamic> _slipToMap(GeneratedSlip s) {
+      Map<String, dynamic> _slipToMap(GeneratedSlip s) {
+    final rawSelections = s.selections as List<dynamic>? ?? const [];
+    final serializedSelections = rawSelections.map((item) {
+      if (item is Map) {
+        return Map<String, dynamic>.from(item);
+      }
+      try {
+        final dynamic dynItem = item;
+        final map = dynItem.toJson();
+        if (map is Map) return Map<String, dynamic>.from(map);
+      } catch (_) {}
+      return item.toString();
+    }).toList();
+
     return <String, dynamic>{
       'id': s.id,
-      'date': s.date,
+      'title': s.title,
+      'totalOdds': s.totalOdds,
+      'selections': serializedSelections,
       'stake': s.stake,
-      'odds': s.odds,
-      'status': s.status,
+      'potentialPayout': s.potentialPayout,
+      'createdAt': s.createdAt?.toIso8601String(),
+      'note': s.note,
     };
   }
 
   GeneratedSlip _slipFromMap(Map<String, dynamic> map) {
-    final rawStake = map['stake'];
-    final double stake = rawStake is num
-        ? rawStake.toDouble()
-        : double.tryParse(rawStake?.toString() ?? '') ?? 0.0;
-
-    final rawOdds = map['odds'];
-    final double odds = rawOdds is num
+    final rawOdds = map['totalOdds'];
+    final double totalOdds = rawOdds is num
         ? rawOdds.toDouble()
         : double.tryParse(rawOdds?.toString() ?? '') ?? 1.0;
 
+    final rawStake = map['stake'];
+    final double stake = rawStake is num
+        ? rawStake.toDouble()
+        : double.tryParse(rawStake?.toString() ?? '') ?? 200.0;
+
+    final rawPayout = map['potentialPayout'];
+    final double? potentialPayout = rawPayout is num
+        ? rawPayout.toDouble()
+        : double.tryParse(rawPayout?.toString() ?? '');
+
+    final DateTime? createdAt = map['createdAt'] != null
+        ? DateTime.tryParse(map['createdAt'].toString())
+        : null;
+
     return GeneratedSlip(
-      id: map['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      date: map['date']?.toString() ?? DateTime.now().toIso8601String(),
+      id: map['id']?.toString(),
+      title: map['title']?.toString() ?? 'Restored Slip',
+      totalOdds: totalOdds,
+      selections: List<dynamic>.from(map['selections'] as List? ?? const []),
       stake: stake,
-      odds: odds,
-      status: map['status']?.toString() ?? 'pending',
+      potentialPayout: potentialPayout,
+      createdAt: createdAt,
+      note: map['note']?.toString() ?? '',
     );
   }
     Future<void> _exportAllBackup() async {
