@@ -303,7 +303,21 @@ void showLogEntryInsight(BuildContext context, LogEntry entry) {
   );
 }
 
-/// Renders logged predictions; tapping one opens its insight dialog.
+String _dayBucketLabel(String utcDate) {
+  final dt = DateTime.tryParse(utcDate)?.toLocal();
+  if (dt == null) return 'Scheduled';
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final target = DateTime(dt.year, dt.month, dt.day);
+  final diff = target.difference(today).inDays;
+
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Tomorrow';
+  if (diff == -1) return 'Yesterday';
+  return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+}
+
+/// Renders logged predictions grouped by Today / Tomorrow; tapping opens insight.
 Widget buildPredictionLogList(List<LogEntry> entries) {
   if (entries.isEmpty) {
     return const Padding(
@@ -316,11 +330,47 @@ Widget buildPredictionLogList(List<LogEntry> entries) {
     );
   }
 
+  final sorted = List<LogEntry>.from(entries)
+    ..sort((a, b) {
+      final da = DateTime.tryParse(a.utcDate);
+      final db = DateTime.tryParse(b.utcDate);
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da.compareTo(db);
+    });
+
   return ListView.builder(
     shrinkWrap: true,
     physics: const NeverScrollableScrollPhysics(),
-    itemCount: entries.length,
-    itemBuilder: (context, index) => _LogEntryCard(entry: entries[index]),
+    itemCount: sorted.length,
+    itemBuilder: (context, index) {
+      final entry = sorted[index];
+      final currentLabel = _dayBucketLabel(entry.utcDate);
+      final prevLabel =
+          index > 0 ? _dayBucketLabel(sorted[index - 1].utcDate) : null;
+      final showHeader = index == 0 || currentLabel != prevLabel;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showHeader)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(
+                currentLabel.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                  color: _teal,
+                ),
+              ),
+            ),
+          _LogEntryCard(entry: entry),
+        ],
+      );
+    },
   );
 }
 
@@ -370,7 +420,9 @@ class _LogEntryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'League: ${entry.league}',
+                      entry.kickoff.isNotEmpty
+                          ? '${entry.league}  |  ${entry.kickoff}'
+                          : 'League: ${entry.league}',
                       style:
                           const TextStyle(fontSize: 11, color: Colors.grey),
                     ),
@@ -441,6 +493,134 @@ class PredictionLog {
     return total;
   }
 
+  static int? _parsePercent(String raw) {
+    final cleaned = raw.replaceAll('%', '').trim();
+    return double.tryParse(cleaned)?.round();
+  }
+
+  /// Selects a market using league-specific tendencies:
+  /// - Bundesliga & Eredivisie: prioritize Over 2.5 and GG (BTTS).
+  /// - Premier League (EPL): avoid straight 1X2 unless overwhelming; favor
+  ///   Double Chance (1X/X2), GG, or Over 2.5.
+  /// - Other leagues: use straight 1X2 only on clear edges (>= 56%),
+  ///   otherwise pivot to Double Chance, Over 2.5, or GG.
+    static int? _extractOver15Prob(FixtureModel f, int? ov25Prob) {
+    try {
+      final dynamic dyn = f;
+      final raw = dyn.over15Goals;
+      if (raw != null) {
+        final parsed = _parsePercent(raw.toString());
+        if (parsed != null) return parsed;
+      }
+    } catch (_) {}
+
+    // Fallback estimate from Over 2.5 probability if FixtureModel lacks over15Goals
+    if (ov25Prob != null) {
+      return (ov25Prob + 24).clamp(50, 92);
+    }
+    return null;
+  }
+
+  /// Selects a market using league-specific tendencies:
+  /// - Bundesliga & Eredivisie: prioritize Over 2.5, GG (BTTS), and Over 1.5.
+  /// - Premier League (EPL): avoid straight 1X2 unless overwhelming; favor
+  ///   Double Chance (1X, X2, 12), Over 1.5, GG, or Over 2.5.
+  /// - Other leagues: use straight 1X2 only on clear edges (>= 56%),
+  ///   otherwise pivot to Double Chance (1X, X2, 12), Over 1.5, Over 2.5, or GG.
+  static ({String tip, int? prob}) _selectLeagueAwareTip(FixtureModel f) {
+    final leagueLower = f.league.toLowerCase();
+    final isGoalHeavyLeague = leagueLower.contains('bundesliga') ||
+        leagueLower.contains('eredivisie');
+    final isEpl = leagueLower.contains('premier league') ||
+        leagueLower == 'epl' ||
+        leagueLower.contains('england - premier');
+
+    final int homeProb = f.homeWinProb.round();
+    final int drawProb = f.drawProb.round();
+    final int awayProb = f.awayWinProb.round();
+    final int? ov25Prob = _parsePercent(f.over25Goals);
+    final int? ov15Prob = _extractOver15Prob(f, ov25Prob);
+    final int? ggProb = _parsePercent(f.btts);
+
+    final bool homeFav = homeProb >= awayProb;
+    final int favWinProb = homeFav ? homeProb : awayProb;
+    final String favWinTip = homeFav ? '${f.homeTeam} Win' : '${f.awayTeam} Win';
+
+    // Best Double Chance option across 1X, X2, and 12 (Home or Away)
+    final int dc1XProb = (homeProb + drawProb).clamp(0, 95);
+    final int dcX2Prob = (awayProb + drawProb).clamp(0, 95);
+    final int dc12Prob = (homeProb + awayProb).clamp(0, 95);
+
+    final dcCandidates = <({String tip, int prob})>[
+      (tip: 'Double Chance (1X)', prob: dc1XProb),
+      (tip: 'Double Chance (X2)', prob: dcX2Prob),
+      if (drawProb <= 24) (tip: 'Double Chance (12)', prob: dc12Prob),
+    ]..sort((a, b) => b.prob.compareTo(a.prob));
+
+    final bestDc = dcCandidates.first;
+
+    // Pick strongest primary goals market (Over 2.5 vs GG)
+    ({String tip, int prob})? bestGoalsPick(int minThreshold) {
+      final candidates = <({String tip, int prob})>[
+        if (ov25Prob != null && ov25Prob >= minThreshold)
+          (tip: 'Over 2.5 Goals', prob: ov25Prob),
+        if (ggProb != null && ggProb >= minThreshold)
+          (tip: 'GG (Both Teams to Score)', prob: ggProb),
+      ];
+      if (candidates.isEmpty) return null;
+      candidates.sort((a, b) => b.prob.compareTo(a.prob));
+      return candidates.first;
+    }
+
+    if (f.hasPrediction) {
+      // 1. Bundesliga & Eredivisie -> favor Over 2.5, GG, or safe Over 1.5
+      if (isGoalHeavyLeague) {
+        final goalPick = bestGoalsPick(54);
+        if (goalPick != null) {
+          return (tip: goalPick.tip, prob: goalPick.prob);
+        }
+        if (ov15Prob != null && ov15Prob >= 72) {
+          return (tip: 'Over 1.5 Goals', prob: ov15Prob);
+        }
+        if (favWinProb >= 62) {
+          return (tip: favWinTip, prob: favWinProb);
+        }
+        return (tip: bestDc.tip, prob: bestDc.prob);
+      }
+
+      // 2. Premier League (EPL) -> avoid risky 1X2; prefer DC / GG / Over 2.5 / Over 1.5
+      if (isEpl) {
+        if (favWinProb >= 68) {
+          return (tip: favWinTip, prob: favWinProb);
+        }
+        final goalPick = bestGoalsPick(58);
+        if (goalPick != null && goalPick.prob >= bestDc.prob - 8) {
+          return (tip: goalPick.tip, prob: goalPick.prob);
+        }
+        if (ov15Prob != null && ov15Prob >= 76 && ov15Prob >= bestDc.prob) {
+          return (tip: 'Over 1.5 Goals', prob: ov15Prob);
+        }
+        return (tip: bestDc.tip, prob: bestDc.prob);
+      }
+
+      // 3. All other leagues (Championship, La Liga, Serie A, etc.)
+      if (favWinProb >= 56) {
+        return (tip: favWinTip, prob: favWinProb);
+      }
+      final goalPick = bestGoalsPick(58);
+      if (goalPick != null && goalPick.prob >= bestDc.prob - 6) {
+        return (tip: goalPick.tip, prob: goalPick.prob);
+      }
+      if (ov15Prob != null && ov15Prob >= 76 && ov15Prob >= bestDc.prob) {
+        return (tip: 'Over 1.5 Goals', prob: ov15Prob);
+      }
+      if (bestDc.prob >= 65) {
+        return (tip: bestDc.tip, prob: bestDc.prob);
+      }
+    }
+
+    return (tip: f.topTip, prob: f.tipProbInt);
+  }
   /// A short, factual summary of the data the tip was based on.
   static String _detailOf(FixtureModel f) {
     final parts = <String>[];
@@ -465,17 +645,20 @@ class PredictionLog {
     return parts.join(' ');
   }
 
-  static LogEntry _newEntry(String key, FixtureModel f) => LogEntry(
-        key: key,
-        home: f.homeTeam,
-        away: f.awayTeam,
-        league: f.league,
-        tip: f.topTip,
-        tipProb: f.tipProbInt,
-        kickoff: f.timeLabel,
-        utcDate: f.utcDate,
-        detail: _detailOf(f),
-      );
+  static LogEntry _newEntry(String key, FixtureModel f) {
+    final chosen = _selectLeagueAwareTip(f);
+    return LogEntry(
+      key: key,
+      home: f.homeTeam,
+      away: f.awayTeam,
+      league: f.league,
+      tip: chosen.tip,
+      tipProb: chosen.prob,
+      kickoff: f.timeLabel,
+      utcDate: f.utcDate,
+      detail: _detailOf(f),
+    );
+  }
 
   static void _settle(LogEntry entry, FixtureModel f) {
     final result =
