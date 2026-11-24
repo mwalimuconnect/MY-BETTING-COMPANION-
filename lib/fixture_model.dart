@@ -148,7 +148,7 @@ class FixtureModel {
     this.anytimeScorers = const [],
   });
 
-  /// True when the fixture has server prediction or extended market data.
+    /// True when the fixture has server prediction or extended market data.
   bool get hasAnalysis {
     if (hasPrediction || topTip.trim().isNotEmpty || tipProb > 0) {
       return true;
@@ -450,7 +450,6 @@ class FixtureModel {
     }
     return out;
   }
-
   static DateTime? _parseTimestamp(String raw) {
     final String trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
@@ -559,12 +558,10 @@ class PredictionOutcomeBadge extends StatelessWidget {
 
     final bool isWon = won!;
     final Color color = isWon ? _kSafaricomGreen : Colors.red.shade700;
-    final Color bgColor = isWon
-        ? _kSafaricomGreen.withValues(alpha: 0.12)
-        : Colors.red.shade50;
-    final Color borderColor = isWon
-        ? _kSafaricomGreen.withValues(alpha: 0.45)
-        : Colors.red.shade300;
+    final Color bgColor =
+        isWon ? _kSafaricomGreen.withOpacity(0.12) : Colors.red.shade50;
+    final Color borderColor =
+        isWon ? _kSafaricomGreen.withOpacity(0.45) : Colors.red.shade300;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
