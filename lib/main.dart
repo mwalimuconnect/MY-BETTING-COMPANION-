@@ -1618,42 +1618,58 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   }
 
   Widget _suggestedCard(BuildContext context, SuggestedSlip slip) {
-    final double currentStake = _customSuggestedStake ?? slip.stake;
-    final double potentialPayout = slip.totalOdds * currentStake;
-    final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
+  final double currentStake = _customSuggestedStake ?? slip.stake;
+  final double potentialPayout = slip.totalOdds * currentStake;
+  final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
 
-    return Card(
-      color: cardBg(context),
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: kTealGreen, width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    slip.title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                ),
-                Text(
-                  '${slip.totalOdds.toStringAsFixed(2)}x',
+  const Color safaricomGreen = Color(0xFF3AA335);
+  final genSlip = _asGeneratedSlip(slip);
+  final fixturesForEval =
+      widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
+  final eval = genSlip?.evaluateOutcome(fixturesForEval);
+
+  String statusLabel = 'PENDING';
+  Color statusColor = Colors.orange.shade800;
+  if (eval != null && eval.isSettled) {
+    statusLabel = eval.isWon ? 'WON' : 'LOST';
+    statusColor = eval.isWon ? safaricomGreen : Colors.red.shade700;
+  }
+
+  return Card(
+    color: cardBg(context),
+    margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: const BorderSide(color: kTealGreen, width: 1),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  slip.title,
                   style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: kTealGreen,
-                  ),
+                      fontWeight: FontWeight.bold, fontSize: 15),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              ticketStatusPill(statusLabel, statusColor),
+              const SizedBox(width: 8),
+              Text(
+                '${slip.totalOdds.toStringAsFixed(2)}x',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: kTealGreen,
+                ),
+              ),
+            ],
+          ),
             const Divider(height: 16),
             for (int i = 0; i < slip.selections.length; i++) ...[
               Padding(
@@ -1816,48 +1832,48 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   }
 
   Widget _buildLockedSuggestedCard(BuildContext context) {
-    return Card(
-      color: cardBg(context),
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: kTealGreen, width: 1),
+  return Card(
+    color: ticketCardBg(context),
+    margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: BorderSide(color: ticketBorderColor(context), width: 1.2),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        children: [
+          const Icon(Icons.lock, size: 42, color: kTealGreen),
+          const SizedBox(height: 10),
+          const Text(
+            'Daily Prolific System Slip Locked',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Your free access waiver has expired. Unlock today\'s high-confidence value accumulator',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kTealGreen,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.lock_open),
+            label: const Text('Pay to View Slip'),
+            onPressed: () {
+              showSlipSubscriptionSheet(context, () async {
+                _loadSlips();
+              });
+            },
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            const Icon(Icons.lock, size: 42, color: kTealGreen),
-            const SizedBox(height: 10),
-            const Text(
-              'Daily Prolific System Slip Locked',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Your free access waiver has expired. Unlock today\'s high-confidence value accumulator via M-Pesa.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 14),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kTealGreen,
-                foregroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.lock_open),
-              label: const Text('Pay to View Slip'),
-              onPressed: () {
-                showSlipSubscriptionSheet(context, () async {
-                  _loadSlips();
-                });
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
