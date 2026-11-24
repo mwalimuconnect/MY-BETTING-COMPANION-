@@ -156,7 +156,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 class SuggestedSlip {
   final String title;
   final double totalOdds;
-  final List> selections;
+  final List<Map<String, dynamic>> selections;
+  
   final double stake;
   final double potentialPayout;
   final String date;
@@ -245,7 +246,8 @@ class SuggestedSlipStore {
     return {for (final e in entries) e.key: e.value};
   }
 
-  static Future> loadHistory7Days() async {
+  static Future<Map<String, GeneratedSlip>> loadHistory7Days() async {
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_historyKey);
