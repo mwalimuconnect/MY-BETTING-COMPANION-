@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const Color kPrimary = Color(0xFF0D6EFD);
+const Color kEmerald = Color(0xFF00C853);
+const Color kEmeraldDark = Color(0xFF0F9D58);
+const Color kTealAccent = Color(0xFF008080);
 
 // ---------------------------------------------------------------------------
 // Theme-aware colours (so every screen works in light and dark mode)
@@ -19,6 +22,32 @@ Color lineColor(BuildContext c) =>
 
 Color mutedText(BuildContext c) =>
     isDarkMode(c) ? Colors.grey.shade400 : Colors.grey.shade700;
+
+Color ticketCardBg(BuildContext c) =>
+    isDarkMode(c) ? const Color(0xFF10281E) : const Color(0xFFECFDF3);
+
+Color ticketBorderColor(BuildContext c) =>
+    isDarkMode(c) ? const Color(0xFF1E4D38) : const Color(0xFF86EFAC);
+
+Widget ticketStatusPill(String label, Color color) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.14),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: color.withOpacity(0.65), width: 1),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: color,
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.6,
+      ),
+    ),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Settings that survive app restarts
