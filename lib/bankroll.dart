@@ -207,7 +207,7 @@ class Bet {
 class SystemSlipHistoryStore {
   static const String _prefsKey = 'system_generated_slips_by_day_v1';
 
-  /// Day key used for storage, e.g. 2026-11-23. Also used to tell "today"
+  /// Day key used for storage, e.g. 2026-11-24. Also used to tell "today"
   /// apart from past slips, so both sides must use this one function.
   static String dayKey(DateTime dt) {
     final local = dt.toLocal();
@@ -216,7 +216,7 @@ class SystemSlipHistoryStore {
     return '${local.year}-$m-$d';
   }
 
-  static Future<Map<String, GeneratedSlip>> loadByDay() async {
+  static Future> loadByDay() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefsKey);
@@ -257,9 +257,7 @@ class SystemSlipHistoryStore {
       debugPrint('Failed to save daily system slip: $e');
     }
   }
-}
-
-//=========================
+}//=========================
 // class BankrollTab
 //=========================
 class BankrollTab extends StatefulWidget {
@@ -339,21 +337,34 @@ class _BankrollTabState extends State<BankrollTab>
     );
   }
 
-  Future<void> _loadFixtures() async {
-    try {
-      final loaded = await ApiService.fetchFixtures();
-      if (!mounted) return;
-      setState(() => _fixtures = loaded);
-      await _syncDailySystemSlips(_asGeneratedSlip(_todaySuggestedSlip));
-      await _autoSettleBets();
-    } catch (_) {
-      // Keep any existing fixtures or fall back to manual typing in _addBet()
-    }
-  }
+  Future<void> _refreshDailySystemSlip() async {
+    final latestSuggested = await SuggestedSlipStore.load();
+    final historyMap = await SuggestedSlipStore.loadHistory7Days();
 
-  Future<void> _syncDailySystemSlips(GeneratedSlip? todaySlip) async {
-    if (todaySlip != null) {
-      await SystemSlipHistoryStore.saveSlipForDay(todaySlip);
+    if (latestSuggested != null) {
+      final gen = _asGeneratedSlip(latestSuggested);
+      if (gen != null) {
+        await SystemSlipHistoryStore.saveSlipForDay(
+          gen,
+          date: DateTime.tryParse(latestSuggested.date) ?? DateTime.now(),
+        );
+      }
+    }
+
+    for (final entry in historyMap.entries) {
+      final slip = entry.value;
+      final gen = GeneratedSlip(
+        title: slip.title,
+        totalOdds: slip.totalOdds,
+        selections: slip.selections,
+        stake: slip.stake,
+        potentialPayout: slip.potentialPayout,
+        createdAt: DateTime.tryParse(slip.date),
+      );
+      await SystemSlipHistoryStore.saveSlipForDay(
+        gen,
+        date: DateTime.tryParse(slip.date),
+      );
     }
 
     final byDay = await SystemSlipHistoryStore.loadByDay();
@@ -365,10 +376,25 @@ class _BankrollTabState extends State<BankrollTab>
 
     if (!mounted) return;
     setState(() {
+      if (latestSuggested != null) {
+        _todaySuggestedSlip = latestSuggested;
+      }
       _historicalSlips
         ..clear()
         ..addAll(pastSlips);
     });
+  }
+
+  Future<void> _loadFixtures() async {
+    try {
+      final loaded = await ApiService.fetchFixtures();
+      if (!mounted) return;
+      setState(() => _fixtures = loaded);
+      await _refreshDailySystemSlip();
+      await _autoSettleBets();
+    } catch (_) {
+      // Keep any existing fixtures or fall back to manual typing in _addBet()
+    }
   }
 
   List<String> _outcomeChoicesFor(FixtureModel? fixture) {
@@ -484,8 +510,7 @@ class _BankrollTabState extends State<BankrollTab>
       await _saveData();
     }
   }
-
-  // --------------------------------------------------------------- lifecycle
+ // --------------------------------------------------------------- lifecycle
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -496,7 +521,7 @@ class _BankrollTabState extends State<BankrollTab>
     final prefs = await SharedPreferences.getInstance();
 
     if (state == AppLifecycleState.paused) {
-  await prefs.setInt(_bgTimeKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(_bgTimeKey, DateTime.now().millisecondsSinceEpoch);
     } else if (state == AppLifecycleState.resumed) {
       final int bgTime = prefs.getInt(_bgTimeKey) ?? 0;
       if (bgTime > 0) {
@@ -532,7 +557,7 @@ class _BankrollTabState extends State<BankrollTab>
       }
 
       _todaySuggestedSlip = await SuggestedSlipStore.load();
-      await _syncDailySystemSlips(_asGeneratedSlip(_todaySuggestedSlip));
+      await _refreshDailySystemSlip();
 
       final raw = prefs.getString(_dataKey);
       if (raw != null && raw.isNotEmpty) {
@@ -846,8 +871,7 @@ class _BankrollTabState extends State<BankrollTab>
       ),
     );
   }
-
-  // ----------------------------------------------------------------- numbers
+   // ----------------------------------------------------------------- numbers
   double? _parse(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
 
   double get _settledProfit => _bets.fold(0.0, (sum, b) => sum + b.profit);
@@ -962,8 +986,8 @@ class _BankrollTabState extends State<BankrollTab>
                 // Admin secret key
                 if (inputVal == '775067') {
                   if (_profilePhone.trim().isEmpty) {
-                    setDialogState(
-                        () => pinError = 'Set your phone number in profile first');
+                    setDialogState(() =>
+                        pinError = 'Set your phone number in profile first');
                     return;
                   }
                   _snack('Activating admin access...');
@@ -994,7 +1018,8 @@ class _BankrollTabState extends State<BankrollTab>
                       return;
                     }
                   } catch (e) {
-                    setDialogState(() => pinError = 'Network timeout. Try again.');
+                    setDialogState(
+                        () => pinError = 'Network timeout. Try again.');
                     return;
                   }
                 }
@@ -1002,7 +1027,8 @@ class _BankrollTabState extends State<BankrollTab>
                 // The lock screen only accepts 4 digits, so a PIN of any other
                 // length would lock the user out.
                 if (inputVal.isNotEmpty && !_validPin(inputVal)) {
-                  setDialogState(() => pinError = 'PIN must be exactly 4 digits');
+                  setDialogState(
+                      () => pinError = 'PIN must be exactly 4 digits');
                   return;
                 }
 
@@ -1048,10 +1074,8 @@ class _BankrollTabState extends State<BankrollTab>
   }
 
   Future<void> _addBet() async {
-    // Don't make the user wait: if there are no fixtures yet, start fetching in
-    // the background. The dialog opens straight away and the fixture list fills
-    // in by itself as soon as the fetch finishes.
-    final Future<void>? pendingLoad = _fixtures.isEmpty ? _loadFixtures() : null;
+    final Future<void>? pendingLoad =
+        _fixtures.isEmpty ? _loadFixtures() : null;
     bool fixturesLoading = pendingLoad != null;
     bool dialogOpen = true;
     StateSetter? refreshDialog;
@@ -1070,7 +1094,7 @@ class _BankrollTabState extends State<BankrollTab>
     bool editPickManually = false;
     FixtureModel? selectedFixture;
     String? selectedOutcome;
-   String? selectedBetType;
+    String? selectedBetType;
     final List<String> multiLegs = [];
     const betTypes = [
       '1X2 (Match Result)',
@@ -1139,13 +1163,9 @@ class _BankrollTabState extends State<BankrollTab>
         builder: (ctx, setModalState) {
           refreshDialog = setModalState;
 
-          // Rebuilt on every refresh, so fixtures that arrive while the dialog
-          // is open show up immediately.
           final unfinished =
               _fixtures.where((item) => !_isFixtureFinished(item)).toList();
 
-          // A reload creates new FixtureModel objects, so re-find the selected
-          // fixture in the fresh list (a stale object would crash the dropdown).
           FixtureModel? currentFixture;
           if (selectedFixture != null) {
             for (final f in unfinished) {
@@ -1261,8 +1281,9 @@ class _BankrollTabState extends State<BankrollTab>
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value:
-                        outcomes.contains(selectedOutcome) ? selectedOutcome : null,
+                    value: outcomes.contains(selectedOutcome)
+                        ? selectedOutcome
+                        : null,
                     isExpanded: true,
                     decoration:
                         const InputDecoration(labelText: 'Possible Outcomes'),
@@ -1407,7 +1428,6 @@ class _BankrollTabState extends State<BankrollTab>
       ),
     );
 
-    // Stops a late fetch from touching the closed dialog.
     dialogOpen = false;
 
     if (ok != true || !mounted) return;
@@ -1449,7 +1469,7 @@ class _BankrollTabState extends State<BankrollTab>
           description: fullDescription,
           stake: stake,
           odds: odds,
-          status: 'pending', // auto-settled when the match finishes
+          status: 'pending',
         ),
       );
     });
@@ -1470,156 +1490,6 @@ class _BankrollTabState extends State<BankrollTab>
   }
 
   // ----------------------------------------------------------------- widgets
-  Widget _summaryCard() {
-    final spent = _spentThisMonth;
-    final capUsed = _cap > 0 ? spent / _cap : 0.0;
-    final capColor =
-        capUsed >= 1 ? Colors.red : (capUsed >= 0.8 ? Colors.orange : _teal);
-
-    Widget line(String label, String value, {Color? color, bool bold = true}) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 13)),
-            Text(
-              value,
-              style: TextStyle(
-                fontWeight: bold ? FontWeight.bold : FontWeight.w500,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    return Card(
-      color: cardBg(context),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Bankroll (settled bets)',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
-                Text(_ksh(_balance),
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 18)),
-              ],
-            ),
-            const Divider(height: 20),
-            line('Total profit / loss', _ksh(_settledProfit),
-                color: _profitColor(_settledProfit)),
-            line('ROI', '${_roi.toStringAsFixed(1)}%',
-                color: _profitColor(_roi)),
-            line('At stake (pending)', _ksh(_pendingStake), bold: false),
-            const Divider(height: 20),
-            line('Staked this month',
-                _cap > 0 ? '${_ksh(spent)} / ${_ksh(_cap)}' : _ksh(spent),
-                color: capColor),
-            if (_cap > 0) ...[
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: math.min(1.0, capUsed),
-                  minHeight: 8,
-                  color: capColor,
-                  backgroundColor: lineColor(context),
-                ),
-              ),
-              if (capUsed >= 1)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'You have reached your monthly cap. Consider stopping for this month.',
-                    style: TextStyle(
-                        color: Colors.red,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold),
-                  ),
-                )
-              else if (capUsed >= 0.8)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    'You have used ${(capUsed * 100).toStringAsFixed(0)}% of your monthly cap.',
-                    style: TextStyle(
-                        color: Colors.orange.shade800, fontSize: 12),
-                  ),
-                ),
-            ] else
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Tip: set a monthly cap in settings.',
-                    style: TextStyle(color: mutedText(context), fontSize: 11)),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _automatedSlipCard() {
-    final slip = _todaySuggestedSlip;
-    if (slip == null) return const SizedBox.shrink();
-    return Card(
-      color: cardBg(context),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: _teal, width: 0.8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  '\u{1F525} Today\'s Automated Slip',
-                  style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.bold, color: _teal),
-                ),
-                Text(
-                  '${slip.totalOdds.toStringAsFixed(2)}x',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              slip.title,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Stake: ${_ksh(slip.stake)}',
-                    style: const TextStyle(fontSize: 12)),
-                Text('Potential Win: ${_ksh(slip.potentialPayout)}',
-                    style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   _SystemAutoStats _computeSystemAutoStats(
     List<GeneratedSlip> slips,
     List<FixtureModel> fixturesForEval,
@@ -1660,7 +1530,149 @@ class _BankrollTabState extends State<BankrollTab>
     );
   }
 
-  Widget _comparisonTableCard() {
+  Widget _dailySlipFlap() {
+    final slip = _todaySuggestedSlip;
+    final genSlip = _asGeneratedSlip(slip);
+    final fixturesForEval =
+        widget.fixtures.isNotEmpty ? widget.fixtures : _fixtures;
+    final eval = genSlip?.evaluateOutcome(fixturesForEval);
+
+    String statusLabel = 'DAILY SLIP';
+    Color statusColor = _teal;
+    if (eval != null && eval.isSettled) {
+      statusLabel = eval.isWon ? 'WON' : 'LOST';
+      statusColor = eval.isWon ? Colors.green.shade700 : Colors.red.shade700;
+    }
+
+    return Card(
+      color: cardBg(context),
+      elevation: 1,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: _teal.withOpacity(0.5), width: 0.9),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        iconColor: _teal,
+        collapsedIconColor: _teal,
+        title: Row(
+          children: [
+            const Expanded(
+              child: Text(
+                '\u{1F525} Today\'s Generated Slip',
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.bold, color: _teal),
+              ),
+            ),
+            if (slip != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '$statusLabel \u2022 ${slip.totalOdds.toStringAsFixed(2)}x',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Text(
+          slip == null
+              ? 'No system slip generated for today yet'
+              : '${slip.title} \u2022 Stake: ${_ksh(slip.stake)}',
+          style: TextStyle(fontSize: 11, color: mutedText(context)),
+        ),
+        children: [
+          if (slip == null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: Text(
+                'Generate or refresh today\'s slip in the Slips tab to track daily system profit/loss here.',
+                style: TextStyle(fontSize: 12, color: mutedText(context)),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Stake: ${_ksh(slip.stake)}',
+                          style: const TextStyle(fontSize: 12)),
+                      Text(
+                        'Potential Win: ${_ksh(slip.potentialPayout)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (slip.selections.isNotEmpty) ...[
+                    const Divider(height: 14),
+                    for (int i = 0; i < slip.selections.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(
+                          '${i + 1}. ${slip.selections[i]['match'] ?? ''} '
+                          '(${slip.selections[i]['prediction'] ?? ''}) '
+                          '@ ${slip.selections[i]['odds'] ?? ''}',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          if (_historicalSlips.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: ExpansionTile(
+                initiallyExpanded: false,
+                iconColor: _teal,
+                collapsedIconColor: _teal,
+                title: Text(
+                  'Past System Slips (${_historicalSlips.length})',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                children: _historicalSlips
+                    .map((past) => ListTile(
+                          dense: true,
+                          title: Text(past.title,
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.bold)),
+                          subtitle: Text(
+                            'Stake: ${_ksh(past.stake)} \u2022 Win: ${_ksh(past.potentialPayout)}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          trailing: Text(
+                            '${past.totalOdds.toStringAsFixed(2)}x',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _teal),
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+  Widget _comparisonFlap() {
     final systemBets =
         _bets.where((b) => b.description.contains('Accumulator')).toList();
     final manualBets =
@@ -1701,6 +1713,19 @@ class _BankrollTabState extends State<BankrollTab>
     final manWins = countStatus(manualBets, 'won');
     final manLosses = countStatus(manualBets, 'lost');
 
+    final double diff = sysProfit - manProfit;
+    final String appVerdict = sysProfit > 0
+        ? 'App in Profit (+${_ksh(sysProfit)})'
+        : (sysProfit < 0
+            ? 'App in Loss (${_ksh(sysProfit)})'
+            : 'App Break-Even (${_ksh(0)})');
+
+    final String vsUserSummary = diff > 0
+        ? 'App ahead of you by ${_ksh(diff)}'
+        : (diff < 0
+            ? 'You are ahead of app by ${_ksh(diff.abs())}'
+            : 'Tied with your manual P/L');
+
     Widget cell(String text, {TextStyle? style}) => Padding(
           padding: const EdgeInsets.all(8.0),
           child: Text(text, style: style ?? const TextStyle(fontSize: 11)),
@@ -1717,19 +1742,29 @@ class _BankrollTabState extends State<BankrollTab>
     return Card(
       color: cardBg(context),
       elevation: 1,
+      margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '\u{1F4CA} Performance: System vs Manual',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
-            ),
-            const SizedBox(height: 10),
-            Table(
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        iconColor: _teal,
+        collapsedIconColor: _teal,
+        title: const Text(
+          '\u{1F4CA} App vs. User Profit & Loss',
+          style: TextStyle(
+              fontWeight: FontWeight.bold, fontSize: 13, color: _teal),
+        ),
+        subtitle: Text(
+          '$appVerdict \u2022 $vsUserSummary',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: _profitColor(sysProfit),
+          ),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+            child: Table(
               columnWidths: const {
                 0: FlexColumnWidth(1.3),
                 1: FlexColumnWidth(1.0),
@@ -1742,7 +1777,7 @@ class _BankrollTabState extends State<BankrollTab>
                       BoxDecoration(color: lineColor(context).withOpacity(0.3)),
                   children: [
                     cell('Metric', style: headStyle),
-                    cell('System (Auto)',
+                    cell('System (App)',
                         style: headStyle.copyWith(color: _teal)),
                     cell('Manual (You)', style: headStyle),
                   ],
@@ -1769,8 +1804,101 @@ class _BankrollTabState extends State<BankrollTab>
                 ]),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryFlap() {
+    final spent = _spentThisMonth;
+    final capUsed = _cap > 0 ? spent / _cap : 0.0;
+    final capColor =
+        capUsed >= 1 ? Colors.red : (capUsed >= 0.8 ? Colors.orange : _teal);
+
+    Widget line(String label, String value, {Color? color, bool bold = true}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 13)),
+            Text(
+              value,
+              style: TextStyle(
+                fontWeight: bold ? FontWeight.bold : FontWeight.w500,
+                color: color,
+              ),
+            ),
           ],
         ),
+      );
+    }
+
+    return Card(
+      color: cardBg(context),
+      elevation: 1,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        iconColor: _teal,
+        collapsedIconColor: _teal,
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Bankroll & Spending Cap',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            Text(
+              _ksh(_balance),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 14, color: _teal),
+            ),
+          ],
+        ),
+        subtitle: Text(
+          'P/L: ${_ksh(_settledProfit)} \u2022 ROI: ${_roi.toStringAsFixed(1)}%',
+          style: TextStyle(fontSize: 11, color: _profitColor(_settledProfit)),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                line('Total profit / loss', _ksh(_settledProfit),
+                    color: _profitColor(_settledProfit)),
+                line('ROI', '${_roi.toStringAsFixed(1)}%',
+                    color: _profitColor(_roi)),
+                line('At stake (pending)', _ksh(_pendingStake), bold: false),
+                const Divider(height: 18),
+                line('Staked this month',
+                    _cap > 0 ? '${_ksh(spent)} / ${_ksh(_cap)}' : _ksh(spent),
+                    color: capColor),
+                if (_cap > 0) ...[
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: math.min(1.0, capUsed),
+                      minHeight: 8,
+                      color: capColor,
+                      backgroundColor: lineColor(context),
+                    ),
+                  ),
+                ] else
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text('Tip: set a monthly cap in settings.',
+                        style:
+                            TextStyle(color: mutedText(context), fontSize: 11)),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1835,7 +1963,7 @@ class _BankrollTabState extends State<BankrollTab>
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          'No bets logged yet. Tap "Add Bet" to record a stake and its odds, or view automated daily slips from the Slips tab.',
+          'No manual bets logged yet. Tap "Add Bet" to record a stake and its odds.',
           textAlign: TextAlign.center,
           style: TextStyle(color: mutedText(context)),
         ),
@@ -1873,7 +2001,7 @@ class _BankrollTabState extends State<BankrollTab>
               style: const TextStyle(
                   fontWeight: FontWeight.bold, fontSize: 15, color: _teal),
             ),
-            subtitle: Text('$betCount bets logged'),
+            subtitle: Text('$betCount manual bets logged'),
             children: weeks.map((weekEntry) {
               final weekNum = weekEntry.key;
               final days = weekEntry.value.entries.toList()
@@ -1952,6 +2080,7 @@ class _BankrollTabState extends State<BankrollTab>
       ),
     );
   }
+
   Widget _lockScreen() {
     final creating = _storedPin == null || _profilePhone.isEmpty;
     return Center(
@@ -2121,12 +2250,9 @@ class _BankrollTabState extends State<BankrollTab>
                   onEdit: _editProfile,
                 ),
                 const SizedBox(height: 12),
-                _summaryCard(),
-                const SizedBox(height: 12),
-                _automatedSlipCard(),
-                const SizedBox(height: 8),
-                _comparisonTableCard(),
-                const SizedBox(height: 12),
+                _dailySlipFlap(),
+                _comparisonFlap(),
+                _summaryFlap(),
                 _groupedBetsSection(),
                 const SizedBox(height: 16),
                 Text(
