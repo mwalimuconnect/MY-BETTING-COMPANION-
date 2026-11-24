@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1494,7 +1495,204 @@ class _BankrollTabState extends State<BankrollTab>
     });
     await _saveData();
       }
-  
+    Map<String, dynamic> _betToMap(Bet b) {
+    return <String, dynamic>{
+      'id': b.id,
+      'date': b.date,
+      'description': b.description,
+      'stake': b.stake,
+      'odds': b.odds,
+      'status': b.status,
+    };
+  }
+
+  Bet _betFromMap(Map<String, dynamic> map) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final rawId = map['id'];
+    final int id = rawId is int
+        ? rawId
+        : int.tryParse(rawId?.toString() ?? '') ?? nowMs;
+
+    final rawStake = map['stake'];
+    final double stake = rawStake is num
+        ? rawStake.toDouble()
+        : double.tryParse(rawStake?.toString() ?? '') ?? 0.0;
+
+    final rawOdds = map['odds'];
+    final double odds = rawOdds is num
+        ? rawOdds.toDouble()
+        : double.tryParse(rawOdds?.toString() ?? '') ?? 1.0;
+
+    return Bet(
+      id: id,
+      date: map['date']?.toString() ?? DateTime.now().toIso8601String(),
+      description: map['description']?.toString() ?? '',
+      stake: stake,
+      odds: odds,
+      status: map['status']?.toString() ?? 'pending',
+    );
+  }
+    Map<String, dynamic> _slipToMap(GeneratedSlip s) {
+    return <String, dynamic>{
+      'id': s.id,
+      'date': s.date,
+      'stake': s.stake,
+      'odds': s.odds,
+      'status': s.status,
+    };
+  }
+
+  GeneratedSlip _slipFromMap(Map<String, dynamic> map) {
+    final rawStake = map['stake'];
+    final double stake = rawStake is num
+        ? rawStake.toDouble()
+        : double.tryParse(rawStake?.toString() ?? '') ?? 0.0;
+
+    final rawOdds = map['odds'];
+    final double odds = rawOdds is num
+        ? rawOdds.toDouble()
+        : double.tryParse(rawOdds?.toString() ?? '') ?? 1.0;
+
+    return GeneratedSlip(
+      id: map['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      date: map['date']?.toString() ?? DateTime.now().toIso8601String(),
+      stake: stake,
+      odds: odds,
+      status: map['status']?.toString() ?? 'pending',
+    );
+  }
+    Future<void> _exportAllBackup() async {
+    if (_bets.isEmpty && _historicalSlips.isEmpty) {
+      _snack('No bets or slips to export yet.');
+      return;
+    }
+
+    final payload = jsonEncode(<String, dynamic>{
+      'app': 'My Betting Companion',
+      'version': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'bets': _bets.map(_betToMap).toList(),
+      'slips': _historicalSlips.map(_slipToMap).toList(),
+    });
+
+    await Clipboard.setData(ClipboardData(text: payload));
+    if (!mounted) return;
+    _snack(
+      'Copied ${_bets.length} bet(s) and ${_historicalSlips.length} slip(s) to clipboard.',
+    );
+    }
+    Future<void> _importAllBackup() async {
+    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+    final controller = TextEditingController(text: clipboardData?.text ?? '');
+
+    try {
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Restore Bets & Slips'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Paste your exported JSON backup below. Existing bets and slips with matching IDs will be skipped automatically.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: controller,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    hintText: '{"bets":[...],"slips":[...]}',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Restore'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+
+      final rawText = controller.text.trim();
+      if (rawText.isEmpty) {
+        _snack('Backup text is empty.');
+        return;
+      }
+
+      final decoded = jsonDecode(rawText);
+      if (decoded is! Map<String, dynamic>) {
+        _snack('Invalid backup format.');
+        return;
+      }
+
+      final List<dynamic> rawBets =
+          decoded['bets'] as List<dynamic>? ?? const [];
+      final List<dynamic> rawSlips =
+          decoded['slips'] as List<dynamic>? ?? const [];
+
+      final existingBetIds = _bets.map((b) => b.id).toSet();
+      final List<Bet> newBets = [];
+      for (final item in rawBets) {
+        if (item is Map) {
+          final bet = _betFromMap(Map<String, dynamic>.from(item));
+          if (bet.description.trim().isEmpty || bet.stake <= 0) continue;
+          if (existingBetIds.add(bet.id)) {
+            newBets.add(bet);
+          }
+        }
+      }
+
+      final existingSlipIds = _historicalSlips.map((s) => s.id).toSet();
+      final List<GeneratedSlip> newSlips = [];
+      for (final item in rawSlips) {
+        if (item is Map) {
+          final slip = _slipFromMap(Map<String, dynamic>.from(item));
+          if (slip.stake <= 0) continue;
+          if (existingSlipIds.add(slip.id)) {
+            newSlips.add(slip);
+          }
+        }
+      }
+
+      if (newBets.isEmpty && newSlips.isEmpty) {
+        _snack('All bets and slips from backup are already present.');
+        return;
+      }
+
+      setState(() {
+        if (newBets.isNotEmpty) _bets.insertAll(0, newBets);
+        if (newSlips.isNotEmpty) _historicalSlips.insertAll(0, newSlips);
+      });
+
+      await _saveData();
+      await _autoSettleBets();
+
+      if (!mounted) return;
+      _snack(
+        'Restored ${newBets.length} bet(s) and ${newSlips.length} slip(s).',
+      );
+    } catch (_) {
+      if (mounted) {
+        _snack('Invalid backup JSON. Check your pasted text and try again.');
+      }
+    } finally {
+      controller.dispose();
+    }
+    }
   // ----------------------------------------------------------------- widgets
   _SystemAutoStats _computeSystemAutoStats(
     List<GeneratedSlip> slips,
