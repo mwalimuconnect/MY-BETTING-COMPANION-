@@ -1213,7 +1213,7 @@ class SavedSlipsTab extends StatefulWidget {
 class _SavedSlipsTabState extends State<SavedSlipsTab> {
   late Future<_SlipsData> _slipsFuture;
   late Future<SlipAccessStatus> _accessFuture;
-  List<FixtureModel> _fixtures = const [];
+  List<FixtureModel> _fixtures = [];
 
   final TextEditingController _suggestedStakeController = TextEditingController();
   double? _customSuggestedStake;
