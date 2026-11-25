@@ -650,8 +650,7 @@ class SuggestedSlip {
       };
 
   factory SuggestedSlip.fromJson(Map<String, dynamic> j) {
-    final List> sel = [];
-
+    final List<Map<String, dynamic>> sel = [];
     final raw = j['selections'];
     if (raw is List) {
       for (final e in raw) {
