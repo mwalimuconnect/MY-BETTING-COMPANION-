@@ -1223,6 +1223,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 void initState() {
   super.initState();
   _slipsFuture = _fetch();
+  _accessFuture = _loadSlipAccessStatus();
 }
 
   @override
@@ -1327,7 +1328,7 @@ void initState() {
     );
   }
 
-  Widget _buildDayHeader(String dateStr) {
+    Widget _buildDayHeader(String dateStr) {
     final dt = DateTime.tryParse(dateStr);
     const months = [
       'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
@@ -1337,14 +1338,38 @@ void initState() {
       'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY',
       'FRIDAY', 'SATURDAY', 'SUNDAY',
     ];
-    final label = dt == null
-        ? dateStr
-        : '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
+
+    if (dt == null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+        child: Text(
+          dateStr.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF00C853),
+            letterSpacing: 1.2,
+          ),
+        ),
+      );
+    }
+
+    final now = DateTime.now();
+    final diff = DateTime(dt.year, dt.month, dt.day)
+        .difference(DateTime(now.year, now.month, now.day))
+        .inDays;
+    final prefix = diff == -1
+        ? 'YESTERDAY • '
+        : diff == 0
+            ? 'TODAY • '
+            : diff == 1
+                ? 'TOMORROW • '
+                : '';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
       child: Text(
-        label.toUpperCase(),
+        '$prefix${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}',
         style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
