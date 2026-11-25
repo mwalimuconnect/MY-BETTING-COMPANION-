@@ -938,7 +938,7 @@ class SuggestedSlipStore {
       );
 
       await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
-      if (slipDate == todayStr) {
+        if (slipDate.compareTo(todayStr) <= 0) {
         await saveSlipForHistory(slip);
       }
 
