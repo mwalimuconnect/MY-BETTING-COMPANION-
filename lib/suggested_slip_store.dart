@@ -915,12 +915,10 @@ class SuggestedSlipStore {
 
       final now = DateTime.now();
       String slipDate = todayStr;
-      var generated =
-          SlipGenerator.generateTargetSlip(fixtures, targetDay: now);
+      var generated = SlipGenerator.generateTargetSlip(fixtures);
       if (generated == null) {
         final tomorrow = now.add(const Duration(days: 1));
-        generated =
-            SlipGenerator.generateTargetSlip(fixtures, targetDay: tomorrow);
+        generated = SlipGenerator.generateTargetSlip(fixtures);
         slipDate = formatLocalDayKey(tomorrow);
       }
 
