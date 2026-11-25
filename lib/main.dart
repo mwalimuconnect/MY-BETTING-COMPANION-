@@ -7,8 +7,10 @@ import 'fixture_model.dart';
 import 'bankroll.dart';
 import 'notification_service.dart';
 import 'prediction_log.dart';
+import 'pick_evaluator.dart';
 import 'slip_generator.dart';
 import 'suggested_slip_store.dart';
+export 'suggested_slip_store.dart';
 import 'tables_screen.dart';
 import 'match_insights.dart';
 import 'slip_access_manager.dart';
@@ -20,6 +22,7 @@ const Color kSafaricomGreen = Color(0xFF3AA335);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppSettings.load();
+  await SuggestedSlipStore.archiveStaleActive();
   await NotificationService.init();
   await NotificationService.requestPermission();
   runApp(const MyBettingCompanionApp());
@@ -1230,8 +1233,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 
   Future<_SlipsData> _fetch() async {
     final legs = await SlipStore.loadLast7Days();
-    final suggested = await SuggestedSlipStore.load();
-    final history = await SuggestedSlipStore.loadHistory7Days();
 
     List<FixtureModel> fixtures = _fixtures;
     try {
@@ -1240,6 +1241,14 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       debugPrint('Could not load fixtures for slip evaluation: $e');
     }
 
+    // Archive yesterday's slip even if the Fixtures tab was never opened, then
+    // store final WON/LOST results so old slips never go back to PENDING.
+    await SuggestedSlipStore.archiveStaleActive();
+    await _lockInResults(fixtures);
+
+    final suggested = await SuggestedSlipStore.load();
+    final history = await SuggestedSlipStore.loadHistory7Days();
+
     if (suggested != null && _customSuggestedStake == null) {
       _customSuggestedStake = suggested.stake;
       _suggestedStakeController.text = suggested.stake.toStringAsFixed(0);
@@ -1247,11 +1256,16 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     return _SlipsData(legs, suggested, history, fixtures);
   }
 
-  void _loadSlips() {
-    setState(() {
-      _slipsFuture = _fetch();
-      _accessFuture = SlipAccessManager.checkAccess();
-    });
+  Future<void> _lockInResults(List<FixtureModel> fixtures) async {
+    if (fixtures.isEmpty) return;
+    final history = await SuggestedSlipStore.loadHistory7Days();
+    for (final entry in history.entries) {
+      if (entry.value.result.isNotEmpty) continue;
+      final bool? won = _evaluateSuggestedSlipWon(entry.value, fixtures);
+      if (won != null) {
+        await SuggestedSlipStore.saveResult(entry.key, won);
+      }
+    }
   }
 
   /// true = all legs won, false = at least one leg lost, null = pending/unsettled.
@@ -1290,37 +1304,12 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   }
 
   bool? _evaluateLegAgainstFixture(FixtureModel f, String tipLower) {
-    final parts = f.actualScore.split(RegExp(r'\s*[-:]\s*'));
-    if (parts.length != 2) return f.isPredictionWon;
-    final int? h = int.tryParse(parts[0].trim());
-    final int? a = int.tryParse(parts[1].trim());
-    if (h == null || a == null) return f.isPredictionWon;
-
-    final int total = h + a;
-    final home = f.homeTeam.toLowerCase();
-    final away = f.awayTeam.toLowerCase();
-
-    if (tipLower.contains('over 1.5')) return total > 1;
-    if (tipLower.contains('under 1.5')) return total < 1;
-    if (tipLower.contains('over 2.5')) return total > 2;
-    if (tipLower.contains('under 2.5')) return total < 2;
-    if (tipLower.contains('over 3.5')) return total > 3;
-    if (tipLower.contains('under 3.5')) return total < 3;
-    if (tipLower.contains('btts') || tipLower.contains('gg')) {
-      return h > 0 && a > 0;
-    }
-    if (tipLower.contains('(1x)') || tipLower.contains('$home or draw')) {
-      return h >= a;
-    }
-    if (tipLower.contains('(x2)') || tipLower.contains('$away or draw')) {
-      return a >= h;
-    }
-    if (tipLower.contains('(12)')) return h != a;
-    if (tipLower.contains('$home win') || tipLower == home) return h > a;
-    if (tipLower.contains('$away win') || tipLower == away) return a > h;
-    if (tipLower.contains('draw')) return h == a;
-
-    return f.isPredictionWon;
+  return evaluatePick(
+    pick: tipLower,
+    home: f.homeTeam,
+    away: f.awayTeam,
+    score: f.actualScore,
+  );
   }
 
   Widget _buildSystemPicksHeader() {
@@ -1372,7 +1361,9 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     List<FixtureModel> fixtures,
   ) {
     final double chance = slip.totalOdds > 0 ? 100 / slip.totalOdds : 0;
-    final bool? won = _evaluateSuggestedSlipWon(slip, fixtures);
+    final bool? won = slip.result.isNotEmpty
+    ? slip.result == 'won'
+    : _evaluateSuggestedSlipWon(slip, fixtures);
     final String statusLabel =
         won == null ? 'PENDING' : (won ? 'WON' : 'LOST');
     final Color statusColor = won == null
@@ -1851,9 +1842,6 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// History tab (PROLIFIC)
-// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // History tab (PROLIFIC)
 // ---------------------------------------------------------------------------
