@@ -18,12 +18,16 @@ class SlipAccessStatus {
 
 class SlipAccessManager {
   // Replace with your deployed Render backend base URL
-  static const String _baseUrl = 'https://my-betting-companion.onrender.com/api/access';
+  static const String _baseUrl =
+      'https://my-betting-companion.onrender.com/api/access';
   static const String _cachedAccessKey = 'cached_has_access';
   static const String _cachedAdminKey = 'cached_is_admin';
 
   /// Syncs phone, name, and PIN with MongoDB backend and returns access status.
-  static Future<SlipAccessStatus> checkAccess({String? overridePhone, String? pin}) async {
+  static Future<SlipAccessStatus> checkAccess({
+    String? overridePhone,
+    String? pin,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final phone = overridePhone ?? prefs.getString('profile_phone') ?? '';
     final name = prefs.getString('profile_name') ?? '';
@@ -34,21 +38,24 @@ class SlipAccessManager {
     }
 
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/check'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'name': name,
-          'pin': storedPin,
-        }),
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/check'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'phone': phone,
+              'name': name,
+              'pin': storedPin,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final bool hasAccess = data['hasAccess'] == true;
         final bool isAdmin = data['isAdmin'] == true;
-        final int waiverDays = (data['remainingWaiverDays'] as num?)?.toInt() ?? 0;
+        final int waiverDays =
+            (data['remainingWaiverDays'] as num?)?.toInt() ?? 0;
         final String serverPin = data['pin']?.toString() ?? '';
 
         await prefs.setBool(_cachedAccessKey, hasAccess);
@@ -75,14 +82,16 @@ class SlipAccessManager {
   /// Verifies registered phone on backend and updates the user's 4-digit PIN.
   static Future<bool> resetPin(String phone, String newPin) async {
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/reset-pin'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'newPin': newPin,
-        }),
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/reset-pin'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'phone': phone,
+              'newPin': newPin,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final prefs = await SharedPreferences.getInstance();
@@ -95,7 +104,10 @@ class SlipAccessManager {
   }
 
   /// Calls backend to activate subscription plan after M-Pesa payment.
-  static Future<bool> activatePlan(String planType, {String receipt = ''}) async {
+  static Future<bool> activatePlan(
+    String planType, {
+    String receipt = '',
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final phone = prefs.getString('profile_phone') ?? '';
     if (phone.isEmpty) return false;
