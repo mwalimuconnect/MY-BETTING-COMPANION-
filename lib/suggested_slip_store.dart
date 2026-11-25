@@ -605,7 +605,7 @@ class SlipStore {
 class SuggestedSlip {
   final String title;
   final double totalOdds;
-  final List> selections;
+  final List<Map<String, dynamic>> selections;
   
 
   final double stake;
@@ -732,7 +732,8 @@ class SuggestedSlipStore {
   }
 
   // ------------------------------------------------------- history (private)
-  static Future> _readHistoryRaw() async {
+  static Future<Map<String, dynamic>> _readHistoryRaw() async {
+    
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_historyKey);
     if (raw == null || raw.isEmpty) return {};
@@ -758,7 +759,8 @@ class SuggestedSlipStore {
   }
 
   // -------------------------------------------------------- history (public)
-  static Future> loadHistory7Days() {
+  static Future<Map<String, SuggestedSlip>> loadHistory7Days() async {
+    
     return _serial(() async {
       try {
         final pruned = _prune(await _readHistoryRaw());
