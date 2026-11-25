@@ -1244,11 +1244,15 @@ void initState() {
 
     // Archive yesterday's slip even if the Fixtures tab was never opened, then
     // store final WON/LOST results so old slips never go back to PENDING.
-    await SuggestedSlipStore.archiveStaleActive();
-    await _lockInResults(fixtures);
+      await SuggestedSlipStore.archiveStaleActive();
+      await _lockInResults(fixtures);
 
-    final suggested = await SuggestedSlipStore.load();
-    final history = await SuggestedSlipStore.loadHistory7Days();
+      if (fixtures.isNotEmpty) {
+        await SuggestedSlipStore.refresh(fixtures);
+      }
+
+      final suggested = await SuggestedSlipStore.load();
+      final history = await SuggestedSlipStore.loadHistory7Days();
 
     if (suggested != null && _customSuggestedStake == null) {
       _customSuggestedStake = suggested.stake;
