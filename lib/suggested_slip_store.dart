@@ -606,6 +606,7 @@ class SuggestedSlip {
   final String title;
   final double totalOdds;
   final List> selections;
+  
 
   final double stake;
   final double potentialPayout;
