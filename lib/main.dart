@@ -1220,10 +1220,10 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   bool _isEditingSuggested = false;
 
   @override
-  void initState() {
-    super.initState();
-    _loadSlips();
-  }
+void initState() {
+  super.initState();
+  _slipsFuture = _fetch();
+}
 
   @override
   void dispose() {
@@ -1731,6 +1731,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ),
     );
   }
+
   Widget _buildLockedSuggestedCard(BuildContext context) {
     return Card(
       color: ticketCardBg(context),
@@ -1765,7 +1766,9 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
               label: const Text('Pay to View Slip'),
               onPressed: () {
                 showSlipSubscriptionSheet(context, () async {
-                  _loadSlips();
+                  setState(() {
+                    _slipsFuture = _fetch();
+                  });
                 });
               },
             ),
@@ -1774,11 +1777,10 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ),
     );
   }
-
+  
   @override
   Widget build(BuildContext context) {
     final todayStr = SuggestedSlipStore.todayString();
-
     return FutureBuilder<_SlipsData>(
       future: _slipsFuture,
       builder: (context, snapshot) {
