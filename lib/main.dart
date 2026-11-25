@@ -1223,7 +1223,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
 void initState() {
   super.initState();
   _slipsFuture = _fetch();
-  _accessFuture = _loadSlipAccessStatus();
+  _accessFuture = SlipAccessManager.checkAccess();
 }
 
   @override
