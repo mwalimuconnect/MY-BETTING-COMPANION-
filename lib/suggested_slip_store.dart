@@ -731,7 +731,7 @@ class SuggestedSlipStore {
   }
 
   // ------------------------------------------------------- history (private)
-    static Future> _readHistoryRaw() async {
+    static Future<Map<String, SuggestedSlip>> _readHistoryRaw() async {  
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_historyKey);
     if (raw == null || raw.isEmpty) return <String, SuggestedSlip>{};
