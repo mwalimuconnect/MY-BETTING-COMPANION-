@@ -731,13 +731,12 @@ class SuggestedSlipStore {
   }
 
   // ------------------------------------------------------- history (private)
-  static Future<Map<String, dynamic>> _readHistoryRaw() async {
-    
+    static Future> _readHistoryRaw() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_historyKey);
-    if (raw == null || raw.isEmpty) return {};
+    if (raw == null || raw.isEmpty) return <String, SuggestedSlip>{};
     final decoded = jsonDecode(raw);
-    if (decoded is! Map) return {};
+    if (decoded is! Map) return <String, SuggestedSlip>{};
 
     final map = <String, SuggestedSlip>{};
     decoded.forEach((key, value) {
@@ -747,7 +746,7 @@ class SuggestedSlipStore {
       }
     });
     return map;
-  }
+    }
 
   static Future<void> _writeHistory(Map<String, SuggestedSlip> map) async {
     final prefs = await SharedPreferences.getInstance();
