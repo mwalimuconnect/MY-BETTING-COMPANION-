@@ -220,3 +220,4 @@ jobs:
           name: My Betting Companion v1.0.${{ github.run_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
