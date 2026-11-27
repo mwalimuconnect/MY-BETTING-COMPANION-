@@ -7,14 +7,11 @@ import 'fixture_model.dart';
 import 'bankroll.dart';
 import 'notification_service.dart';
 import 'prediction_log.dart';
-import 'slip_generator.dart';
-import 'slip_store.dart';
+import 'suggested_slip_store.dart';
 import 'tables_screen.dart';
 import 'match_insights.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
-const Color kTealGreen = Color(0xFF008080);
-const Color kSafaricomGreen = Color(0xFF3AA335);
 const Color kTealGreen = Color(0xFF008080);
 const Color kSafaricomGreen = Color(0xFF3AA335);
 
