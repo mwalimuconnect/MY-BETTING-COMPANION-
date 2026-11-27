@@ -252,12 +252,21 @@ class SlipGenerator {
     }
   }
 
-  static String _normalizeLeague(String rawLeague) {
+  /// Maps a raw competition name to a league that has its own rules. Shared
+  /// with the Prolific log so both use the same league names.
+  static String normalizeLeague(String rawLeague) {
     final String l = rawLeague.trim().toLowerCase();
     if (l.contains('eredivisie')) return 'Eredivisie';
     if (l.contains('serie a')) return 'Serie A';
     if (l.contains('ligue 1')) return 'Ligue 1';
-    if (l.contains('premier league') || l == 'epl') return 'Premier League';
+    // Exact names only, so "Kenyan Premier League" or "Russian Premier
+    // League" are not treated as the English league.
+    if (l == 'premier league' ||
+        l == 'epl' ||
+        l == 'english premier league' ||
+        l.contains('england - premier')) {
+      return 'Premier League';
+    }
     if (l.contains('bundesliga')) return 'Bundesliga';
     return rawLeague.trim().isEmpty ? 'Other' : rawLeague.trim();
   }
@@ -319,7 +328,7 @@ class SlipGenerator {
   // Probability / odds helpers
   // ------------------------------------------------------------
   /// Returns a percentage in (0, 100) or null if missing/invalid.
-  static double? _percent(dynamic raw) {
+  static double? percent(dynamic raw) {
     if (raw == null) return null;
     if (raw is num) {
       final double v = raw.toDouble();
@@ -329,6 +338,25 @@ class SlipGenerator {
     final double? value = double.tryParse(cleaned);
     if (value == null || value <= 0 || value >= 100) return null;
     return value;
+  }
+
+  /// Over 1.5 probability: the explicit figure, or an estimate from Over 2.5.
+  /// Shared so slips and the Prolific log never disagree on it.
+  static double? estimateOver15(FixtureModel f) {
+    final double? explicit = percent(f.over15Goals);
+    if (explicit != null) return explicit;
+    final double? o25 = percent(f.over25Goals);
+    return o25 == null ? null : (o25 + 16.0).clamp(55.0, 88.0).toDouble();
+  }
+
+  /// Under 3.5 probability: the explicit figure, or an estimate from Over 2.5.
+  static double? estimateUnder35(FixtureModel f) {
+    final double? explicit = percent(f.under35Goals);
+    if (explicit != null) return explicit;
+    final double? o25 = percent(f.over25Goals);
+    return o25 == null
+        ? null
+        : (100.0 - o25 + 22.0).clamp(55.0, 86.0).toDouble();
   }
 
   static double _impliedOdds(double prob) {
@@ -414,8 +442,7 @@ class SlipGenerator {
       maxLegsPerLeague: maxLegsPerLeague,
     );
   }
-
-  // ------------------------------------------------------------
+    // ------------------------------------------------------------
   // Candidate building (one fixture -> 0..n candidates)
   // ------------------------------------------------------------
   static List<_Candidate> _candidatesForFixture(
@@ -428,23 +455,17 @@ class SlipGenerator {
     final double awayProb = fixture.awayWinProb.toDouble();
     if (homeProb <= 0 && awayProb <= 0) return const [];
 
-    final String league = _normalizeLeague(fixture.league);
+    final String league = normalizeLeague(fixture.league);
     final _LeagueRule rule = _ruleForLeague(league);
 
     final String matchName = '${fixture.homeTeam} vs ${fixture.awayTeam}';
     final String safeKey = fixture.key ?? '';
     final String? kickoffIso = fixture.kickoff?.toIso8601String();
 
-    final double? over25 = _percent(fixture.over25Goals);
-    final double? over15Prob = _percent(fixture.over15Goals) ??
-        (over25 != null
-            ? (over25 + 16.0).clamp(55.0, 88.0).toDouble()
-            : null);
-    final double? under35Prob = _percent(fixture.under35Goals) ??
-        (over25 != null
-            ? (100.0 - over25 + 22.0).clamp(55.0, 86.0).toDouble()
-            : null);
-    final double? bttsProb = _percent(fixture.btts);
+    final double? over25 = percent(fixture.over25Goals);
+    final double? over15Prob = estimateOver15(fixture);
+    final double? under35Prob = estimateUnder35(fixture);
+    final double? bttsProb = percent(fixture.btts);
 
     final List<_Candidate> out = [];
 
@@ -499,7 +520,8 @@ class SlipGenerator {
         prob: over15Prob,
       );
     }
-        // 2. Double Chance (1X / X2 / 12)
+
+    // 2. Double Chance (1X / X2 / 12)
     if (homeProb >= _dcMinSideProb) {
       final double dcProb = homeProb + drawProb;
       if (dcProb < _dcMaxProb) {
@@ -967,3 +989,5 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
     );
   }
 }
+
+  
