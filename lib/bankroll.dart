@@ -14,7 +14,7 @@ import 'main.dart';
 import 'pick_evaluator.dart';
 import 'slip_access_manager.dart';
 import 'slip_generator.dart';
-import 'suggested_slip_store.dart';
+
 
 const Color _teal = kTealAccent;
 
