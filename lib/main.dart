@@ -1558,8 +1558,7 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
       ),
     );
   }
-
-    Widget _buildDayHeader(String dateStr) {
+  Widget _buildDayHeader(String dateStr) {
     final dt = DateTime.tryParse(dateStr);
     const months = [
       'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
@@ -1574,41 +1573,30 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
         ? dateStr
         : '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-      child: Text(
-        label.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Color(0xFF00C853),
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-  
-    final now = DateTime.now();
-    final diff = DateTime(dt.year, dt.month, dt.day)
-        .difference(DateTime(now.year, now.month, now.day))
-        .inDays;
-    final prefix = diff == -1
-        ? 'YESTERDAY • '
-        : diff == 0
-            ? 'TODAY • '
-            : diff == 1
-                ? 'TOMORROW • '
-                : '';
+    var prefix = '';
+    if (dt != null) {
+      final now = DateTime.now();
+      final diff = DateTime(dt.year, dt.month, dt.day)
+          .difference(DateTime(now.year, now.month, now.day))
+          .inDays;
+      prefix = diff == -1
+          ? 'YESTERDAY • '
+          : diff == 0
+              ? 'TODAY • '
+              : diff == 1
+                  ? 'TOMORROW • '
+                  : '';
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
       child: Text(
-        '$prefix${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}',
+        '$prefix$label',
         style: const TextStyle(
           fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Color(0xFF00C853),
-          letterSpacing: 1.2,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
+          color: Colors.black54,
         ),
       ),
     );
