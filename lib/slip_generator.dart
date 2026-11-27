@@ -663,14 +663,14 @@ class SlipGenerator {
     if (odds >= _comboMinOdds) {
       return _buildSlip(
         odds <= _targetMinOdds
-            ? '⚡ Daily Value Combo (2-5x)'
-            : '⚡ Custom Combo Slip',
+            ? '💎  Daily Value Combo (2-5x)'
+            : '🎯  Custom Combo Slip',
         picks,
         odds,
       );
     }
 
-    return _buildSlip('⚡ Light Slate Combo', picks, odds);
+    return _buildSlip('⚡  Light Slate Combo', picks, odds);
   }
 }
 
