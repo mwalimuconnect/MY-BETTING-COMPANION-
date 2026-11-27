@@ -447,6 +447,7 @@ Widget _statusPill(String label, Color fg, Color bg) {
     ),
   );
 }
+
 Widget _buildLegStatusChip(String status) {
   switch (status) {
     case 'won':
@@ -510,7 +511,6 @@ Widget _buildLegCard(
     ),
   );
 }
-
 /// Renders today's saved picks at the top and puts previous days (up to the
 /// rolling window, starting with yesterday) inside a foldable flap.
 Widget buildWeeklySavedSlipsList(
@@ -915,10 +915,12 @@ class SuggestedSlipStore {
 
       final now = DateTime.now();
       String slipDate = todayStr;
-      var generated = SlipGenerator.generateTargetSlip(fixtures);
+      var generated =
+          SlipGenerator.generateTargetSlip(fixtures, targetDay: now);
       if (generated == null) {
         final tomorrow = now.add(const Duration(days: 1));
-        generated = SlipGenerator.generateTargetSlip(fixtures);
+        generated =
+            SlipGenerator.generateTargetSlip(fixtures, targetDay: tomorrow);
         slipDate = formatLocalDayKey(tomorrow);
       }
 
@@ -938,7 +940,7 @@ class SuggestedSlipStore {
       );
 
       await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
-        if (slipDate.compareTo(todayStr) <= 0) {
+      if (slipDate == todayStr) {
         await saveSlipForHistory(slip);
       }
 
