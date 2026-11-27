@@ -950,7 +950,7 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey, fontSize: 12),
           ),
-          const SizedBox(height: 12),
+         const SizedBox(height: 12),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: _teal,
@@ -959,14 +959,13 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
             icon: const Icon(Icons.vpn_key, size: 18),
             label: const Text('Unlock Slip (From Ksh 50)'),
             onPressed: () {
-              showSlipSubscriptionSheet(context, _verifyAccess);
-              },
-            },
-          ),
-        ],
-      ),
-    );
-  }
+            showSlipSubscriptionSheet(context, _verifyAccess);
+             },
+           ),
+          ],
+        ),
+      );
+    }  
 
   Widget _badge(String text, Color color) {
     return Container(
