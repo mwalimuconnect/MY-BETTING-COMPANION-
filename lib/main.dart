@@ -7,22 +7,20 @@ import 'fixture_model.dart';
 import 'bankroll.dart';
 import 'notification_service.dart';
 import 'prediction_log.dart';
-import 'pick_evaluator.dart';
 import 'slip_generator.dart';
-import 'suggested_slip_store.dart';
-export 'suggested_slip_store.dart';
+import 'slip_store.dart';
 import 'tables_screen.dart';
 import 'match_insights.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
-
+const Color kTealGreen = Color(0xFF008080);
+const Color kSafaricomGreen = Color(0xFF3AA335);
 const Color kTealGreen = Color(0xFF008080);
 const Color kSafaricomGreen = Color(0xFF3AA335);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppSettings.load();
-  await SuggestedSlipStore.archiveStaleActive();
   await NotificationService.init();
   await NotificationService.requestPermission();
   runApp(const MyBettingCompanionApp());
@@ -96,7 +94,7 @@ final GlobalKey _bankrollKey = GlobalKey();
         return const TablesScreen();
     }
   }
-
+  
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -143,7 +141,7 @@ final GlobalKey _bankrollKey = GlobalKey();
             ),
         ],
       ),
-      body: _buildCurrentTab(),
+body: _buildCurrentTab(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         type: BottomNavigationBarType.fixed,
@@ -175,6 +173,228 @@ final GlobalKey _bankrollKey = GlobalKey();
         ],
       ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Suggested slip (5-10 combined odds), built automatically from fixtures daily
+// ---------------------------------------------------------------------------
+class SuggestedSlip {
+  final String title;
+  final double totalOdds;
+  final List<Map<String, dynamic>> selections;
+  
+  final double stake;
+  final double potentialPayout;
+  final String date;
+
+  const SuggestedSlip({
+    required this.title,
+    required this.totalOdds,
+    required this.selections,
+    this.stake = 200.0,
+    double? potentialPayout,
+    required this.date,
+  }) : potentialPayout = potentialPayout ?? (totalOdds * stake);
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'totalOdds': totalOdds,
+        'selections': selections,
+        'stake': stake,
+        'potentialPayout': potentialPayout,
+        'date': date,
+      };
+
+  factory SuggestedSlip.fromJson(Map<String, dynamic> j) {
+    final List<Map<String, dynamic>> sel = [];
+    
+    final raw = j['selections'];
+    if (raw is List) {
+      for (final e in raw) {
+        if (e is Map) {
+          sel.add(Map<String, dynamic>.from(e));
+        }
+      }
+    }
+    final double odds =
+        j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0;
+    final double parsedStake =
+        j['stake'] is num ? (j['stake'] as num).toDouble() : 200.0;
+    final double parsedPayout = j['potentialPayout'] is num
+        ? (j['potentialPayout'] as num).toDouble()
+        : (odds * parsedStake);
+
+    return SuggestedSlip(
+      title: j['title']?.toString() ?? 'Suggested slip',
+      totalOdds: odds,
+      selections: sel,
+      stake: parsedStake,
+      potentialPayout: parsedPayout,
+      date: j['date']?.toString() ?? SuggestedSlipStore.todayString(),
+    );
+  }
+}
+class SuggestedSlipStore {
+  static const String _slipKey = 'suggested_slip_v2';
+  static const String _historyKey = 'suggested_slip_history_7d_v1';
+  static const String _notifiedDayKey = 'suggested_slip_notified_day';
+
+  static const String note =
+      'Odds are model-implied (100 divided by win probability), not bookmaker odds. '
+      'Real bookmaker odds will be lower. No slip is guaranteed to win.';
+
+  /// Today's date as YYYY-MM-DD (phone time).
+  static String todayString() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  static String yesterdayString() {
+    final y = DateTime.now().subtract(const Duration(days: 1));
+    return '${y.year}-${y.month.toString().padLeft(2, '0')}-${y.day.toString().padLeft(2, '0')}';
+  }
+
+  static String _cutoffDateString([DateTime? now]) {
+    final current = now ?? DateTime.now();
+    final cutoff = DateTime(current.year, current.month, current.day)
+        .subtract(const Duration(days: 6)); // 7 days inclusive: today + 6 prior days
+    return '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
+  }
+
+  static Map<String, SuggestedSlip> _prune7Days(
+      Map<String, SuggestedSlip> source) {
+    final cutoff = _cutoffDateString();
+    final entries = source.entries
+        .where((e) => e.key.compareTo(cutoff) >= 0)
+        .toList()
+      ..sort((a, b) => b.key.compareTo(a.key)); // Newest day first
+    return {for (final e in entries) e.key: e.value};
+  }
+  static Future<Map<String, SuggestedSlip>> loadHistory7Days() async {
+
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_historyKey);
+      if (raw == null || raw.isEmpty) return {};
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+
+      final map = <String, SuggestedSlip>{};
+      decoded.forEach((key, value) {
+        if (value is Map) {
+          final slip = SuggestedSlip.fromJson(Map<String, dynamic>.from(value));
+          final dateKey = slip.date.isNotEmpty ? slip.date : key.toString();
+          map[dateKey] = slip;
+        }
+      });
+
+      final pruned = _prune7Days(map);
+      await prefs.setString(
+        _historyKey,
+        jsonEncode({for (final e in pruned.entries) e.key: e.value.toJson()}),
+      );
+      return pruned;
+    } catch (e) {
+      debugPrint('Could not load 7-day suggested slip history: $e');
+      return {};
+    }
+  }
+    static Future<void> saveSlipForHistory(SuggestedSlip slip) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final history = await loadHistory7Days();
+      final key = slip.date.isNotEmpty ? slip.date : todayString();
+      history[key] = slip;
+      final pruned = _prune7Days(history);
+      await prefs.setString(
+        _historyKey,
+        jsonEncode({for (final e in pruned.entries) e.key: e.value.toJson()}),
+      );
+    } catch (e) {
+      debugPrint('Could not save slip to 7-day history: $e');
+    }
+  }
+
+  static Future<SuggestedSlip?> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_slipKey);
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return SuggestedSlip.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (e) {
+      debugPrint('Could not load suggested slip: $e');
+      return null;
+    }
+  }
+    /// Saves an updated custom stake for today's active suggested slip and updates 7-day history
+  static Future<void> updateStake(double newStake) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final slip = await load();
+      if (slip != null) {
+        final updatedSlip = SuggestedSlip(
+          title: slip.title,
+          totalOdds: slip.totalOdds,
+          selections: slip.selections,
+          stake: newStake,
+          date: slip.date,
+        );
+        await prefs.setString(_slipKey, jsonEncode(updatedSlip.toJson()));
+        await saveSlipForHistory(updatedSlip);
+      }
+    } catch (e) {
+      debugPrint('Could not update suggested slip stake: $e');
+    }
+  }
+    /// Builds one slip per day from the latest fixtures, archives into 7-day history,
+  /// and sends one notification for it.
+  static Future<void> refresh(List<FixtureModel> fixtures) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final todayStr = todayString();
+      final existing = await load();
+
+      // Today's slip already exists: keep it and ensure it is in 7-day history.
+      if (existing != null && existing.date == todayStr) {
+        await saveSlipForHistory(existing);
+        return;
+      }
+
+      // Archive yesterday's/prior slip before replacing active slot if present
+      if (existing != null && existing.date.isNotEmpty) {
+        await saveSlipForHistory(existing);
+      }
+
+      final generated = SlipGenerator.generateTargetSlip(fixtures);
+      if (generated == null) {
+        if (existing != null) await prefs.remove(_slipKey);
+        return;
+      }
+
+      final slip = SuggestedSlip(
+        title: generated.title,
+        totalOdds: generated.totalOdds,
+        selections: List.from(generated.selections),
+        date: todayStr,
+      );
+
+      await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
+      await saveSlipForHistory(slip);
+
+      if (prefs.getString(_notifiedDayKey) != todayStr) {
+        await prefs.setString(_notifiedDayKey, todayStr);
+        await NotificationService.showNow(
+          slip.title,
+          'New daily slip ready: ${slip.totalOdds.toStringAsFixed(2)}x. Open the Slips tab to view the picks.',
+        );
+      }
+    } catch (e) {
+      debugPrint('Suggested slip refresh failed: $e');
+    }
   }
 }
 
@@ -1220,11 +1440,10 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   bool _isEditingSuggested = false;
 
   @override
-void initState() {
-  super.initState();
-  _slipsFuture = _fetch();
-  _accessFuture = SlipAccessManager.checkAccess();
-}
+  void initState() {
+    super.initState();
+    _loadSlips();
+  }
 
   @override
   void dispose() {
@@ -1234,26 +1453,14 @@ void initState() {
 
   Future<_SlipsData> _fetch() async {
     final legs = await SlipStore.loadLast7Days();
-
+    final suggested = await SuggestedSlipStore.load();
+    final history = await SuggestedSlipStore.loadHistory7Days();
     List<FixtureModel> fixtures = _fixtures;
     try {
       fixtures = await ApiService.fetchFixtures();
     } catch (e) {
       debugPrint('Could not load fixtures for slip evaluation: $e');
     }
-
-    // Archive yesterday's slip even if the Fixtures tab was never opened, then
-    // store final WON/LOST results so old slips never go back to PENDING.
-      await SuggestedSlipStore.archiveStaleActive();
-      await _lockInResults(fixtures);
-
-      if (fixtures.isNotEmpty) {
-        await SuggestedSlipStore.refresh(fixtures);
-      }
-
-      final suggested = await SuggestedSlipStore.load();
-      final history = await SuggestedSlipStore.loadHistory7Days();
-
     if (suggested != null && _customSuggestedStake == null) {
       _customSuggestedStake = suggested.stake;
       _suggestedStakeController.text = suggested.stake.toStringAsFixed(0);
@@ -1261,18 +1468,13 @@ void initState() {
     return _SlipsData(legs, suggested, history, fixtures);
   }
 
-  Future<void> _lockInResults(List<FixtureModel> fixtures) async {
-    if (fixtures.isEmpty) return;
-    final history = await SuggestedSlipStore.loadHistory7Days();
-    for (final entry in history.entries) {
-      if (entry.value.result.isNotEmpty) continue;
-      final bool? won = _evaluateSuggestedSlipWon(entry.value, fixtures);
-      if (won != null) {
-        await SuggestedSlipStore.saveResult(entry.key, won);
-      }
-    }
+  void _loadSlips() {
+    setState(() {
+      _slipsFuture = _fetch();
+      _accessFuture = SlipAccessManager.checkAccess();
+    });
   }
-
+  
   /// true = all legs won, false = at least one leg lost, null = pending/unsettled.
   bool? _evaluateSuggestedSlipWon(
     SuggestedSlip slip,
@@ -1309,12 +1511,37 @@ void initState() {
   }
 
   bool? _evaluateLegAgainstFixture(FixtureModel f, String tipLower) {
-  return evaluatePick(
-    pick: tipLower,
-    home: f.homeTeam,
-    away: f.awayTeam,
-    score: f.actualScore,
-  );
+    final parts = f.actualScore.split(RegExp(r'\s*[-:]\s*'));
+    if (parts.length != 2) return f.isPredictionWon;
+    final int? h = int.tryParse(parts[0].trim());
+    final int? a = int.tryParse(parts[1].trim());
+    if (h == null || a == null) return f.isPredictionWon;
+
+    final int total = h + a;
+    final home = f.homeTeam.toLowerCase();
+    final away = f.awayTeam.toLowerCase();
+
+    if (tipLower.contains('over 1.5')) return total > 1;
+    if (tipLower.contains('under 1.5')) return total < 1;
+    if (tipLower.contains('over 2.5')) return total > 2;
+    if (tipLower.contains('under 2.5')) return total < 2;
+    if (tipLower.contains('over 3.5')) return total > 3;
+    if (tipLower.contains('under 3.5')) return total < 3;
+    if (tipLower.contains('btts') || tipLower.contains('gg')) {
+      return h > 0 && a > 0;
+    }
+    if (tipLower.contains('(1x)') || tipLower.contains('$home or draw')) {
+      return h >= a;
+    }
+    if (tipLower.contains('(x2)') || tipLower.contains('$away or draw')) {
+      return a >= h;
+    }
+    if (tipLower.contains('(12)')) return h != a;
+    if (tipLower.contains('$home win') || tipLower == home) return h > a;
+    if (tipLower.contains('$away win') || tipLower == away) return a > h;
+    if (tipLower.contains('draw')) return h == a;
+
+    return f.isPredictionWon;
   }
 
   Widget _buildSystemPicksHeader() {
@@ -1343,21 +1570,24 @@ void initState() {
       'FRIDAY', 'SATURDAY', 'SUNDAY',
     ];
 
-    if (dt == null) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-        child: Text(
-          dateStr.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF00C853),
-            letterSpacing: 1.2,
-          ),
-        ),
-      );
-    }
+    final label = dt == null
+        ? dateStr
+        : '${days[dt.weekday - 1]}, ${dt.day} ${months[dt.month - 1]} ${dt.year}';
 
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF00C853),
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+  
     final now = DateTime.now();
     final diff = DateTime(dt.year, dt.month, dt.day)
         .difference(DateTime(now.year, now.month, now.day))
