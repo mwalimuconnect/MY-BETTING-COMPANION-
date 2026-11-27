@@ -654,7 +654,7 @@ class SlipGenerator {
         odds *= c.odds;
 
         if (odds >= _targetMinOdds && odds <= _targetMaxOdds) {
-          return _buildSlip('馃敟 Prolific Value Accumulator', picks, odds);
+          return _buildSlip('🔥 Prolific Value Accumulator', picks, odds);
         }
       }
     }
@@ -664,14 +664,14 @@ class SlipGenerator {
     if (odds >= _comboMinOdds) {
       return _buildSlip(
         odds <= _targetMinOdds
-            ? '鈿� Daily Value Combo (2-5x)'
-            : '鈿� Custom Combo Slip',
+            ? '⚡ Daily Value Combo (2-5x)'
+            : '⚡ Custom Combo Slip',
         picks,
         odds,
       );
     }
 
-    return _buildSlip('鈿� Light Slate Combo', picks, odds);
+    return _buildSlip('⚡ Light Slate Combo', picks, odds);
   }
 }
 
