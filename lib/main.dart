@@ -12,6 +12,9 @@ import 'tables_screen.dart';
 import 'match_insights.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
+import 'suggested_slip_store.dart';
+export 'suggested_slip_store.dart';
+
 const Color kTealGreen = Color(0xFF008080);
 const Color kSafaricomGreen = Color(0xFF3AA335);
 
@@ -20,6 +23,7 @@ void main() async {
   await AppSettings.load();
   await NotificationService.init();
   await NotificationService.requestPermission();
+  await SuggestedSlipStore.archiveStaleActive();
   runApp(const MyBettingCompanionApp());
 }
 
@@ -169,228 +173,6 @@ body: _buildCurrentTab(),
         ],
       ),
     );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Suggested slip (5-10 combined odds), built automatically from fixtures daily
-// ---------------------------------------------------------------------------
-class SuggestedSlip {
-  final String title;
-  final double totalOdds;
-  final List<Map<String, dynamic>> selections;
-  
-  final double stake;
-  final double potentialPayout;
-  final String date;
-
-  const SuggestedSlip({
-    required this.title,
-    required this.totalOdds,
-    required this.selections,
-    this.stake = 200.0,
-    double? potentialPayout,
-    required this.date,
-  }) : potentialPayout = potentialPayout ?? (totalOdds * stake);
-
-  Map<String, dynamic> toJson() => {
-        'title': title,
-        'totalOdds': totalOdds,
-        'selections': selections,
-        'stake': stake,
-        'potentialPayout': potentialPayout,
-        'date': date,
-      };
-
-  factory SuggestedSlip.fromJson(Map<String, dynamic> j) {
-    final List<Map<String, dynamic>> sel = [];
-    
-    final raw = j['selections'];
-    if (raw is List) {
-      for (final e in raw) {
-        if (e is Map) {
-          sel.add(Map<String, dynamic>.from(e));
-        }
-      }
-    }
-    final double odds =
-        j['totalOdds'] is num ? (j['totalOdds'] as num).toDouble() : 0;
-    final double parsedStake =
-        j['stake'] is num ? (j['stake'] as num).toDouble() : 200.0;
-    final double parsedPayout = j['potentialPayout'] is num
-        ? (j['potentialPayout'] as num).toDouble()
-        : (odds * parsedStake);
-
-    return SuggestedSlip(
-      title: j['title']?.toString() ?? 'Suggested slip',
-      totalOdds: odds,
-      selections: sel,
-      stake: parsedStake,
-      potentialPayout: parsedPayout,
-      date: j['date']?.toString() ?? SuggestedSlipStore.todayString(),
-    );
-  }
-}
-class SuggestedSlipStore {
-  static const String _slipKey = 'suggested_slip_v2';
-  static const String _historyKey = 'suggested_slip_history_7d_v1';
-  static const String _notifiedDayKey = 'suggested_slip_notified_day';
-
-  static const String note =
-      'Odds are model-implied (100 divided by win probability), not bookmaker odds. '
-      'Real bookmaker odds will be lower. No slip is guaranteed to win.';
-
-  /// Today's date as YYYY-MM-DD (phone time).
-  static String todayString() {
-    final now = DateTime.now();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-  }
-
-  static String yesterdayString() {
-    final y = DateTime.now().subtract(const Duration(days: 1));
-    return '${y.year}-${y.month.toString().padLeft(2, '0')}-${y.day.toString().padLeft(2, '0')}';
-  }
-
-  static String _cutoffDateString([DateTime? now]) {
-    final current = now ?? DateTime.now();
-    final cutoff = DateTime(current.year, current.month, current.day)
-        .subtract(const Duration(days: 6)); // 7 days inclusive: today + 6 prior days
-    return '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
-  }
-
-  static Map<String, SuggestedSlip> _prune7Days(
-      Map<String, SuggestedSlip> source) {
-    final cutoff = _cutoffDateString();
-    final entries = source.entries
-        .where((e) => e.key.compareTo(cutoff) >= 0)
-        .toList()
-      ..sort((a, b) => b.key.compareTo(a.key)); // Newest day first
-    return {for (final e in entries) e.key: e.value};
-  }
-  static Future<Map<String, SuggestedSlip>> loadHistory7Days() async {
-
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_historyKey);
-      if (raw == null || raw.isEmpty) return {};
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return {};
-
-      final map = <String, SuggestedSlip>{};
-      decoded.forEach((key, value) {
-        if (value is Map) {
-          final slip = SuggestedSlip.fromJson(Map<String, dynamic>.from(value));
-          final dateKey = slip.date.isNotEmpty ? slip.date : key.toString();
-          map[dateKey] = slip;
-        }
-      });
-
-      final pruned = _prune7Days(map);
-      await prefs.setString(
-        _historyKey,
-        jsonEncode({for (final e in pruned.entries) e.key: e.value.toJson()}),
-      );
-      return pruned;
-    } catch (e) {
-      debugPrint('Could not load 7-day suggested slip history: $e');
-      return {};
-    }
-  }
-    static Future<void> saveSlipForHistory(SuggestedSlip slip) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final history = await loadHistory7Days();
-      final key = slip.date.isNotEmpty ? slip.date : todayString();
-      history[key] = slip;
-      final pruned = _prune7Days(history);
-      await prefs.setString(
-        _historyKey,
-        jsonEncode({for (final e in pruned.entries) e.key: e.value.toJson()}),
-      );
-    } catch (e) {
-      debugPrint('Could not save slip to 7-day history: $e');
-    }
-  }
-
-  static Future<SuggestedSlip?> load() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_slipKey);
-      if (raw == null || raw.isEmpty) return null;
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return null;
-      return SuggestedSlip.fromJson(Map<String, dynamic>.from(decoded));
-    } catch (e) {
-      debugPrint('Could not load suggested slip: $e');
-      return null;
-    }
-  }
-    /// Saves an updated custom stake for today's active suggested slip and updates 7-day history
-  static Future<void> updateStake(double newStake) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final slip = await load();
-      if (slip != null) {
-        final updatedSlip = SuggestedSlip(
-          title: slip.title,
-          totalOdds: slip.totalOdds,
-          selections: slip.selections,
-          stake: newStake,
-          date: slip.date,
-        );
-        await prefs.setString(_slipKey, jsonEncode(updatedSlip.toJson()));
-        await saveSlipForHistory(updatedSlip);
-      }
-    } catch (e) {
-      debugPrint('Could not update suggested slip stake: $e');
-    }
-  }
-    /// Builds one slip per day from the latest fixtures, archives into 7-day history,
-  /// and sends one notification for it.
-  static Future<void> refresh(List<FixtureModel> fixtures) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final todayStr = todayString();
-      final existing = await load();
-
-      // Today's slip already exists: keep it and ensure it is in 7-day history.
-      if (existing != null && existing.date == todayStr) {
-        await saveSlipForHistory(existing);
-        return;
-      }
-
-      // Archive yesterday's/prior slip before replacing active slot if present
-      if (existing != null && existing.date.isNotEmpty) {
-        await saveSlipForHistory(existing);
-      }
-
-      final generated = SlipGenerator.generateTargetSlip(fixtures);
-      if (generated == null) {
-        if (existing != null) await prefs.remove(_slipKey);
-        return;
-      }
-
-      final slip = SuggestedSlip(
-        title: generated.title,
-        totalOdds: generated.totalOdds,
-        selections: List.from(generated.selections),
-        date: todayStr,
-      );
-
-      await prefs.setString(_slipKey, jsonEncode(slip.toJson()));
-      await saveSlipForHistory(slip);
-
-      if (prefs.getString(_notifiedDayKey) != todayStr) {
-        await prefs.setString(_notifiedDayKey, todayStr);
-        await NotificationService.showNow(
-          slip.title,
-          'New daily slip ready: ${slip.totalOdds.toStringAsFixed(2)}x. Open the Slips tab to view the picks.',
-        );
-      }
-    } catch (e) {
-      debugPrint('Suggested slip refresh failed: $e');
-    }
   }
 }
 
@@ -1446,17 +1228,31 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     _suggestedStakeController.dispose();
     super.dispose();
   }
-
-  Future<_SlipsData> _fetch() async {
+  
+Future<_SlipsData> _fetch() async {
     final legs = await SlipStore.loadLast7Days();
-    final suggested = await SuggestedSlipStore.load();
-    final history = await SuggestedSlipStore.loadHistory7Days();
+
     List<FixtureModel> fixtures = _fixtures;
     try {
       fixtures = await ApiService.fetchFixtures();
     } catch (e) {
       debugPrint('Could not load fixtures for slip evaluation: $e');
     }
+
+    // Generate today's slip here too, so it no longer depends on having
+    // opened the Fixtures tab first.
+    if (fixtures.isNotEmpty) {
+      await SuggestedSlipStore.refresh(fixtures);
+    }
+
+    // Archive yesterday's slip, then store final WON/LOST results so old
+    // slips never go back to PENDING.
+    await SuggestedSlipStore.archiveStaleActive();
+    await _lockInResults(fixtures);
+
+    final suggested = await SuggestedSlipStore.load();
+    final history = await SuggestedSlipStore.loadHistory7Days();
+
     if (suggested != null && _customSuggestedStake == null) {
       _customSuggestedStake = suggested.stake;
       _suggestedStakeController.text = suggested.stake.toStringAsFixed(0);
@@ -1464,6 +1260,18 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
     return _SlipsData(legs, suggested, history, fixtures);
   }
 
+  Future<void> _lockInResults(List<FixtureModel> fixtures) async {
+    if (fixtures.isEmpty) return;
+    final history = await SuggestedSlipStore.loadHistory7Days();
+    for (final entry in history.entries) {
+      if (entry.value.result.isNotEmpty) continue;
+      final bool? won = _evaluateSuggestedSlipWon(entry.value, fixtures);
+      if (won != null) {
+        await SuggestedSlipStore.saveResult(entry.key, won);
+      }
+    }
+  }
+  
   void _loadSlips() {
     setState(() {
       _slipsFuture = _fetch();
@@ -2087,216 +1895,3 @@ class _SavedSlipsTabState extends State<SavedSlipsTab> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// History tab (PROLIFIC)
-// ---------------------------------------------------------------------------
-class PredictionLogTab extends StatefulWidget {
-  const PredictionLogTab({super.key});
-
-  @override
-  State<PredictionLogTab> createState() => _PredictionLogTabState();
-}
-
-class _PredictionLogTabState extends State<PredictionLogTab> {
-  late Future<List<LogEntry>> _logFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadLog();
-  }
-
-  void _loadLog() {
-    setState(() {
-      _logFuture = PredictionLog.load();
-    });
-  }
-
-  DateTime? _extractEntryDate(LogEntry entry) {
-    final dynamic dyn = entry;
-    final candidates = <dynamic>[
-      () => dyn.matchDate,
-      () => dyn.kickoff,
-      () => dyn.date,
-      () => dyn.createdAt,
-      () => dyn.timestamp,
-    ];
-
-    for (final getter in candidates) {
-      try {
-        final val = getter();
-        if (val is DateTime) return val;
-        if (val is String && val.isNotEmpty) {
-          final parsed = DateTime.tryParse(val);
-          if (parsed != null) return parsed;
-        }
-      } catch (_) {}
-    }
-    return null;
-  }
-
-  String _dayBucketLabel(DateTime? dt) {
-    if (dt == null) return 'Scheduled';
-    final local = dt.toLocal();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(local.year, local.month, local.day);
-    final diff = target.difference(today).inDays;
-
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Tomorrow';
-    if (diff == -1) return 'Yesterday';
-    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<LogEntry>>(
-      future: _logFuture,
-      builder: (context, snapshot) {
-        Widget body;
-
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          body = const Center(child: CircularProgressIndicator());
-        } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          body = const Center(child: Text('No prediction history recorded yet.'));
-        } else {
-          final entries = List<LogEntry>.from(snapshot.data!);
-          entries.sort((a, b) {
-            final da = _extractEntryDate(a);
-            final db = _extractEntryDate(b);
-            if (da == null && db == null) return 0;
-            if (da == null) return 1;
-            if (db == null) return -1;
-            return da.compareTo(db);
-          });
-
-          final stats = PredictionLog.stats(entries);
-
-          body = Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Card(
-                  color: cardBg(context),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _statItem('Total', '${stats.total}'),
-                        _statItem('Settled', '${stats.settled}'),
-                        _statItem('Wins', '${stats.wins}'),
-                        _statItem(
-                          'Hit Rate',
-                          '${(stats.hitRate * 100).toStringAsFixed(1)}%',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    final currentLabel =
-                        _dayBucketLabel(_extractEntryDate(entry));
-                    final prevLabel = index > 0
-                        ? _dayBucketLabel(_extractEntryDate(entries[index - 1]))
-                        : null;
-                    final showHeader = index == 0 || currentLabel != prevLabel;
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (showHeader)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
-                            child: Text(
-                              currentLabel.toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.0,
-                                color: Colors.amber,
-                              ),
-                            ),
-                          ),
-                        Card(
-                          color: cardBg(context),
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            onTap: () => showLogEntryInsight(context, entry),
-                            title: Text('${entry.home} vs ${entry.away}'),
-                            subtitle: Text(
-                              'Tip: ${entry.tip} | League: ${entry.league}',
-                            ),
-                            trailing: _buildStatusBadge(entry),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          );
-        }
-
-        return Column(
-          children: [
-            buildProlificHeader(),
-            Expanded(child: body),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _statItem(String label, String value) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatusBadge(LogEntry entry) {
-    if (!entry.settled) {
-      return const Chip(
-        label: Text(
-          'Pending',
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        backgroundColor: Colors.amberAccent,
-      );
-    } else if (entry.isVoid) {
-      return const Chip(
-        label: Text('Void', style: TextStyle(fontSize: 10)),
-        backgroundColor: Colors.grey,
-      );
-    } else if (entry.won == true) {
-      return const Chip(
-        label: Text('Won', style: TextStyle(fontSize: 10, color: Colors.white)),
-        backgroundColor: kSafaricomGreen,
-      );
-    } else {
-      return const Chip(
-        label: Text('Lost', style: TextStyle(fontSize: 10, color: Colors.white)),
-        backgroundColor: Colors.red,
-      );
-    }
-  }
-}
