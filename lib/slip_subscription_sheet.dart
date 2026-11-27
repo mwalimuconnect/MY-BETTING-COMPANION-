@@ -1,8 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
+import 'mpesa_service.dart';
 import 'slip_access_manager.dart';
 
 const Color _teal = Color(0xFF008080);
+
+const Map<String, int> _planAmounts = {
+  'daily': 50,
+  'weekly': 200,
+  'monthly': 500,
+};
+
+String _normalizePhone(String raw) {
+  var cleaned = raw.replaceAll(RegExp(r'\s+'), '');
+  if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
+  if (cleaned.startsWith('0')) cleaned = '254${cleaned.substring(1)}';
+  return cleaned;
+}
 
 void showSlipSubscriptionSheet(
   BuildContext context,
@@ -30,7 +45,7 @@ void showSlipSubscriptionSheet(
           ),
           const SizedBox(height: 6),
           const Text(
-            'Choose a plan to instantly unlock AI-powered value accumulators:',
+            'Choose a plan to initiate an M-Pesa STK Push and unlock system slips:',
             style: TextStyle(fontSize: 13, color: Colors.grey),
           ),
           const SizedBox(height: 16),
@@ -53,7 +68,7 @@ void showSlipSubscriptionSheet(
               ),
               onPressed: () async {
                 Navigator.pop(ctx);
-                await _simulateMpesaPayment(context, 'daily', onUnlocked);
+                await _startMpesaPayment(context, 'daily', onUnlocked);
               },
               child: const Text('Ksh 50'),
             ),
@@ -78,7 +93,7 @@ void showSlipSubscriptionSheet(
               ),
               onPressed: () async {
                 Navigator.pop(ctx);
-                await _simulateMpesaPayment(context, 'weekly', onUnlocked);
+                await _startMpesaPayment(context, 'weekly', onUnlocked);
               },
               child: const Text('Ksh 200'),
             ),
@@ -103,7 +118,7 @@ void showSlipSubscriptionSheet(
               ),
               onPressed: () async {
                 Navigator.pop(ctx);
-                await _simulateMpesaPayment(context, 'monthly', onUnlocked);
+                await _startMpesaPayment(context, 'monthly', onUnlocked);
               },
               child: const Text('Ksh 500'),
             ),
@@ -115,36 +130,105 @@ void showSlipSubscriptionSheet(
   );
 }
 
-Future<void> _simulateMpesaPayment(
+Future<void> _startMpesaPayment(
   BuildContext context,
   String planType,
   Future<void> Function() onUnlocked,
 ) async {
+  final prefs = await SharedPreferences.getInstance();
+  final phone = _normalizePhone(prefs.getString('profile_phone') ?? '');
+  final amount = (_planAmounts[planType] ?? 50).toDouble();
+
+  if (phone.isEmpty) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Please set your phone number in your profile first.'),
+      ),
+    );
+    return;
+  }
+
+  final statusText = ValueNotifier<String>('Sending M-Pesa STK Push...');
+
+  if (!context.mounted) return;
   showDialog(
     context: context,
     barrierDismissible: false,
-    builder: (ctx) => const AlertDialog(
-      content: Row(
-        children: [
-          CircularProgressIndicator(color: _teal),
-          SizedBox(width: 20),
-          Expanded(
-            child: Text('Simulating M-Pesa STK Push...'),
-          ),
-        ],
+    builder: (ctx) => AlertDialog(
+      content: ValueListenableBuilder<String>(
+        valueListenable: statusText,
+        builder: (_, msg, __) => Row(
+          children: [
+            const CircularProgressIndicator(color: _teal),
+            const SizedBox(width: 20),
+            Expanded(child: Text(msg)),
+          ],
+        ),
       ),
     ),
   );
 
-  await Future.delayed(const Duration(seconds: 3));
-  if (!context.mounted) return;
-  Navigator.pop(context); // close loading
-
-  await SlipAccessManager.activatePlan(planType);
-  await onUnlocked();
-
-  if (!context.mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(content: Text('Payment successful! System slips unlocked.')),
+  final sent = await MpesaService.initiateStkPush(
+    phone: phone,
+    amount: amount,
+    accountReference: planType,
   );
+
+  if (!context.mounted) {
+    statusText.dispose();
+    return;
+  }
+
+  if (!sent) {
+    Navigator.pop(context);
+    statusText.dispose();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Could not send STK Push. Check connection or phone.'),
+      ),
+    );
+    return;
+  }
+
+  statusText.value = 'Waiting for M-Pesa confirmation...';
+
+  bool unlocked = false;
+  for (int i = 0; i < 10; i++) {
+    await Future.delayed(const Duration(seconds: 3));
+    if (!context.mounted) {
+      statusText.dispose();
+      return;
+    }
+
+    final access = await SlipAccessManager.checkAccess(overridePhone: phone);
+    if (access.hasAccess) {
+      unlocked = true;
+      break;
+    }
+  }
+
+  if (!context.mounted) {
+    statusText.dispose();
+    return;
+  }
+
+  Navigator.pop(context);
+  statusText.dispose();
+
+  if (unlocked) {
+    await onUnlocked();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Payment confirmed! System slips unlocked.')),
+    );
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Payment still pending or not confirmed yet. Tap Unlock Slip to re-check.',
+        ),
+      ),
+    );
+  }
 }
