@@ -90,7 +90,7 @@ class GeneratedSlip {
 
     return GeneratedSlip(
       id: rawId.isEmpty ? null : rawId,
-      title: json['title']?.toString() ?? '🔥 Prolific Value Accumulator',
+      title: json['title']?.toString() ?? '馃敟 Prolific Value Accumulator',
       totalOdds: (json['totalOdds'] as num?)?.toDouble() ?? 0.0,
       selections: parsedSelections,
       stake: (json['stake'] as num?)?.toDouble() ?? 200.0,
@@ -338,11 +338,10 @@ class SlipGenerator {
 
   static double _round2(double v) => double.parse(v.toStringAsFixed(2));
 
-  static bool _isToday(DateTime kickoff, DateTime now) {
+  static bool _isSameDay(DateTime kickoff, DateTime day) {
     final DateTime local = kickoff.toLocal();
-    return local.year == now.year &&
-        local.month == now.month &&
-        local.day == now.day;
+    final DateTime d = day.toLocal();
+    return local.year == d.year && local.month == d.month && local.day == d.day;
   }
 
   static bool _passesGlobalRiskFilter({
@@ -372,8 +371,10 @@ class SlipGenerator {
     int maxLegs = 7,
     int maxLegsPerLeague = 2,
     bool strictPreferredMarketsOnly = false,
+    DateTime? targetDay,
   }) {
-    final DateTime now = DateTime.now();
+    // Day the slip is built for (default: today).
+    final DateTime day = targetDay ?? DateTime.now();
 
     final Set<String>? normalizedAllowed =
         (allowedMarkets == null || allowedMarkets.isEmpty)
@@ -386,7 +387,7 @@ class SlipGenerator {
       if (fixture is! FixtureModel) continue;
       if (fixture.effectiveIsFinished || fixture.effectiveIsLive) continue;
       if (fixture.kickoff == null) continue;
-      if (!_isToday(fixture.kickoff!, now)) continue;
+      if (!_isSameDay(fixture.kickoff!, day)) continue;
 
       candidates.addAll(
         _candidatesForFixture(
@@ -498,8 +499,7 @@ class SlipGenerator {
         prob: over15Prob,
       );
     }
-
-    // 2. Double Chance (1X / X2 / 12)
+        // 2. Double Chance (1X / X2 / 12)
     if (homeProb >= _dcMinSideProb) {
       final double dcProb = homeProb + drawProb;
       if (dcProb < _dcMaxProb) {
@@ -632,7 +632,7 @@ class SlipGenerator {
         odds *= c.odds;
 
         if (odds >= _targetMinOdds && odds <= _targetMaxOdds) {
-          return _buildSlip('🔥 Prolific Value Accumulator', picks, odds);
+          return _buildSlip('馃敟 Prolific Value Accumulator', picks, odds);
         }
       }
     }
@@ -642,14 +642,14 @@ class SlipGenerator {
     if (odds >= _comboMinOdds) {
       return _buildSlip(
         odds <= _targetMinOdds
-            ? '⚡ Daily Value Combo (2-5x)'
-            : '⚡ Custom Combo Slip',
+            ? '鈿� Daily Value Combo (2-5x)'
+            : '鈿� Custom Combo Slip',
         picks,
         odds,
       );
     }
 
-    return _buildSlip('⚡ Light Slate Combo', picks, odds);
+    return _buildSlip('鈿� Light Slate Combo', picks, odds);
   }
 }
 
