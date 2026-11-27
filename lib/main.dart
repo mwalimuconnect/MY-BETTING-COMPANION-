@@ -71,7 +71,6 @@ class MainHomeScreen extends StatefulWidget {
   @override
   State<MainHomeScreen> createState() => _MainHomeScreenState();
 }
-
 class _MainHomeScreenState extends State<MainHomeScreen> {
   int _currentIndex = 0; // Starts on Bankroll (leftmost tab)
   int _tabRefreshTick = 0;
