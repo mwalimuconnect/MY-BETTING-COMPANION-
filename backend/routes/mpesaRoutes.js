@@ -1,21 +1,19 @@
 const express = require('express');
 const router = express.Router();
+const UserAccess = require('../models/UserAccess');
 
 const SANDBOX_BASE_URL = 'https://sandbox.safaricom.co.ke';
 
-// Plan durations in days (matches daily / weekly / monthly in Flutter)
-const PLAN_DAYS = {
+const DAYS_MAP = {
   daily: 1,
   weekly: 7,
   monthly: 30,
 };
 
 function normalizePhone(phone = '') {
-  const digits = String(phone).replace(/\D/g, '');
-  if (digits.startsWith('254') && digits.length === 12) return digits;
-  if (digits.startsWith('0') && digits.length === 10) return `254${digits.slice(1)}`;
-  if (digits.length === 9) return `254${digits}`;
-  return digits;
+  let cleaned = String(phone).replace(/\s+/g, '').replace(/^\+/, '');
+  if (cleaned.startsWith('0')) cleaned = '254' + cleaned.slice(1);
+  return cleaned;
 }
 
 function getTimestamp() {
@@ -59,6 +57,33 @@ async function getSandboxAccessToken() {
   return data.access_token;
 }
 
+async function grantSubscriptionToUser({ phone, planType, receipt }) {
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return null;
+
+  const daysToAdd = DAYS_MAP[planType] || 1;
+  let user = await UserAccess.findOne({ phone: normalizedPhone });
+
+  if (!user) {
+    user = await UserAccess.create({
+      phone: normalizedPhone,
+      role: 'user',
+    });
+  }
+
+  const now = Date.now();
+  const baseTime =
+    user.subscriptionExpiry && user.subscriptionExpiry.getTime() > now
+      ? user.subscriptionExpiry.getTime()
+      : now;
+
+  user.subscriptionExpiry = new Date(baseTime + daysToAdd * 24 * 60 * 60 * 1000);
+  if (receipt) user.lastMpesaReceipt = receipt;
+  await user.save();
+
+  return user;
+}
+
 // POST /api/mpesa/stk-push
 router.post('/stk-push', async (req, res) => {
   try {
@@ -66,8 +91,8 @@ router.post('/stk-push', async (req, res) => {
     const normalizedPhone = normalizePhone(phone);
     const parsedAmount = Math.round(Number(amount));
 
-    if (!normalizedPhone || normalizedPhone.length !== 12) {
-      return res.status(400).json({ success: false, message: 'Invalid phone number' });
+    if (!normalizedPhone) {
+      return res.status(400).json({ success: false, message: 'Phone number required' });
     }
     if (!parsedAmount || parsedAmount <= 0) {
       return res.status(400).json({ success: false, message: 'Invalid amount' });
@@ -120,8 +145,6 @@ router.post('/stk-push', async (req, res) => {
       });
     }
 
-    // Store pending checkout in MongoDB if your models are attached/imported
-    // Example: save CheckoutRequestID -> { phone: normalizedPhone, planType, amount: parsedAmount, status: 'pending' }
     if (req.app.locals.MpesaTransaction) {
       await req.app.locals.MpesaTransaction.findOneAndUpdate(
         { checkoutRequestId: stkData.CheckoutRequestID },
@@ -167,12 +190,9 @@ router.post('/callback', async (req, res) => {
       if (item.Name === 'PhoneNumber') phone = normalizePhone(item.Value);
     }
 
-    const MpesaTransaction = req.app.locals.MpesaTransaction;
-    const AccessUser = req.app.locals.AccessUser; // Adjust to match your access model/collection
-
     let txDoc = null;
-    if (MpesaTransaction) {
-      txDoc = await MpesaTransaction.findOneAndUpdate(
+    if (req.app.locals.MpesaTransaction) {
+      txDoc = await req.app.locals.MpesaTransaction.findOneAndUpdate(
         { checkoutRequestId: CheckoutRequestID },
         {
           status: isPaid ? 'paid' : 'failed',
@@ -186,28 +206,18 @@ router.post('/callback', async (req, res) => {
 
     const targetPhone = phone || txDoc?.phone;
     const planType = txDoc?.planType || 'daily';
-    const days = PLAN_DAYS[planType] || 1;
 
-    if (isPaid && targetPhone && AccessUser) {
-      const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-      await AccessUser.findOneAndUpdate(
-        { phone: targetPhone },
-        {
-          $set: {
-            hasAccess: true,
-            planType,
-            accessExpiresAt: expiresAt,
-            lastMpesaReceipt: receipt,
-          },
-        },
-        { upsert: true, new: true }
-      );
+    if (isPaid && targetPhone) {
+      await grantSubscriptionToUser({
+        phone: targetPhone,
+        planType,
+        receipt,
+      });
     }
 
     return res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
   } catch (err) {
     console.error('M-Pesa callback error:', err);
-    // Still return 200 to avoid endless Safaricom retry storms on transient errors
     return res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
   }
 });
