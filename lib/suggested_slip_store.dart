@@ -40,10 +40,10 @@ String todayDayKey([DateTime? now]) => formatLocalDayKey(now ?? DateTime.now());
 String yesterdayDayKey([DateTime? now]) => formatLocalDayKey(
     (now ?? DateTime.now()).subtract(const Duration(days: 1)));
 
-/// Runs read-modify-write jobs one at a time. Without this, two callers
+/// Runs read-modify-write jobs one at a time (also used by the prediction log). Without this, two callers
 /// running at once can each read the old data and the last one to write
 /// silently drops the other's change.
-class _WriteQueue {
+class WriteQueue {
   Future<void> _tail = Future<void>.value();
 
   Future<T> run<T>(Future<T> Function() job) {
@@ -155,7 +155,7 @@ List<SlipLeg> keepLast7DaysLegs(List<SlipLeg> legs, [DateTime? now]) {
 
 class SlipStore {
   static const String _prefsKey = 'saved_slips_v1';
-  static final _WriteQueue _queue = _WriteQueue();
+  static final WriteQueue _queue = WriteQueue();
 
   static String _matchSignature(String home, String away) =>
       '${home.trim().toLowerCase()} vs ${away.trim().toLowerCase()}';
@@ -511,6 +511,7 @@ Widget _buildLegCard(
     ),
   );
 }
+
 /// Renders today's saved picks at the top and puts previous days (up to the
 /// rolling window, starting with yesterday) inside a foldable flap.
 Widget buildWeeklySavedSlipsList(
@@ -742,7 +743,7 @@ class SuggestedSlipStore {
   /// Days of slips to keep, counting today.
   static const int keepDays = kSlipHistoryDays;
 
-  static final _WriteQueue _queue = _WriteQueue();
+  static final WriteQueue _queue = WriteQueue();
 
   static const String note =
       'Odds are model-implied (100 divided by win probability), not bookmaker odds. '
@@ -957,3 +958,4 @@ class SuggestedSlipStore {
     }
   }
 }
+
