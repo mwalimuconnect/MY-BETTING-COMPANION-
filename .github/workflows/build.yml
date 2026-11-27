@@ -61,16 +61,16 @@ jobs:
             cat "$PROPS_FILE"
           fi
 
-      - name: Generate Permanent Keystore Once
+      - name: Decode Signing Keystore & Create Properties
         run: |
-          keytool -genkeypair -v -keystore release_keystore.jks -storepass password123 -alias auto_key -keypass password123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Developer, OU=Dev, O=Dev, L=Kisii, S=Kisii, C=KE"
-          base64 -w 0 release_keystore.jks > keystore_base64.txt
-
-      - name: Upload Keystore Base64 Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: keystore-secret
-          path: keystore_base64.txt
+          mkdir -p android/app/
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/auto_keystore.jks
+          cat <<EOF > android/key.properties
+          storePassword=password123
+          keyPassword=password123
+          keyAlias=auto_key
+          storeFile=auto_keystore.jks
+          EOF
 
       - name: Configure Release Signing in Gradle
         run: |
