@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
 import 'fixture_model.dart';
 import 'notification_service.dart';
 import 'pick_evaluator.dart';
