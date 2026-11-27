@@ -113,15 +113,17 @@ class SlipAccessManager {
     if (phone.isEmpty) return false;
 
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/grant'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'planType': planType,
-          'mpesaReceipt': receipt,
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/grant'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'phone': phone,
+              'planType': planType,
+              'mpesaReceipt': receipt,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         await prefs.setBool(_cachedAccessKey, true);
