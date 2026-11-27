@@ -960,7 +960,7 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
             label: const Text('Unlock Slip (From Ksh 50)'),
             onPressed: () {
               showSlipSubscriptionSheet(context, _verifyAccess);
-              }),
+              },
             },
           ),
         ],
