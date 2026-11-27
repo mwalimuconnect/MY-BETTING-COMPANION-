@@ -16,6 +16,13 @@ function normalizePhone(phone = '') {
   return cleaned;
 }
 
+function resolvePlanType(planType, accountReference) {
+  const candidate = String(planType || accountReference || 'daily')
+    .trim()
+    .toLowerCase();
+  return DAYS_MAP[candidate] ? candidate : 'daily';
+}
+
 function getTimestamp() {
   const now = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -61,7 +68,8 @@ async function grantSubscriptionToUser({ phone, planType, receipt }) {
   const normalizedPhone = normalizePhone(phone);
   if (!normalizedPhone) return null;
 
-  const daysToAdd = DAYS_MAP[planType] || 1;
+  const resolvedPlan = resolvePlanType(planType);
+  const daysToAdd = DAYS_MAP[resolvedPlan] || 1;
   let user = await UserAccess.findOne({ phone: normalizedPhone });
 
   if (!user) {
@@ -87,9 +95,10 @@ async function grantSubscriptionToUser({ phone, planType, receipt }) {
 // POST /api/mpesa/stk-push
 router.post('/stk-push', async (req, res) => {
   try {
-    const { phone, amount, accountReference, planType = 'daily' } = req.body || {};
+    const { phone, amount, accountReference, planType } = req.body || {};
     const normalizedPhone = normalizePhone(phone);
     const parsedAmount = Math.round(Number(amount));
+    const resolvedPlan = resolvePlanType(planType, accountReference);
 
     if (!normalizedPhone) {
       return res.status(400).json({ success: false, message: 'Phone number required' });
@@ -129,7 +138,7 @@ router.post('/stk-push', async (req, res) => {
         PartyB: shortcode,
         PhoneNumber: normalizedPhone,
         CallBackURL: callbackUrl,
-        AccountReference: String(accountReference || planType).slice(0, 12),
+        AccountReference: String(accountReference || resolvedPlan).slice(0, 12),
         TransactionDesc: 'SlipAccess',
       }),
     });
@@ -151,7 +160,7 @@ router.post('/stk-push', async (req, res) => {
         {
           checkoutRequestId: stkData.CheckoutRequestID,
           phone: normalizedPhone,
-          planType,
+          planType: resolvedPlan,
           amount: parsedAmount,
           status: 'pending',
         },
@@ -205,12 +214,12 @@ router.post('/callback', async (req, res) => {
     }
 
     const targetPhone = phone || txDoc?.phone;
-    const planType = txDoc?.planType || 'daily';
+    const resolvedPlan = resolvePlanType(txDoc?.planType);
 
     if (isPaid && targetPhone) {
       await grantSubscriptionToUser({
         phone: targetPhone,
-        planType,
+        planType: resolvedPlan,
         receipt,
       });
     }
