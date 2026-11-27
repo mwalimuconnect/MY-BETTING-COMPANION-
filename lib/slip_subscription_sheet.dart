@@ -173,6 +173,7 @@ Future<void> _startMpesaPayment(
     phone: phone,
     amount: amount,
     accountReference: planType,
+    planType: planType,
   );
 
   if (!context.mounted) {
