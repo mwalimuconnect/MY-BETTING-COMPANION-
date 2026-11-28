@@ -1,10 +1,36 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import 'fixture_model.dart';
 import 'notification_service.dart';
 import 'pick_evaluator.dart';
 import 'slip_access_manager.dart';
 import 'slip_subscription_sheet.dart';
+
+//=================
+// Slip titles
+//=================
+// Emoji are written as \u escapes on purpose. A raw emoji in the source can be
+// turned into Chinese-looking characters if an editor saves the file with the
+// wrong encoding.
+
+/// Canonical slip titles, keyed by the plain-text part.
+const Map<String, String> _slipTitles = {
+  'Prolific Value Accumulator': '\u{1F525} Prolific Value Accumulator',
+  'Daily Value Combo (2-5x)': '\u26A1 Daily Value Combo (2-5x)',
+  'Custom Combo Slip': '\u26A1 Custom Combo Slip',
+  'Light Slate Combo': '\u26A1 Light Slate Combo',
+};
+
+/// Repairs a stored slip title whose emoji was garbled into Chinese-looking
+/// characters. Slips saved earlier keep the bad text on disk, so every load
+/// runs through this.
+String cleanSlipTitle(String raw) {
+  for (final entry in _slipTitles.entries) {
+    if (raw.contains(entry.key)) return entry.value;
+  }
+  return raw;
+}
 
 //=================
 // SlipEvaluation
@@ -89,7 +115,7 @@ class GeneratedSlip {
 
     return GeneratedSlip(
       id: rawId.isEmpty ? null : rawId,
-      title: json['title']?.toString() ?? '馃敟 Prolific Value Accumulator',
+      title: cleanSlipTitle(json['title']?.toString() ?? '\u{1F525} Prolific Value Accumulator'),
       totalOdds: (json['totalOdds'] as num?)?.toDouble() ?? 0.0,
       selections: parsedSelections,
       stake: (json['stake'] as num?)?.toDouble() ?? 200.0,
@@ -653,7 +679,7 @@ class SlipGenerator {
         odds *= c.odds;
 
         if (odds >= _targetMinOdds && odds <= _targetMaxOdds) {
-          return _buildSlip('🔥 Prolific Value Accumulator', picks, odds);
+          return _buildSlip('\u{1F525} Prolific Value Accumulator', picks, odds);
         }
       }
     }
@@ -663,14 +689,14 @@ class SlipGenerator {
     if (odds >= _comboMinOdds) {
       return _buildSlip(
         odds <= _targetMinOdds
-            ? '💎  Daily Value Combo (2-5x)'
-            : '🎯  Custom Combo Slip',
+            ? '\u26A1 Daily Value Combo (2-5x)'
+            : '\u26A1 Custom Combo Slip',
         picks,
         odds,
       );
     }
 
-    return _buildSlip('⚡  Light Slate Combo', picks, odds);
+    return _buildSlip('\u26A1 Light Slate Combo', picks, odds);
   }
 }
 
@@ -950,7 +976,7 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey, fontSize: 12),
           ),
-         const SizedBox(height: 12),
+          const SizedBox(height: 12),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: _teal,
@@ -959,13 +985,15 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
             icon: const Icon(Icons.vpn_key, size: 18),
             label: const Text('Unlock Slip (From Ksh 50)'),
             onPressed: () {
-            showSlipSubscriptionSheet(context, _verifyAccess);
-             },
-           ),
-          ],
-        ),
-      );
-    }  
+              showSlipSubscriptionSheet(context, () async {
+                await _verifyAccess();
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _badge(String text, Color color) {
     return Container(
@@ -986,5 +1014,3 @@ class _ProtectedSystemSlipCardState extends State<ProtectedSystemSlipCard> {
     );
   }
 }
-
-  
