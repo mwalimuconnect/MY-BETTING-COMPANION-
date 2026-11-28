@@ -511,7 +511,6 @@ Widget _buildLegCard(
     ),
   );
 }
-
 /// Renders today's saved picks at the top and puts previous days (up to the
 /// rolling window, starting with yesterday) inside a foldable flap.
 Widget buildWeeklySavedSlipsList(
@@ -724,7 +723,7 @@ class SuggestedSlip {
         : (odds * parsedStake);
 
     return SuggestedSlip(
-      title: j['title']?.toString() ?? 'Suggested slip',
+      title: cleanSlipTitle(j['title']?.toString() ?? 'Suggested slip'),
       totalOdds: odds,
       selections: sel,
       stake: parsedStake,
@@ -958,4 +957,3 @@ class SuggestedSlipStore {
     }
   }
 }
-
