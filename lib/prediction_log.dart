@@ -308,7 +308,7 @@ class CalibrationStats {
 // UI helpers
 //=========================
 
-/// Bold teal "PROLIFIC 🔥" section header.
+/// Bold teal PROLIFIC section header (with the fire emoji).
 Widget buildProlificHeader() {
   return const Padding(
     padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -884,7 +884,8 @@ class PredictionLog {
       hitRate: wins / count,
     );
   }
-    // ----------------------------------------------------------------- backup
+
+  // ----------------------------------------------------------------- backup
   /// The whole log as JSON text, for adding to Export Backup.
   static Future<String> exportJson() async {
     final entries = await load();
@@ -1276,6 +1277,7 @@ class _PredictionLogTabState extends State<PredictionLogTab> {
       ),
     );
   }
+
   Widget _buildBody(List<LogEntry> all, List<LogEntry> current) {
     final grouped = _groupByDay(current);
     // Today first, then tomorrow, then later days.
